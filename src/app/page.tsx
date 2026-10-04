@@ -9,7 +9,7 @@ export default async function HomePage() {
     redirect('/login');
   }
 
-  const users = await query<{ role: 'USER' | 'ADMIN'; status: 'ACTIVE' | 'DISABLED' }[]>(
+  const users = await query<{ role: 'USER' | 'ADMIN' | 'DEVELOPER'; status: 'ACTIVE' | 'DISABLED' }[]>(
     'SELECT role, status FROM users WHERE id = ? LIMIT 1',
     [session.id]
   );
@@ -19,6 +19,7 @@ export default async function HomePage() {
   if (user.role === 'ADMIN') {
     redirect('/admin/dashboard');
   }
+  if (user.role === 'DEVELOPER') redirect('/developer/tasks');
 
   redirect('/dashboard');
 }

@@ -12,7 +12,7 @@ export function AutoRefresh() {
 
   useEffect(() => {
     let currentVersion: string | null = null;
-    let currentRole: 'USER' | 'ADMIN' | null = null;
+    let currentRole: 'USER' | 'ADMIN' | 'DEVELOPER' | null = null;
     let isChecking = false;
 
     const refreshSession = async () => {
@@ -23,25 +23,31 @@ export function AutoRefresh() {
       }
 
       const role = result.data.role;
-      if (role !== 'USER' && role !== 'ADMIN') {
+      if (role !== 'USER' && role !== 'ADMIN' && role !== 'DEVELOPER') {
         throw new Error('Role akun yang diterima tidak valid.');
       }
       const roleChanged =
         result.roleChanged === true || (currentRole !== null && currentRole !== role);
       currentRole = role;
-      const targetPath = role === 'ADMIN' ? '/admin/dashboard' : '/dashboard';
-      const expectedAdminRoute = role === 'ADMIN';
+      const targetPath = role === 'ADMIN'
+        ? '/admin/dashboard'
+        : role === 'DEVELOPER'
+          ? '/developer/tasks'
+          : '/dashboard';
       const isAdminRoute = pathname.startsWith('/admin');
-      const routeRoleMismatch = expectedAdminRoute !== isAdminRoute;
+      const isDeveloperRoute = pathname.startsWith('/developer');
+      const isDashboardRoute = pathname === '/dashboard';
+      const routeRoleMismatch = isAdminRoute
+        ? role !== 'ADMIN'
+        : isDeveloperRoute
+          ? role !== 'DEVELOPER'
+          : isDashboardRoute
+            ? role !== 'USER'
+            : role === 'ADMIN';
 
-      if (routeRoleMismatch) {
+      if (roleChanged || routeRoleMismatch) {
         router.replace(targetPath);
         return true;
-      }
-
-      if (roleChanged) {
-        router.refresh();
-        window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
       }
 
       return false;
@@ -58,13 +64,21 @@ export function AutoRefresh() {
           !response.ok ||
           !result.success ||
           typeof result.version !== 'string' ||
-          (result.role !== 'USER' && result.role !== 'ADMIN')
+          (result.role !== 'USER' && result.role !== 'ADMIN' && result.role !== 'DEVELOPER')
         ) {
           throw new Error(result.error || 'Gagal memeriksa perubahan data.');
         }
 
-        const routeRoleMismatch =
-          (result.role === 'ADMIN') !== pathname.startsWith('/admin');
+        const isAdminRoute = pathname.startsWith('/admin');
+        const isDeveloperRoute = pathname.startsWith('/developer');
+        const isDashboardRoute = pathname === '/dashboard';
+        const routeRoleMismatch = isAdminRoute
+          ? result.role !== 'ADMIN'
+          : isDeveloperRoute
+            ? result.role !== 'DEVELOPER'
+            : isDashboardRoute
+              ? result.role !== 'USER'
+              : result.role === 'ADMIN';
         const dataChanged = currentVersion !== null && currentVersion !== result.version;
 
         if (routeRoleMismatch || dataChanged) {

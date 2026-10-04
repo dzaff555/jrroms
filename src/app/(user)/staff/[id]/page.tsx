@@ -8,7 +8,7 @@ import { formatIndonesianDate } from '@/lib/utils/date';
 interface StaffProfile {
   id: number;
   username: string;
-  role: 'USER' | 'ADMIN';
+  role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string | null;
   profile_photo: string | null;
   roblox_username: string | null;
@@ -87,7 +87,11 @@ export default async function StaffProfilePage({
               <h1 className="mt-1 text-2xl font-extrabold">{staff.username}</h1>
               <p className="mt-1 flex items-center gap-1.5 text-sm text-blue-100">
                 {staff.role === 'ADMIN' && <ShieldCheck className="h-4 w-4" />}
-                {staff.role === 'ADMIN' ? 'Admin' : staff.attendance_role || 'Role belum ditentukan'}
+                {staff.role === 'ADMIN'
+                  ? 'Admin'
+                  : staff.role === 'DEVELOPER'
+                    ? 'Developer'
+                    : staff.attendance_role || 'Role belum ditentukan'}
               </p>
             </div>
           </div>
@@ -105,7 +109,7 @@ export default async function StaffProfilePage({
               </div>
               <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.discord_username || '-'}</p>
             </div>
-            {staff.role === 'USER' && (
+            {staff.role !== 'ADMIN' && (
               <>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">

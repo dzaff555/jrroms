@@ -19,7 +19,7 @@ interface StaffProfile {
   id: number;
   username: string;
   real_name: string | null;
-  role: 'USER' | 'ADMIN';
+  role: 'USER' | 'ADMIN' | 'DEVELOPER';
   status: 'ACTIVE' | 'DISABLED';
   attendance_role: string | null;
   profile_photo: string | null;
@@ -168,7 +168,7 @@ export default async function AdminStaffProfilePage({
               </div>
               <p className="mt-2 text-sm font-bold text-slate-800">{staff.created_at}</p>
             </div>
-            {staff.role === 'USER' && (
+            {staff.role !== 'ADMIN' && (
               <>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -206,7 +206,7 @@ export default async function AdminStaffProfilePage({
           </div>
         </section>
 
-        {staff.role === 'USER' && (
+        {staff.role !== 'ADMIN' && (
           <>
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <h2 className="text-lg font-extrabold text-slate-900">Beri Peringatan</h2>

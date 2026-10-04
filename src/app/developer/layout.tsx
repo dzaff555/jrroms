@@ -4,11 +4,11 @@ import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 import { AuthSession } from '@/types';
 
-interface AdminLayoutUser extends AuthSession {
+interface DeveloperLayoutUser extends AuthSession {
   profile_photo: string | null;
 }
 
-export default async function AdminLayout({
+export default async function DeveloperLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -16,7 +16,7 @@ export default async function AdminLayout({
   const session = await getSessionUser();
   if (!session) redirect('/login');
 
-  const users = await query<AdminLayoutUser[]>(
+  const users = await query<DeveloperLayoutUser[]>(
     `SELECT id, username, role, status, attendance_role,
       profile_photo, roblox_username, discord_username, profile_completed
      FROM users
@@ -24,15 +24,11 @@ export default async function AdminLayout({
      LIMIT 1`,
     [session.id]
   );
-  const admin = users[0];
-  if (!admin) redirect('/login');
-  if (admin.role !== 'ADMIN') {
-    redirect(admin.role === 'DEVELOPER' ? '/developer/tasks' : '/dashboard');
+  const user = users[0];
+  if (!user) redirect('/login');
+  if (user.role !== 'DEVELOPER') {
+    redirect(user.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard');
   }
 
-  return (
-    <AppLayout user={admin}>
-      {children}
-    </AppLayout>
-  );
+  return <AppLayout user={user}>{children}</AppLayout>;
 }

@@ -48,7 +48,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const conditions = ["u.role = 'USER'", "u.status = 'ACTIVE'"];
+    const conditions = ["u.role IN ('USER', 'DEVELOPER')", "u.status = 'ACTIVE'"];
     const userParams: unknown[] = [];
     if (attendanceRole !== 'ALL') {
       conditions.push('u.attendance_role = ?');

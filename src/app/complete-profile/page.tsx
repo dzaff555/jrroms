@@ -34,7 +34,7 @@ export default function CompleteProfilePage() {
       setUser(nextUser);
 
       if (nextUser.profile_completed) {
-        router.replace('/dashboard');
+        router.replace(nextUser.role === 'DEVELOPER' ? '/developer/tasks' : '/dashboard');
       }
     } catch {
       router.replace('/login');
@@ -75,7 +75,7 @@ export default function CompleteProfilePage() {
 
       toast.success('Biodata Tersimpan', 'Biodata berhasil disimpan. Anda dapat melakukan absensi dari dashboard.');
       setIsConfirming(false);
-      router.replace('/dashboard');
+      router.replace(user?.role === 'DEVELOPER' ? '/developer/tasks' : '/dashboard');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Terjadi kesalahan saat menyimpan biodata.';
       toast.error('Gagal', message);

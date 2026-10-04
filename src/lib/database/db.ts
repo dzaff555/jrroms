@@ -89,6 +89,19 @@ async function ensureEmailIsOptional(dbPool: mysql.Pool) {
   }
 }
 
+async function ensureDeveloperRole(dbPool: mysql.Pool) {
+  const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
+    'SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+    ['users', 'role']
+  );
+
+  if (!String(columns[0]?.COLUMN_TYPE || '').includes("'DEVELOPER'")) {
+    await dbPool.query(
+      "ALTER TABLE users MODIFY COLUMN role ENUM('USER', 'ADMIN', 'DEVELOPER') NOT NULL DEFAULT 'USER'"
+    );
+  }
+}
+
 export function getDbPool(): mysql.Pool {
   if (!pool) {
     pool = mysql.createPool({
@@ -130,7 +143,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         real_name VARCHAR(100) NULL,
         email VARCHAR(100) NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
-        role ENUM('USER', 'ADMIN') NOT NULL DEFAULT 'USER',
+        role ENUM('USER', 'ADMIN', 'DEVELOPER') NOT NULL DEFAULT 'USER',
         status ENUM('ACTIVE', 'DISABLED') NOT NULL DEFAULT 'ACTIVE',
         attendance_role ENUM('CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL') NOT NULL DEFAULT 'CSOT',
         profile_photo LONGTEXT NULL,
@@ -182,6 +195,41 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         admin_id INT PRIMARY KEY,
         read_through_id INT NOT NULL DEFAULT 0,
         CONSTRAINT fk_admin_attendance_inbox_user FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await ensureDeveloperRole(dbPool);
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS developer_tasks (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(180) NOT NULL,
+        description TEXT NOT NULL,
+        category ENUM('MODELLING', 'SCRIPTING') NOT NULL,
+        file_required BOOLEAN NOT NULL DEFAULT FALSE,
+        starts_on DATE NOT NULL,
+        ends_on DATE NOT NULL,
+        created_by INT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_developer_task_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+        INDEX idx_developer_tasks_dates (starts_on, ends_on),
+        INDEX idx_developer_tasks_category (category)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS developer_task_files (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        developer_id INT NOT NULL,
+        blob_name VARCHAR(500) NOT NULL UNIQUE,
+        original_name VARCHAR(255) NOT NULL,
+        content_type VARCHAR(255) NOT NULL DEFAULT 'application/octet-stream',
+        byte_size BIGINT UNSIGNED NOT NULL,
+        status ENUM('PENDING', 'COMPLETE') NOT NULL DEFAULT 'PENDING',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        uploaded_at TIMESTAMP NULL DEFAULT NULL,
+        CONSTRAINT fk_developer_task_file_task FOREIGN KEY (task_id) REFERENCES developer_tasks(id) ON DELETE CASCADE,
+        CONSTRAINT fk_developer_task_file_user FOREIGN KEY (developer_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_developer_task_files_owner (developer_id, task_id, status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await dbPool.query(`

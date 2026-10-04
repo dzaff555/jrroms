@@ -8,6 +8,7 @@ interface ChangeFingerprint {
   attendance: string;
   warnings: string;
   adminInbox: string;
+  taskData: string;
 }
 
 export async function GET() {
@@ -17,8 +18,8 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const [currentUsers, users, attendance, warnings, adminInbox] = await Promise.all([
-      query<{ role: 'USER' | 'ADMIN'; status: 'ACTIVE' | 'DISABLED' }[]>(
+    const [currentUsers, users, attendance, warnings, adminInbox, taskData] = await Promise.all([
+      query<{ role: 'USER' | 'ADMIN' | 'DEVELOPER'; status: 'ACTIVE' | 'DISABLED' }[]>(
         'SELECT role, status FROM users WHERE id = ? LIMIT 1',
         [session.id]
       ),
@@ -51,6 +52,20 @@ export async function GET() {
          ) AS adminInbox
          FROM admin_attendance_inbox`
       ),
+      query<ChangeFingerprint[]>(
+        `SELECT CONCAT_WS(':',
+           (SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
+             COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, title, description, category,
+               file_required, starts_on, ends_on,
+               DATE_FORMAT(updated_at, '%Y%m%d%H%i%s.%f')))), 0))
+            FROM developer_tasks),
+           (SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
+             COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, task_id, developer_id,
+               original_name, byte_size, status,
+               COALESCE(DATE_FORMAT(uploaded_at, '%Y%m%d%H%i%s.%f'), '')))), 0))
+            FROM developer_task_files)
+         ) AS taskData`
+      ),
     ]);
     const currentUser = currentUsers[0];
 
@@ -66,6 +81,7 @@ export async function GET() {
       attendance[0]?.attendance || '',
       warnings[0]?.warnings || '',
       adminInbox[0]?.adminInbox || '',
+      taskData[0]?.taskData || '',
     ].join(':');
     const version = createHash('sha256').update(fingerprint).digest('hex');
 

@@ -81,7 +81,7 @@ export async function GET(request: Request) {
     const records = await query<{
       id: number;
       username: string;
-      role: 'USER' | 'ADMIN';
+      role: 'USER' | 'ADMIN' | 'DEVELOPER';
       status: 'ACTIVE' | 'DISABLED';
       attendance_role: string;
       profile_photo: string | null;
@@ -125,6 +125,7 @@ export async function POST(request: Request) {
     const username = typeof body.username === 'string' ? body.username.trim() : '';
     const realName = typeof body.real_name === 'string' ? body.real_name.trim() : '';
     const password = typeof body.password === 'string' ? body.password : '';
+    const role = body.role === undefined ? 'USER' : body.role;
     const attendanceRole = typeof body.attendance_role === 'string' ? body.attendance_role : '';
 
     if (username.length < 3) {
@@ -139,6 +140,9 @@ export async function POST(request: Request) {
     if (!ATTENDANCE_ROLES.includes(attendanceRole as AttendanceRole)) {
       return NextResponse.json({ success: false, error: 'Role absensi tidak valid.' }, { status: 400 });
     }
+    if (role !== 'USER' && role !== 'DEVELOPER') {
+      return NextResponse.json({ success: false, error: 'Role akun baru harus User atau Developer.' }, { status: 400 });
+    }
 
     const existing = await query<{ id: number }[]>(
       'SELECT id FROM users WHERE username = ? LIMIT 1',
@@ -150,14 +154,14 @@ export async function POST(request: Request) {
 
     const result = await query<{ insertId: number }>(
       `INSERT INTO users (username, real_name, email, password, role, status, attendance_role, profile_completed)
-       VALUES (?, ?, NULL, ?, 'USER', 'ACTIVE', ?, FALSE)`,
-      [username, realName || null, await hashPassword(password), attendanceRole]
+       VALUES (?, ?, NULL, ?, ?, 'ACTIVE', ?, FALSE)`,
+      [username, realName || null, await hashPassword(password), role, attendanceRole]
     );
 
     return NextResponse.json({
       success: true,
       message: 'Akun berhasil dibuat.',
-      data: { id: result.insertId, username, attendance_role: attendanceRole },
+      data: { id: result.insertId, username, role, attendance_role: attendanceRole },
     }, { status: 201 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Gagal membuat akun.';

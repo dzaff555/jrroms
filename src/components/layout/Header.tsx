@@ -70,7 +70,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
   const pathname = usePathname();
   const toast = useToast();
   const { toggleTheme } = useTheme();
-  const isStaff = user?.role === 'USER';
+  const isStaff = user?.role === 'USER' || user?.role === 'DEVELOPER';
 
   const refreshInbox = React.useCallback(async () => {
     try {
@@ -460,7 +460,11 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
                   {user?.username || 'Pengguna'}
                 </span>
                 <span className="text-[10px] font-medium text-slate-500 capitalize">
-                  {user?.role === 'ADMIN' ? 'Administrator' : user?.attendance_role || 'User'}
+                  {user?.role === 'ADMIN'
+                    ? 'Administrator'
+                    : user?.role === 'DEVELOPER'
+                      ? 'Developer'
+                      : user?.attendance_role || 'User'}
                 </span>
               </div>
               <ChevronDown className="w-4 h-4 text-slate-400" />

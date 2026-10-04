@@ -50,7 +50,7 @@ export async function GET() {
              (a.id <= ?) AS is_read
            FROM attendance a
            JOIN users u ON u.id = a.user_id
-           WHERE u.role = 'USER' AND a.status = 'Hadir'
+           WHERE u.role IN ('USER', 'DEVELOPER') AND a.status = 'Hadir'
            ORDER BY a.id DESC
            LIMIT 50`,
           [readThroughId]
@@ -59,7 +59,7 @@ export async function GET() {
           `SELECT COUNT(*) AS total
            FROM attendance a
            JOIN users u ON u.id = a.user_id
-           WHERE a.id > ? AND u.role = 'USER' AND a.status = 'Hadir'`,
+           WHERE a.id > ? AND u.role IN ('USER', 'DEVELOPER') AND a.status = 'Hadir'`,
           [readThroughId]
         ),
       ]);
@@ -68,13 +68,6 @@ export async function GET() {
         success: true,
         data: { attendances, unreadCount: Number(unreadRows[0]?.total || 0) },
       });
-    }
-
-    if (session.role !== 'USER') {
-      return NextResponse.json(
-        { success: false, error: 'Inbox peringatan hanya tersedia untuk akun staff.' },
-        { status: 403 }
-      );
     }
 
     const [warnings, unreadRows] = await Promise.all([
@@ -149,13 +142,6 @@ export async function PATCH(request: Request) {
       );
       return NextResponse.json({ success: true, message: 'Semua notifikasi absensi ditandai sudah dibaca.' });
     }
-    if (session.role !== 'USER') {
-      return NextResponse.json(
-        { success: false, error: 'Inbox peringatan hanya tersedia untuk akun staff.' },
-        { status: 403 }
-      );
-    }
-
     let body: unknown;
     try {
       body = await request.json();

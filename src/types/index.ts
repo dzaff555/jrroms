@@ -1,4 +1,4 @@
-export type UserRole = 'USER' | 'ADMIN';
+export type UserRole = 'USER' | 'ADMIN' | 'DEVELOPER';
 export type UserStatus = 'ACTIVE' | 'DISABLED';
 export const ATTENDANCE_ROLES = ['CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL'] as const;
 export type AttendanceRole = (typeof ATTENDANCE_ROLES)[number];

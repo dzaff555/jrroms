@@ -21,6 +21,9 @@ Vercel uses `npm run build` by default. In the Vercel project, open
 | `ADMIN_USERNAME` | Initial admin username |
 | `ADMIN_EMAIL` | Initial admin email |
 | `ADMIN_PASSWORD` | A strong initial admin password |
+| `AZURE_STORAGE_ACCOUNT_NAME` | Azure Storage account name for Developer task uploads |
+| `AZURE_STORAGE_ACCOUNT_KEY` | Server-only key for that account; never expose it to browser code |
+| `AZURE_STORAGE_CONTAINER_NAME` | Optional private container name (defaults to `developer-task-submissions`) |
 
 Add variables to the **Production** environment (and Preview/Development as needed),
 then redeploy. Keep `DATABASE_URL`, `JWT_SECRET`, and passwords server-side; never
@@ -56,6 +59,22 @@ required reason from the account profile; warning records are created automatica
 when the app initializes the database.
 Admins also receive inbox notifications when a user records a new attendance;
 notifications are checked every 30 seconds and can be marked read from the bell menu.
+
+Developer task files are uploaded directly from the browser to a private Azure Blob
+Storage container, avoiding Vercel's request-body limits. Configure the three
+`AZURE_STORAGE_*` variables in Vercel Production (and Preview if needed); keep the
+account key server-side. The app creates the configured container with public access
+disabled. In the Storage account's Blob service CORS settings, allow the deployed
+app's exact origin, the `PUT`, `GET`, `HEAD`, and `OPTIONS` methods, request headers
+`*`, and expose `ETag`, `Content-Length`, and the `x-ms-*` response headers used by
+the Azure client. Do not enable anonymous/public blob access. Each generated upload
+SAS is scoped to one random blob and expires after four hours; download SAS URLs
+expire after five minutes.
+
+Admins can create User or Developer accounts, or change an existing account's
+system role. Developer accounts use the same Friday–Sunday attendance rules and
+attendance reports as User accounts, and can see tasks published from **Tugas
+Developer** in the sidebar.
 
 The Railway `absentes` app service is not needed when Vercel runs the full Next.js
 application. Keep the Railway MySQL service running. Do not remove the app service

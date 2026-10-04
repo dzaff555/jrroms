@@ -114,7 +114,13 @@ export async function POST(request: Request) {
     const expiresIn = rememberMe ? '30d' : '7d';
     const token = signToken(sessionPayload, expiresIn);
 
-    const redirectUrl = user.role === 'ADMIN' ? '/admin/dashboard' : profileCompleted ? '/dashboard' : '/complete-profile';
+    const redirectUrl = user.role === 'ADMIN'
+      ? '/admin/dashboard'
+      : !profileCompleted
+        ? '/complete-profile'
+        : user.role === 'DEVELOPER'
+          ? '/developer/tasks'
+          : '/dashboard';
 
     const response = NextResponse.json({
       success: true,

@@ -1,7 +1,7 @@
 import { AuthSession } from '@/types';
 
 /**
- * Lightweight JWT decoder for Next.js Middleware and Edge runtime
+ * Lightweight JWT decoder for Next.js Proxy.
  */
 export function decodeJwtPayload(token: string): AuthSession | null {
   try {

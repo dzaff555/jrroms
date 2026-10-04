@@ -18,7 +18,7 @@ export async function GET() {
 
     // 1. Total Active Users
     const totalUsersResult = await query<{ count: number }[]>(
-      'SELECT COUNT(*) as count FROM users WHERE role = "USER" AND status = "ACTIVE"'
+      "SELECT COUNT(*) as count FROM users WHERE role IN ('USER', 'DEVELOPER') AND status = 'ACTIVE'"
     );
     const totalUsers = totalUsersResult[0]?.count || 0;
 

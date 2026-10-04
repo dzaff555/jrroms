@@ -61,7 +61,7 @@ export default function AdminUsersPage() {
   const [viewUser, setViewUser] = useState<AdminUser | null>(null);
   const [isLoadingUserDetails, setIsLoadingUserDetails] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [editRole, setEditRole] = useState<'USER' | 'ADMIN'>('USER');
+  const [editRole, setEditRole] = useState<UserRole>('USER');
   const [editAttendanceUser, setEditAttendanceUser] = useState<AdminUser | null>(null);
   const [editAttendanceRole, setEditAttendanceRole] = useState<AttendanceRole>('CSOT');
   const [confirmToggleUser, setConfirmToggleUser] = useState<AdminUser | null>(null);
@@ -72,6 +72,7 @@ export default function AdminUsersPage() {
   const [newUsername, setNewUsername] = useState('');
   const [newRealName, setNewRealName] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newSystemRole, setNewSystemRole] = useState<'USER' | 'DEVELOPER'>('USER');
   const [newAttendanceRole, setNewAttendanceRole] = useState<AttendanceRole>('CSOT');
   const [isUpdating, setIsUpdating] = useState(false);
   const isFetchingUsersRef = React.useRef(false);
@@ -146,6 +147,7 @@ export default function AdminUsersPage() {
           username: newUsername,
           real_name: newRealName,
           password: newPassword,
+          role: newSystemRole,
           attendance_role: newAttendanceRole,
         }),
       });
@@ -160,6 +162,7 @@ export default function AdminUsersPage() {
       setNewUsername('');
       setNewRealName('');
       setNewPassword('');
+      setNewSystemRole('USER');
       setNewAttendanceRole('CSOT');
       setCurrentPage(1);
       if (currentPage === 1) await fetchUsers();
@@ -385,6 +388,7 @@ export default function AdminUsersPage() {
             >
               <option value="ALL">Semua Role Sistem</option>
               <option value="USER">User</option>
+              <option value="DEVELOPER">Developer</option>
               <option value="ADMIN">Admin</option>
             </select>
 
@@ -602,7 +606,7 @@ export default function AdminUsersPage() {
           isOpen={isCreateUserOpen}
           onClose={() => setIsCreateUserOpen(false)}
           title="Buat Akun Pengguna"
-          description="Akun baru dibuat dengan akses USER dan wajib melengkapi biodata saat pertama login."
+          description="Pilih akses User atau Developer. Keduanya mengikuti aturan absensi."
           maxWidth="md"
         >
           <form onSubmit={handleCreateUser} className="space-y-4">
@@ -632,6 +636,18 @@ export default function AdminUsersPage() {
               helperText="Minimal 8 karakter. Pengguna dapat memakai ini untuk login pertama."
               required
             />
+            <div className="space-y-1.5">
+              <label htmlFor="new-system-role" className="block text-xs font-semibold text-slate-700">Role Sistem</label>
+              <select
+                id="new-system-role"
+                value={newSystemRole}
+                onChange={(event) => setNewSystemRole(event.target.value as 'USER' | 'DEVELOPER')}
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="USER">User</option>
+                <option value="DEVELOPER">Developer</option>
+              </select>
+            </div>
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-700">Role Absensi</label>
               <select
@@ -798,6 +814,7 @@ export default function AdminUsersPage() {
                   className="w-full rounded-xl text-sm border border-slate-200 bg-white p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
                   <option value="USER">USER (Hanya akses absensi & dashboard pribadi)</option>
+                  <option value="DEVELOPER">DEVELOPER (Absensi & tugas developer)</option>
                   <option value="ADMIN">ADMIN (Akses penuh dashboard & laporan)</option>
                 </select>
               </div>

@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     const records = await query<{
       id: number;
       username: string;
-      role: 'USER' | 'ADMIN';
+      role: 'USER' | 'ADMIN' | 'DEVELOPER';
       attendance_role: string | null;
       profile_photo: string | null;
     }[]>(

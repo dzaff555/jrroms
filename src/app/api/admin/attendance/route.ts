@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     let baseSql = `
       FROM users u
       LEFT JOIN attendance a ON u.id = a.user_id AND a.attendance_date = ?
-      WHERE u.role = 'USER' AND u.status = 'ACTIVE'
+      WHERE u.role IN ('USER', 'DEVELOPER') AND u.status = 'ACTIVE'
     `;
     const params: any[] = [todayDate];
 

@@ -5,7 +5,7 @@ import { query } from '@/lib/database/db';
 interface StaffCard {
   id: number;
   username: string;
-  role: 'USER' | 'ADMIN';
+  role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string | null;
   profile_photo: string | null;
 }
@@ -78,7 +78,11 @@ export default async function StaffDirectoryPage({
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate text-sm font-bold text-slate-900">{member.username}</span>
                   <span className="mt-0.5 truncate text-xs text-slate-500">
-                    {member.role === 'ADMIN' ? 'Administrator' : member.attendance_role || 'Role belum ditentukan'}
+                    {member.role === 'ADMIN'
+                      ? 'Administrator'
+                      : member.role === 'DEVELOPER'
+                        ? 'Developer'
+                        : member.attendance_role || 'Role belum ditentukan'}
                   </span>
                 </span>
                 <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />

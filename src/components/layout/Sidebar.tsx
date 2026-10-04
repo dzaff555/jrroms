@@ -7,6 +7,8 @@ import {
   LayoutDashboard,
   UserCheck,
   History,
+  ClipboardList,
+  Upload,
   FileSpreadsheet,
   ChartNoAxesColumn,
   Users,
@@ -23,7 +25,7 @@ import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 interface SidebarStaff {
   id: number;
   username: string;
-  role: 'USER' | 'ADMIN';
+  role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string;
   profile_photo: string | null;
 }
@@ -50,6 +52,7 @@ export function Sidebar({
   const toast = useToast();
 
   const isAdmin = user?.role === 'ADMIN';
+  const isDeveloper = user?.role === 'DEVELOPER';
   const userId = user?.id;
   const refreshStaff = React.useCallback(async () => {
     if (userId === undefined) return;
@@ -85,13 +88,21 @@ export function Sidebar({
 
   const adminNavItems = [
     { label: 'Admin Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+    { label: 'Tugas Developer', href: '/admin/tasks', icon: ClipboardList },
     { label: 'Attendance Reports', href: '/admin/reports', icon: FileSpreadsheet },
     { label: 'Attendance Statistics', href: '/admin/attendance-statistics', icon: ChartNoAxesColumn },
     { label: 'Manage Users', href: '/admin/users', icon: Users },
     { label: 'System Settings', href: '/admin/settings', icon: Settings },
   ];
 
-  const navItems = isAdmin ? adminNavItems : userNavItems;
+  const developerNavItems = [
+    { label: 'Tugas', href: '/developer/tasks', icon: ClipboardList },
+    { label: 'Upload Tugas', href: '/developer/upload', icon: Upload },
+    { label: "Today's Attendance", href: '/attendance', icon: UserCheck },
+    { label: 'Attendance History', href: '/attendance/history', icon: History },
+  ];
+
+  const navItems = isAdmin ? adminNavItems : isDeveloper ? developerNavItems : userNavItems;
 
   const handleLogout = async () => {
     try {
@@ -116,7 +127,7 @@ export function Sidebar({
       {/* Brand Header */}
       <div className="h-18 flex items-center justify-between gap-1 px-2 border-b border-white/10 shrink-0">
         <Link
-          href={isAdmin ? '/admin/dashboard' : '/dashboard'}
+          href={isAdmin ? '/admin/dashboard' : isDeveloper ? '/developer/tasks' : '/dashboard'}
           className="flex min-w-0 items-center gap-2 group"
         >
           <div className={`flex h-10 shrink-0 items-center justify-center ${collapsed ? 'w-8' : 'w-16'}`}>
@@ -136,6 +147,8 @@ export function Sidebar({
                   <>
                     <ShieldCheck className="w-3 h-3 text-emerald-400" /> Admin Portal
                   </>
+                ) : isDeveloper ? (
+                  'Developer Portal'
                 ) : (
                   'User Attendance'
                 )}
@@ -204,7 +217,7 @@ export function Sidebar({
                 key={staff.id}
                 href={isAdmin ? `/admin/users/${staff.id}` : `/staff/${staff.id}`}
                 onClick={() => setMobileOpen(false)}
-                title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (You)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.attendance_role}` : undefined}
+                title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (You)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role}` : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/8 hover:text-white ${collapsed ? 'justify-center px-0' : ''}`}
               >
                 {staff.profile_photo ? (
@@ -224,7 +237,7 @@ export function Sidebar({
                       {staff.username}{isCurrentStaff(staff) ? ' (You)' : ''}
                     </span>
                     <span className="truncate text-[11px] text-slate-400">
-                      {staff.role === 'ADMIN' ? 'Administrator' : staff.attendance_role}
+                      {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role}
                     </span>
                   </span>
                 )}
@@ -270,7 +283,7 @@ export function Sidebar({
               <div className="flex min-w-0 flex-1 flex-col text-left">
                 <span className="truncate text-sm font-semibold text-white">{user.username}</span>
                 <span className="truncate text-xs text-slate-400">
-                  {isAdmin ? 'Administrator' : user.attendance_role || 'Staff'}
+                  {isAdmin ? 'Administrator' : isDeveloper ? 'Developer' : user.attendance_role || 'Staff'}
                 </span>
               </div>
             )}

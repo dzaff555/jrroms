@@ -16,7 +16,7 @@ export async function GET() {
     const rows = await query<{
       id: number;
       username: string;
-      role: 'USER' | 'ADMIN';
+      role: 'USER' | 'ADMIN' | 'DEVELOPER';
       real_name: string | null;
       attendance_role: string | null;
       profile_photo: string | null;

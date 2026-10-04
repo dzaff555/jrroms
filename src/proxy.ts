@@ -4,13 +4,14 @@ import { decodeJwtPayload } from '@/lib/auth/jwt-edge';
 
 const TOKEN_COOKIE_NAME = 'attendance_token';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(TOKEN_COOKIE_NAME)?.value;
   const session = token ? decodeJwtPayload(token) : null;
 
   const isAdminRoute = pathname.startsWith('/admin');
   const isUserRoute =
+    pathname.startsWith('/developer') ||
     pathname.startsWith('/dashboard') ||
     pathname.startsWith('/attendance') ||
     pathname.startsWith('/complete-profile') ||

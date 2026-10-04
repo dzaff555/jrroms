@@ -10,6 +10,7 @@
     "db:setup": "node scripts/setup-db.js"
   },
   "dependencies": {
+    "@azure/storage-blob": "^12.34.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",

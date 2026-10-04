@@ -27,7 +27,7 @@ export async function GET(
       id: number;
       username: string;
       real_name: string | null;
-      role: 'USER' | 'ADMIN';
+      role: 'USER' | 'ADMIN' | 'DEVELOPER';
       status: 'ACTIVE' | 'DISABLED';
       created_at: string;
       attendance_role: string | null;
@@ -102,7 +102,7 @@ export async function PATCH(
           { status: 400 }
         );
       }
-      if (role === 'USER') {
+      if (role !== undefined && role !== 'ADMIN') {
         return NextResponse.json(
           { success: false, error: 'Anda tidak dapat mencabut hak akses admin akun Anda sendiri.' },
           { status: 400 }
@@ -113,7 +113,7 @@ export async function PATCH(
     const updates: string[] = [];
     const values: unknown[] = [];
 
-    if (role && (role === 'USER' || role === 'ADMIN')) {
+    if (role && (role === 'USER' || role === 'ADMIN' || role === 'DEVELOPER')) {
       updates.push('role = ?');
       values.push(role);
     }

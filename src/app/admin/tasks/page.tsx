@@ -1,0 +1,215 @@
+'use client';
+
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { Download, Plus, ClipboardList } from 'lucide-react';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
+import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Input } from '@/components/ui/Input';
+
+interface TaskFile {
+  id: number;
+  developer_username: string;
+  original_name: string;
+  content_type: string;
+  byte_size: number | string;
+  uploaded_at: string;
+}
+
+interface DeveloperTask {
+  id: number;
+  title: string;
+  description: string;
+  category: 'MODELLING' | 'SCRIPTING';
+  file_required: boolean;
+  starts_on: string;
+  ends_on: string;
+  created_at: string;
+  created_by_username: string;
+  files: TaskFile[];
+}
+
+const localDate = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const formatBytes = (value: number | string) => {
+  const bytes = Number(value);
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+};
+
+export default function AdminTasksPage() {
+  const toast = useToast();
+  const [tasks, setTasks] = useState<DeveloperTask[]>([]);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState<'MODELLING' | 'SCRIPTING'>('MODELLING');
+  const [fileRequired, setFileRequired] = useState(false);
+  const [startsOn, setStartsOn] = useState(localDate);
+  const [endsOn, setEndsOn] = useState(localDate);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const loadTasks = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/tasks', { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal memuat daftar tugas.');
+      }
+      setTasks(result.data as DeveloperTask[]);
+    } catch (error: unknown) {
+      toast.error('Gagal memuat tugas', error instanceof Error ? error.message : 'Terjadi kesalahan.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadTasks(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadTasks]);
+  useAutoRefresh(() => void loadTasks());
+
+  const createTask = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/admin/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, category, fileRequired, startsOn, endsOn }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal membuat tugas.');
+      }
+      toast.success('Tugas dibuat', 'Tugas baru tersedia untuk semua Developer.');
+      setTitle('');
+      setDescription('');
+      setCategory('MODELLING');
+      setFileRequired(false);
+      setStartsOn(localDate());
+      setEndsOn(localDate());
+      await loadTasks();
+    } catch (error: unknown) {
+      toast.error('Gagal membuat tugas', error instanceof Error ? error.message : 'Terjadi kesalahan.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const downloadFile = async (fileId: number) => {
+    try {
+      const response = await fetch(`/api/admin/tasks/files/${fileId}`, { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal menyiapkan file untuk diunduh.');
+      }
+      window.location.assign(result.data.url as string);
+    } catch (error: unknown) {
+      toast.error('Unduhan gagal', error instanceof Error ? error.message : 'Terjadi kesalahan.');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-extrabold text-slate-900">Tugas Developer</h1>
+        <p className="mt-1 text-sm text-slate-500">Buat quest dan pantau file yang dikirim Developer.</p>
+      </header>
+
+      <Card className="p-5 sm:p-6">
+        <form onSubmit={createTask} className="space-y-4">
+          <h2 className="text-base font-bold text-slate-800">Buat Tugas Baru</h2>
+          <Input label="Judul quest" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={180} required />
+          <div className="space-y-1.5">
+            <label htmlFor="task-description" className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+              Isi tugas
+            </label>
+            <textarea
+              id="task-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              maxLength={10000}
+              required
+              rows={5}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="space-y-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
+              Jenis tugas
+              <select value={category} onChange={(event) => setCategory(event.target.value as typeof category)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal normal-case text-slate-800">
+                <option value="MODELLING">Modelling</option>
+                <option value="SCRIPTING">Scripting</option>
+              </select>
+            </label>
+            <Input label="Tanggal mulai" type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} required />
+            <Input label="Tanggal akhir" type="date" value={endsOn} onChange={(event) => setEndsOn(event.target.value)} min={startsOn} required />
+            <label className="flex items-center gap-3 self-end rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
+              <input type="checkbox" checked={fileRequired} onChange={(event) => setFileRequired(event.target.checked)} className="h-4 w-4 accent-blue-600" />
+              <span>Wajib mengunggah file</span>
+            </label>
+          </div>
+          <p className="text-xs text-slate-500">File dapat berformat apa saja, maksimal 1 GB per file. Tugas ini akan terlihat oleh semua Developer.</p>
+          <Button type="submit" isLoading={isSaving} loadingText="Menyimpan..." icon={<Plus className="h-4 w-4" />}>
+            Buat Tugas
+          </Button>
+        </form>
+      </Card>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-bold text-slate-900">Quest dan Kiriman Developer</h2>
+        {isLoading ? (
+          <Card className="p-6 text-sm text-slate-500">Memuat tugas...</Card>
+        ) : tasks.length === 0 ? (
+          <EmptyState title="Belum ada tugas" description="Tugas yang dibuat akan muncul di sini dan di halaman Developer." icon={<ClipboardList className="h-7 w-7" />} />
+        ) : (
+          tasks.map((task) => (
+            <Card key={task.id} className="overflow-hidden">
+              <div className="space-y-3 p-5 sm:p-6">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">{task.title}</h3>
+                    <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                      {task.category === 'MODELLING' ? 'Modelling' : 'Scripting'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-500">{task.starts_on} – {task.ends_on}</span>
+                </div>
+                <p className="whitespace-pre-wrap text-sm text-slate-700">{task.description}</p>
+                <p className="text-xs font-medium text-slate-500">
+                  {task.file_required ? 'File wajib diunggah' : 'File opsional'} · {task.files.length} file terkirim
+                </p>
+              </div>
+              {task.files.length > 0 && (
+                <div className="border-t border-slate-100 bg-slate-50/70 p-4 sm:p-5">
+                  <ul className="space-y-2">
+                    {task.files.map((file) => (
+                      <li key={file.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">{file.original_name}</p>
+                          <p className="text-xs text-slate-500">{file.developer_username} · {formatBytes(file.byte_size)} · {file.uploaded_at}</p>
+                        </div>
+                        <Button type="button" variant="outline" size="sm" icon={<Download className="h-4 w-4" />} onClick={() => void downloadFile(file.id)}>
+                          Unduh
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Card>
+          ))
+        )}
+      </section>
+    </div>
+  );
+}

@@ -122,7 +122,7 @@ function buildAttendanceReportQuery(filters: AttendanceReportFilters): Attendanc
         WHERE ones.digit + tens.digit * 10 + hundreds.digit * 100
           <= DATEDIFF(CAST(? AS DATE), CAST(? AS DATE))
       ) d
-      JOIN users u ON u.role = 'USER' AND u.status = 'ACTIVE'
+      JOIN users u ON u.role IN ('USER', 'DEVELOPER') AND u.status = 'ACTIVE'
       LEFT JOIN attendance a ON a.user_id = u.id AND a.attendance_date = d.report_date
     `;
     whereConditions.push(
