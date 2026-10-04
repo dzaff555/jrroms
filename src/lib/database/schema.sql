@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS developer_task_files (
   original_name VARCHAR(255) NOT NULL,
   content_type VARCHAR(255) NOT NULL DEFAULT 'application/octet-stream',
   byte_size BIGINT UNSIGNED NOT NULL,
-  status ENUM('PENDING', 'COMPLETE') NOT NULL DEFAULT 'PENDING',
+  status ENUM('PENDING', 'UPLOADING', 'COMPLETE') NOT NULL DEFAULT 'PENDING',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   uploaded_at TIMESTAMP NULL DEFAULT NULL,
   CONSTRAINT fk_developer_task_file_task FOREIGN KEY (task_id) REFERENCES developer_tasks(id) ON DELETE CASCADE,

@@ -1,7 +1,10 @@
+import { createReadStream } from 'node:fs';
+import { stat } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import { NextResponse } from 'next/server';
 import { getActiveSession } from '@/lib/auth/active-session';
 import { query } from '@/lib/database/db';
-import { createDownloadUrl } from '@/lib/storage/azure-blob';
+import { getTaskFilePaths } from '@/lib/storage/task-files';
 
 export const runtime = 'nodejs';
 
@@ -37,11 +40,23 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'File tidak ditemukan.' }, { status: 404 });
     }
 
-    const url = await createDownloadUrl(file.blob_name, file.original_name, file.content_type);
-    return NextResponse.json(
-      { success: true, data: { url } },
-      { headers: { 'Cache-Control': 'no-store, max-age=0' } }
-    );
+    const { absolutePath } = getTaskFilePaths(file.blob_name);
+    const metadata = await stat(absolutePath);
+    const stream = createReadStream(absolutePath);
+    const safeFileName = file.original_name.replace(/[^\x20-\x7e]|["\\]/g, '_');
+    const contentType = /^[\w!#$&^_.+-]+\/[\w!#$&^_.+-]+$/.test(file.content_type)
+      ? file.content_type
+      : 'application/octet-stream';
+
+    return new Response(Readable.toWeb(stream) as ReadableStream, {
+      headers: {
+        'Content-Type': contentType,
+        'Content-Length': String(metadata.size),
+        'Content-Disposition': `attachment; filename="${safeFileName}"; filename*=UTF-8''${encodeURIComponent(file.original_name)}`,
+        'Cache-Control': 'private, no-store, max-age=0',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
   } catch (error: unknown) {
     console.error('[Admin Task File Download Error]:', error);
     return NextResponse.json(

@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BlockBlobClient } from '@azure/storage-blob';
 import { UploadCloud } from 'lucide-react';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 import { useToast } from '@/components/ui/Toast';
@@ -28,6 +27,38 @@ interface DeveloperTask {
 }
 
 const MAX_FILE_SIZE = 1_000_000_000;
+
+function uploadFile(
+  url: string,
+  file: File,
+  onProgress: (percent: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open('PUT', url);
+    request.setRequestHeader('Content-Type', 'application/octet-stream');
+    request.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    });
+    request.addEventListener('load', () => {
+      let result: { success?: boolean; error?: string };
+      try {
+        result = JSON.parse(request.responseText) as { success?: boolean; error?: string };
+      } catch {
+        reject(new Error(`Server mengembalikan respons yang tidak valid (${request.status}).`));
+        return;
+      }
+      if (request.status < 200 || request.status >= 300 || !result.success) {
+        reject(new Error(result.error || `Gagal mengunggah file (${request.status}).`));
+        return;
+      }
+      resolve();
+    });
+    request.addEventListener('error', () => reject(new Error('Koneksi terputus saat mengunggah file.')));
+    request.addEventListener('abort', () => reject(new Error('Upload dibatalkan.')));
+    request.send(file);
+  });
+}
 
 const formatBytes = (value: number | string) => {
   const bytes = Number(value);
@@ -113,18 +144,11 @@ export default function DeveloperTaskUploadPage() {
           throw new Error(prepared.error || `Gagal menyiapkan upload ${file.name}.`);
         }
 
-        const blob = new BlockBlobClient(prepared.data.uploadUrl as string);
-        await blob.uploadBrowserData(file, {
-          blobHTTPHeaders: { blobContentType: file.type || 'application/octet-stream' },
-        });
-
-        const completeResponse = await fetch(`/api/developer/uploads/${prepared.data.uploadId}/complete`, {
-          method: 'POST',
-        });
-        const completed = await completeResponse.json();
-        if (!completeResponse.ok || !completed.success) {
-          throw new Error(completed.error || `Gagal memverifikasi upload ${file.name}.`);
-        }
+        await uploadFile(
+          prepared.data.uploadUrl as string,
+          file,
+          (percent) => setUploadProgress(`Mengunggah ${index + 1} dari ${files.length}: ${file.name} · ${percent}%`)
+        );
       }
 
       toast.success('Upload selesai', `${files.length} file berhasil dikirim ke tugas "${selectedTask.title}".`);

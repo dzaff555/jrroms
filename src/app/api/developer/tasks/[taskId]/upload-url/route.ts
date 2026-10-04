@@ -2,12 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getActiveSession } from '@/lib/auth/active-session';
 import { query } from '@/lib/database/db';
-import { createUploadUrl } from '@/lib/storage/azure-blob';
 import { getJakartaDateString } from '@/lib/utils/date';
+import { MAX_TASK_FILE_SIZE } from '@/lib/storage/task-files';
 
 export const runtime = 'nodejs';
-
-const MAX_FILE_SIZE = 1_000_000_000;
 
 export async function POST(
   request: Request,
@@ -52,7 +50,12 @@ export async function POST(
     if (!originalName || originalName.length > 255) {
       return NextResponse.json({ success: false, error: 'Nama file tidak valid atau melebihi 255 karakter.' }, { status: 400 });
     }
-    if (typeof byteSize !== 'number' || !Number.isSafeInteger(byteSize) || byteSize < 1 || byteSize > MAX_FILE_SIZE) {
+    if (
+      typeof byteSize !== 'number' ||
+      !Number.isSafeInteger(byteSize) ||
+      byteSize < 1 ||
+      byteSize > MAX_TASK_FILE_SIZE
+    ) {
       return NextResponse.json({ success: false, error: 'Ukuran maksimal setiap file adalah 1 GB.' }, { status: 400 });
     }
 
@@ -70,16 +73,15 @@ export async function POST(
       );
     }
 
-    const blobName = `tasks/${taskId}/${active.session.id}/${randomUUID()}`;
-    const { url } = await createUploadUrl(blobName);
+    const storageKey = `tasks/${taskId}/${active.session.id}/${randomUUID()}`;
     const result = await query<{ insertId: number }>(
       `INSERT INTO developer_task_files
         (task_id, developer_id, blob_name, original_name, content_type, byte_size, status)
-       VALUES (?, ?, ?, ?, ?, ?, 'PENDING')`,
+        VALUES (?, ?, ?, ?, ?, ?, 'PENDING')`,
       [
-        taskId,
-        active.session.id,
-        blobName,
+         taskId,
+         active.session.id,
+         storageKey,
         originalName,
         contentType || 'application/octet-stream',
         byteSize,
@@ -87,7 +89,13 @@ export async function POST(
     );
 
     return NextResponse.json(
-      { success: true, data: { uploadId: result.insertId, uploadUrl: url } },
+      {
+        success: true,
+        data: {
+          uploadId: result.insertId,
+          uploadUrl: `/api/developer/uploads/${result.insertId}`,
+        },
+      },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (error: unknown) {

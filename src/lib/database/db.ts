@@ -224,7 +224,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         original_name VARCHAR(255) NOT NULL,
         content_type VARCHAR(255) NOT NULL DEFAULT 'application/octet-stream',
         byte_size BIGINT UNSIGNED NOT NULL,
-        status ENUM('PENDING', 'COMPLETE') NOT NULL DEFAULT 'PENDING',
+        status ENUM('PENDING', 'UPLOADING', 'COMPLETE') NOT NULL DEFAULT 'PENDING',
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         uploaded_at TIMESTAMP NULL DEFAULT NULL,
         CONSTRAINT fk_developer_task_file_task FOREIGN KEY (task_id) REFERENCES developer_tasks(id) ON DELETE CASCADE,
@@ -232,6 +232,9 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         INDEX idx_developer_task_files_owner (developer_id, task_id, status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    await dbPool.query(
+      "ALTER TABLE developer_task_files MODIFY COLUMN status ENUM('PENDING', 'UPLOADING', 'COMPLETE') NOT NULL DEFAULT 'PENDING'"
+    );
     await dbPool.query(`
       INSERT IGNORE INTO admin_attendance_inbox (admin_id, read_through_id)
       SELECT u.id, COALESCE((SELECT MAX(a.id) FROM attendance a), 0)

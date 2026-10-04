@@ -107,12 +107,12 @@ export default function AdminTasksPage() {
 
   const downloadFile = async (fileId: number) => {
     try {
-      const response = await fetch(`/api/admin/tasks/files/${fileId}`, { cache: 'no-store' });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Gagal menyiapkan file untuk diunduh.');
-      }
-      window.location.assign(result.data.url as string);
+      const link = document.createElement('a');
+      link.href = `/api/admin/tasks/files/${fileId}`;
+      link.download = '';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (error: unknown) {
       toast.error('Unduhan gagal', error instanceof Error ? error.message : 'Terjadi kesalahan.');
     }
