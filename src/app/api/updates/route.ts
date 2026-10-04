@@ -17,7 +17,11 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const [users, attendance, warnings, adminInbox] = await Promise.all([
+    const [currentUsers, users, attendance, warnings, adminInbox] = await Promise.all([
+      query<{ role: 'USER' | 'ADMIN'; status: 'ACTIVE' | 'DISABLED' }[]>(
+        'SELECT role, status FROM users WHERE id = ? LIMIT 1',
+        [session.id]
+      ),
       query<ChangeFingerprint[]>(
         `SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
            COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, username, COALESCE(real_name, ''),
@@ -48,6 +52,14 @@ export async function GET() {
          FROM admin_attendance_inbox`
       ),
     ]);
+    const currentUser = currentUsers[0];
+
+    if (!currentUser || currentUser.status !== 'ACTIVE') {
+      return NextResponse.json(
+        { success: false, error: 'Akun tidak ditemukan atau sudah dinonaktifkan.' },
+        { status: 401, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+    }
 
     const fingerprint = [
       users[0]?.users || '',
@@ -58,7 +70,7 @@ export async function GET() {
     const version = createHash('sha256').update(fingerprint).digest('hex');
 
     return NextResponse.json(
-      { success: true, version },
+      { success: true, version, role: currentUser.role },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (error: unknown) {

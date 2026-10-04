@@ -29,10 +29,19 @@ export function AutoRefresh() {
       const roleChanged =
         result.roleChanged === true || (currentRole !== null && currentRole !== role);
       currentRole = role;
+      const targetPath = role === 'ADMIN' ? '/admin/dashboard' : '/dashboard';
+      const expectedAdminRoute = role === 'ADMIN';
+      const isAdminRoute = pathname.startsWith('/admin');
+      const routeRoleMismatch = expectedAdminRoute !== isAdminRoute;
+
+      if (routeRoleMismatch) {
+        router.replace(targetPath);
+        return true;
+      }
 
       if (roleChanged) {
-        router.replace(role === 'ADMIN' ? '/admin/dashboard' : '/dashboard');
-        return true;
+        router.refresh();
+        window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
       }
 
       return false;
@@ -45,13 +54,22 @@ export function AutoRefresh() {
       try {
         const response = await fetch('/api/updates', { cache: 'no-store' });
         const result = await response.json();
-        if (!response.ok || !result.success || typeof result.version !== 'string') {
+        if (
+          !response.ok ||
+          !result.success ||
+          typeof result.version !== 'string' ||
+          (result.role !== 'USER' && result.role !== 'ADMIN')
+        ) {
           throw new Error(result.error || 'Gagal memeriksa perubahan data.');
         }
 
-        if (currentVersion !== null && currentVersion !== result.version) {
-          const roleChanged = await refreshSession();
-          if (!roleChanged) {
+        const routeRoleMismatch =
+          (result.role === 'ADMIN') !== pathname.startsWith('/admin');
+        const dataChanged = currentVersion !== null && currentVersion !== result.version;
+
+        if (routeRoleMismatch || dataChanged) {
+          const redirected = await refreshSession();
+          if (!redirected && dataChanged) {
             router.refresh();
             window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
           }

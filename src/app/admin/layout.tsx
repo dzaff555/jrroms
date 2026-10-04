@@ -26,10 +26,11 @@ export default async function AdminLayout({
   );
   const admin = users[0];
   if (!admin) redirect('/login');
+  if (admin.role !== 'ADMIN') redirect('/dashboard');
 
   return (
     <AppLayout user={admin}>
-      {admin.role === session.role ? children : null}
+      {children}
     </AppLayout>
   );
 }
