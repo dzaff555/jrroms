@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ShieldCheck, User
 import { query } from '@/lib/database/db';
 import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 import { formatIndonesianDate } from '@/lib/utils/date';
+import { AutoRefresh } from '@/components/profile/AutoRefresh';
 
 interface StaffProfile {
   id: number;
@@ -63,6 +64,7 @@ export default async function StaffProfilePage({
 
   return (
     <>
+      <AutoRefresh />
       <div className="mx-auto max-w-3xl space-y-6">
         <Link href="/staff" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600">
           <ArrowLeft className="h-4 w-4" />
