@@ -1,17 +1,42 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 const REFRESH_INTERVAL_MS = 1_000;
 export const AUTO_REFRESH_EVENT = 'app:auto-refresh';
 
 export function AutoRefresh() {
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     let currentVersion: string | null = null;
+    let currentRole: 'USER' | 'ADMIN' | null = null;
     let isChecking = false;
+
+    const refreshSession = async () => {
+      const response = await fetch('/api/auth/me', { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal menyegarkan sesi.');
+      }
+
+      const role = result.data.role;
+      if (role !== 'USER' && role !== 'ADMIN') {
+        throw new Error('Role akun yang diterima tidak valid.');
+      }
+      const roleChanged =
+        result.roleChanged === true || (currentRole !== null && currentRole !== role);
+      currentRole = role;
+
+      if (roleChanged) {
+        router.replace(role === 'ADMIN' ? '/admin/dashboard' : '/dashboard');
+        return true;
+      }
+
+      return false;
+    };
 
     const checkForChanges = async () => {
       if (document.visibilityState !== 'visible' || isChecking) return;
@@ -25,8 +50,11 @@ export function AutoRefresh() {
         }
 
         if (currentVersion !== null && currentVersion !== result.version) {
-          router.refresh();
-          window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
+          const roleChanged = await refreshSession();
+          if (!roleChanged) {
+            router.refresh();
+            window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
+          }
         }
         currentVersion = result.version;
       } catch (error: unknown) {
@@ -36,6 +64,9 @@ export function AutoRefresh() {
       }
     };
 
+    void refreshSession().catch((error: unknown) => {
+      console.error('Failed to refresh login session:', error);
+    });
     void checkForChanges();
     const intervalId = window.setInterval(() => void checkForChanges(), REFRESH_INTERVAL_MS);
     document.addEventListener('visibilitychange', checkForChanges);
@@ -44,7 +75,7 @@ export function AutoRefresh() {
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', checkForChanges);
     };
-  }, [router]);
+  }, [pathname, router]);
 
   return null;
 }
