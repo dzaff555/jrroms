@@ -15,19 +15,22 @@ export default async function UserLayout({
 }) {
   const session = await getSessionUser();
   if (!session) redirect('/login');
-  if (session.role === 'ADMIN') redirect('/admin/dashboard');
 
   const users = await query<UserLayoutSession[]>(
     `SELECT id, username, role, status,
       attendance_role, profile_photo, roblox_username, discord_username,
       profile_completed
      FROM users
-     WHERE id = ? AND role = 'USER' AND status = 'ACTIVE'
+     WHERE id = ? AND status = 'ACTIVE'
      LIMIT 1`,
     [session.id]
   );
   const user = users[0];
   if (!user) redirect('/login');
 
-  return <AppLayout user={user}>{children}</AppLayout>;
+  return (
+    <AppLayout user={user}>
+      {user.role === session.role ? children : null}
+    </AppLayout>
+  );
 }

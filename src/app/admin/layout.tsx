@@ -14,13 +14,13 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const session = await getSessionUser();
-  if (!session || session.role !== 'ADMIN') redirect('/login');
+  if (!session) redirect('/login');
 
   const users = await query<AdminLayoutUser[]>(
     `SELECT id, username, role, status, attendance_role,
       profile_photo, roblox_username, discord_username, profile_completed
      FROM users
-     WHERE id = ? AND role = 'ADMIN' AND status = 'ACTIVE'
+     WHERE id = ? AND status = 'ACTIVE'
      LIMIT 1`,
     [session.id]
   );
@@ -29,7 +29,7 @@ export default async function AdminLayout({
 
   return (
     <AppLayout user={admin}>
-      {children}
+      {admin.role === session.role ? children : null}
     </AppLayout>
   );
 }
