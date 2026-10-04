@@ -32,15 +32,28 @@ export default function UserDashboardPage() {
   const [recentRecords, setRecentRecords] = useState<Attendance[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const isFetchingRef = React.useRef(false);
 
-  const fetchDashboardData = React.useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const fetchDashboardData = React.useCallback(async (showLoading = true) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    if (showLoading) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
-      // 1. Fetch current user
-      const meRes = await fetch('/api/auth/me');
-      const meData = await meRes.json();
+      const [meRes, todayRes, historyRes] = await Promise.all([
+        fetch('/api/auth/me', { cache: 'no-store' }),
+        fetch('/api/attendance/today', { cache: 'no-store' }),
+        fetch('/api/attendance/history?limit=5', { cache: 'no-store' }),
+      ]);
+      const [meData, todayData, historyData] = await Promise.all([
+        meRes.json(),
+        todayRes.json(),
+        historyRes.json(),
+      ]);
+
       if (meData.success) {
         const sessionUser = meData.data as AuthSession & {
           profile_photo?: string | null;
@@ -56,9 +69,6 @@ export default function UserDashboardPage() {
         setDiscordUsername(sessionUser.discord_username || '');
       }
 
-      // 2. Fetch today's attendance status
-      const todayRes = await fetch('/api/attendance/today');
-      const todayData = await todayRes.json();
       if (todayData.success) {
         setHasAttended(todayData.hasAttended);
         setAttendanceWindowOpen(todayData.attendanceWindowOpen);
@@ -67,17 +77,16 @@ export default function UserDashboardPage() {
         setTodayDateStr(todayData.todayDate);
       }
 
-      // 3. Fetch recent personal history
-      const historyRes = await fetch('/api/attendance/history?limit=5');
-      const historyData = await historyRes.json();
       if (historyData.success) {
         setRecentRecords(historyData.data.records || []);
       }
+      setError(null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Gagal memuat data dashboard.';
       setError(message);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
+      isFetchingRef.current = false;
     }
   }, []);
 
@@ -87,6 +96,20 @@ export default function UserDashboardPage() {
     }, 0);
 
     return () => window.clearTimeout(timer);
+  }, [fetchDashboardData]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void fetchDashboardData(false);
+    };
+
+    const intervalId = window.setInterval(refreshWhenVisible, 1_000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [fetchDashboardData]);
 
   return (
@@ -189,7 +212,7 @@ export default function UserDashboardPage() {
               <AlertCircle className="w-5 h-5 shrink-0" />
               <span className="text-xs sm:text-sm font-medium">{error}</span>
             </div>
-            <Button variant="outline" size="sm" onClick={fetchDashboardData}>
+            <Button variant="outline" size="sm" onClick={() => void fetchDashboardData()}>
               Coba Lagi
             </Button>
           </div>
