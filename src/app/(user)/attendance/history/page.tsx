@@ -18,6 +18,7 @@ import { TableSkeleton } from '@/components/ui/LoadingSkeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
 import { Attendance } from '@/types';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 export default function AttendanceHistoryPage() {
   const [records, setRecords] = useState<Attendance[]>([]);
@@ -27,9 +28,12 @@ export default function AttendanceHistoryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const isFetchingRef = React.useRef(false);
 
-  const fetchHistory = async () => {
-    setIsLoading(true);
+  const fetchHistory = React.useCallback(async (showLoading = true) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    if (showLoading) setIsLoading(true);
     try {
       const queryParams = new URLSearchParams({
         page: currentPage.toString(),
@@ -38,7 +42,7 @@ export default function AttendanceHistoryPage() {
       if (search) queryParams.set('search', search);
       if (dateFilter) queryParams.set('date', dateFilter);
 
-      const res = await fetch(`/api/attendance/history?${queryParams.toString()}`);
+      const res = await fetch(`/api/attendance/history?${queryParams.toString()}`, { cache: 'no-store' });
       const data = await res.json();
 
       if (data.success) {
@@ -49,13 +53,17 @@ export default function AttendanceHistoryPage() {
     } catch (err) {
       console.error('Failed to fetch history:', err);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
+      isFetchingRef.current = false;
     }
-  };
+  }, [currentPage, dateFilter, search]);
+
+  useAutoRefresh(() => void fetchHistory(false));
 
   useEffect(() => {
-    fetchHistory();
-  }, [currentPage, dateFilter]);
+    const timer = window.setTimeout(() => void fetchHistory(), 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchHistory]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();

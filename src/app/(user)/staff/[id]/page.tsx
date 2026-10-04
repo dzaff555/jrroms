@@ -4,7 +4,6 @@ import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ShieldCheck, User
 import { query } from '@/lib/database/db';
 import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 import { formatIndonesianDate } from '@/lib/utils/date';
-import { AutoRefresh } from '@/components/profile/AutoRefresh';
 
 interface StaffProfile {
   id: number;
@@ -64,7 +63,6 @@ export default async function StaffProfilePage({
 
   return (
     <>
-      <AutoRefresh />
       <div className="mx-auto max-w-3xl space-y-6">
         <Link href="/staff" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600">
           <ArrowLeft className="h-4 w-4" />
@@ -107,37 +105,41 @@ export default async function StaffProfilePage({
               </div>
               <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.discord_username || '-'}</p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <CalendarDays className="h-4 w-4" /> Absensi Terakhir
-              </div>
-              <p className="mt-2 text-sm font-bold text-slate-800">
-                {staff.last_attendance
-                  ? `${formatIndonesianDate(staff.last_attendance)} · ${staff.last_attendance_status || 'Tercatat'}`
-                  : 'Belum Absen'}
-              </p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Total Hadir
-              </div>
-              <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.attendance_count)}</p>
-              <p className="mt-1 text-xs text-slate-500">kali tercatat hadir</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <XCircle className="h-4 w-4 text-rose-600" /> Tidak Hadir
-              </div>
-              <p className="mt-2 text-2xl font-extrabold text-slate-800">{missedAttendanceCount}</p>
-              <p className="mt-1 text-xs text-slate-500">hari Jumat–Minggu tanpa catatan hadir</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <AlertTriangle className="h-4 w-4 text-amber-600" /> Peringatan
-              </div>
-              <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.warning_count)}</p>
-              <p className="mt-1 text-xs text-slate-500">kali diperingatkan oleh admin</p>
-            </div>
+            {staff.role === 'USER' && (
+              <>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <CalendarDays className="h-4 w-4" /> Absensi Terakhir
+                  </div>
+                  <p className="mt-2 text-sm font-bold text-slate-800">
+                    {staff.last_attendance
+                      ? `${formatIndonesianDate(staff.last_attendance)} · ${staff.last_attendance_status || 'Tercatat'}`
+                      : 'Belum Absen'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Total Hadir
+                  </div>
+                  <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.attendance_count)}</p>
+                  <p className="mt-1 text-xs text-slate-500">kali tercatat hadir</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <XCircle className="h-4 w-4 text-rose-600" /> Tidak Hadir
+                  </div>
+                  <p className="mt-2 text-2xl font-extrabold text-slate-800">{missedAttendanceCount}</p>
+                  <p className="mt-1 text-xs text-slate-500">hari Jumat–Minggu tanpa catatan hadir</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" /> Peringatan
+                  </div>
+                  <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.warning_count)}</p>
+                  <p className="mt-1 text-xs text-slate-500">kali diperingatkan oleh admin</p>
+                </div>
+              </>
+            )}
           </div>
         </section>
       </div>

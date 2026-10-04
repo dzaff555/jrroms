@@ -30,6 +30,7 @@ import { AttendanceBarChart } from '@/components/charts/AttendanceBarChart';
 import { AttendanceDonutChart } from '@/components/charts/AttendanceDonutChart';
 import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
 import { DashboardStats } from '@/types';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -46,12 +47,16 @@ export default function AdminDashboardPage() {
 
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [isLoadingTable, setIsLoadingTable] = useState(true);
+  const isLoadingStatsRef = React.useRef(false);
+  const isLoadingTableRef = React.useRef(false);
 
   // Fetch Dashboard Statistics
-  const loadStats = async () => {
-    setIsLoadingStats(true);
+  const loadStats = async (showLoading = true) => {
+    if (isLoadingStatsRef.current) return;
+    isLoadingStatsRef.current = true;
+    if (showLoading) setIsLoadingStats(true);
     try {
-      const res = await fetch('/api/admin/stats');
+      const res = await fetch('/api/admin/stats', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setStats(data.data);
@@ -59,13 +64,16 @@ export default function AdminDashboardPage() {
     } catch (err) {
       console.error('Failed to fetch admin stats:', err);
     } finally {
-      setIsLoadingStats(false);
+      if (showLoading) setIsLoadingStats(false);
+      isLoadingStatsRef.current = false;
     }
   };
 
   // Fetch Today's Monitoring Table
-  const loadAttendanceTable = async () => {
-    setIsLoadingTable(true);
+  const loadAttendanceTable = async (showLoading = true) => {
+    if (isLoadingTableRef.current) return;
+    isLoadingTableRef.current = true;
+    if (showLoading) setIsLoadingTable(true);
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -74,7 +82,7 @@ export default function AdminDashboardPage() {
       });
       if (search) params.set('search', search);
 
-      const res = await fetch(`/api/admin/attendance?${params.toString()}`);
+      const res = await fetch(`/api/admin/attendance?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setRecords(data.data.records || []);
@@ -85,7 +93,8 @@ export default function AdminDashboardPage() {
     } catch (err) {
       console.error('Failed to fetch admin attendance table:', err);
     } finally {
-      setIsLoadingTable(false);
+      if (showLoading) setIsLoadingTable(false);
+      isLoadingTableRef.current = false;
     }
   };
 
@@ -96,6 +105,11 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     loadAttendanceTable();
   }, [currentPage, statusFilter]);
+
+  useAutoRefresh(() => {
+    void loadStats(false);
+    void loadAttendanceTable(false);
+  });
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();

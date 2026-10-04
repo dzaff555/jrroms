@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { getJakartaDateString, formatIndonesianDate } from '@/lib/utils/date';
 import { ATTENDANCE_ROLES } from '@/types';
 import { useToast } from '@/components/ui/Toast';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 interface AttendanceStatisticsRecord {
   id: number;
@@ -34,9 +35,12 @@ export default function AdminAttendanceStatisticsPage() {
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [requestVersion, setRequestVersion] = useState(0);
+  const isFetchingRef = React.useRef(false);
 
-  const fetchStatistics = useCallback(async () => {
-    setIsLoading(true);
+  const fetchStatistics = useCallback(async (showLoading = true) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    if (showLoading) setIsLoading(true);
     try {
       const params = new URLSearchParams({
         startDate,
@@ -46,7 +50,7 @@ export default function AdminAttendanceStatisticsPage() {
       if (search) params.set('search', search);
       if (attendanceRole !== 'ALL') params.set('attendanceRole', attendanceRole);
 
-      const response = await fetch(`/api/admin/attendance-statistics?${params.toString()}`);
+      const response = await fetch(`/api/admin/attendance-statistics?${params.toString()}`, { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.error || 'Unable to load attendance statistics.');
@@ -57,15 +61,20 @@ export default function AdminAttendanceStatisticsPage() {
       setTotalItems(data.data.pagination.totalItems || 0);
     } catch (error: unknown) {
       console.error('Failed to fetch attendance statistics:', error);
-      toast.error(
-        'Load failed',
-        error instanceof Error ? error.message : 'Unable to load attendance statistics.'
-      );
-      setRecords([]);
+      if (showLoading) {
+        toast.error(
+          'Load failed',
+          error instanceof Error ? error.message : 'Unable to load attendance statistics.'
+        );
+        setRecords([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
+      isFetchingRef.current = false;
     }
   }, [attendanceRole, currentPage, endDate, search, startDate, toast]);
+
+  useAutoRefresh(() => void fetchStatistics(false));
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

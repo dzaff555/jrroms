@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { ProfilePhotoField } from '@/components/profile/ProfilePhotoField';
 import { Input } from '@/components/ui/Input';
@@ -40,6 +40,16 @@ export function ProfileForm({
   const [discordUsername, setDiscordUsername] = useState<string>(initialValues?.discord_username || '');
   const [realName, setRealName] = useState<string>(initialValues?.real_name || '');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const hasLocalChanges = useRef(false);
+
+  useEffect(() => {
+    if (hasLocalChanges.current) return;
+    setProfilePhoto(initialValues?.profile_photo || '');
+    setAttendanceRole(initialValues?.attendance_role || 'CSOT');
+    setRobloxUsername(initialValues?.roblox_username || '');
+    setDiscordUsername(initialValues?.discord_username || '');
+    setRealName(initialValues?.real_name || '');
+  }, [initialValues]);
 
   const validate = () => {
     const nextErrors: Record<string, string> = {};
@@ -76,6 +86,7 @@ export function ProfileForm({
         <ProfilePhotoField
           photo={profilePhoto}
           onChange={(photo) => {
+            hasLocalChanges.current = true;
             setProfilePhoto(photo);
             setErrors((previous) => ({ ...previous, profile_photo: '' }));
           }}
@@ -88,7 +99,10 @@ export function ProfileForm({
               label="Nama Asli"
               placeholder="Masukkan nama asli"
               value={realName}
-              onChange={(e) => setRealName(e.target.value)}
+              onChange={(e) => {
+                hasLocalChanges.current = true;
+                setRealName(e.target.value);
+              }}
               maxLength={100}
               autoComplete="name"
               required
@@ -103,7 +117,10 @@ export function ProfileForm({
               </label>
               <select
                 value={attendanceRole}
-                onChange={(e) => setAttendanceRole(e.target.value)}
+                onChange={(e) => {
+                  hasLocalChanges.current = true;
+                  setAttendanceRole(e.target.value);
+                }}
                 disabled
                 className="w-full cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none"
               >
@@ -124,7 +141,10 @@ export function ProfileForm({
             label="Username Roblox"
             placeholder="Masukkan username Roblox"
             value={robloxUsername}
-            onChange={(e) => setRobloxUsername(e.target.value)}
+            onChange={(e) => {
+              hasLocalChanges.current = true;
+              setRobloxUsername(e.target.value);
+            }}
             error={errors.roblox_username}
           />
 
@@ -132,7 +152,10 @@ export function ProfileForm({
             label="Username Discord"
             placeholder="Masukkan username Discord"
             value={discordUsername}
-            onChange={(e) => setDiscordUsername(e.target.value)}
+            onChange={(e) => {
+              hasLocalChanges.current = true;
+              setDiscordUsername(e.target.value);
+            }}
             error={errors.discord_username}
           />
         </div>}

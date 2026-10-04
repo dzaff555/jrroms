@@ -8,6 +8,7 @@ import { AuthSession } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { Button } from '@/components/ui/Button';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -20,6 +21,27 @@ export default function ProfilePage() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
+  useAutoRefresh(() => {
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
+        const data = await response.json();
+        if (!data.success) return;
+
+        setUser(data.data);
+        if (data.data.role !== 'ADMIN') {
+          const profileResponse = await fetch('/api/profile', { cache: 'no-store' });
+          const profileData = await profileResponse.json();
+          if (profileResponse.ok && profileData.success) {
+            setRealName(profileData.data.real_name || '');
+          }
+        }
+      } catch (error: unknown) {
+        console.error('Failed to refresh profile:', error);
+      }
+    })();
+  });
 
   useEffect(() => {
     const timer = window.setTimeout(async () => {

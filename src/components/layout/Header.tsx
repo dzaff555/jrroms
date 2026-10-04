@@ -75,7 +75,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
     setIsInboxLoading(true);
     setInboxError('');
     try {
-      const response = await fetch('/api/inbox');
+      const response = await fetch('/api/inbox', { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Gagal memuat inbox.');
@@ -99,8 +99,9 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
     if (!isStaff) return;
 
     let isActive = true;
-    fetch('/api/inbox')
-      .then(async (response) => {
+    const refreshWarningInbox = async () => {
+      try {
+        const response = await fetch('/api/inbox', { cache: 'no-store' });
         const result = await response.json();
         if (!response.ok || !result.success) {
           throw new Error(result.error || 'Gagal memuat inbox.');
@@ -108,16 +109,21 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
         if (isActive) {
           setInboxWarnings(result.data.warnings as InboxWarning[]);
           setUnreadWarningCount(Number(result.data.unreadCount || 0));
+          setInboxError('');
         }
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (isActive) {
           setInboxError(error instanceof Error ? error.message : 'Gagal memuat inbox.');
         }
-      });
+      }
+    };
+
+    void refreshWarningInbox();
+    const timer = window.setInterval(() => void refreshWarningInbox(), 1_000);
 
     return () => {
       isActive = false;
+      window.clearInterval(timer);
     };
   }, [isStaff, user?.id]);
 
@@ -127,7 +133,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
     let isActive = true;
     const refreshAttendanceInbox = async () => {
       try {
-        const response = await fetch('/api/inbox');
+        const response = await fetch('/api/inbox', { cache: 'no-store' });
         const result = await response.json();
         if (!response.ok || !result.success) {
           throw new Error(result.error || 'Gagal memuat inbox absensi.');
@@ -145,7 +151,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
     };
 
     void refreshAttendanceInbox();
-    const timer = window.setInterval(() => void refreshAttendanceInbox(), 30_000);
+    const timer = window.setInterval(() => void refreshAttendanceInbox(), 1_000);
     return () => {
       isActive = false;
       window.clearInterval(timer);

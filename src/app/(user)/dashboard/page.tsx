@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Skeleton } from '@/components/ui/LoadingSkeleton';
 import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
 import { Attendance, AuthSession } from '@/types';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 export default function UserDashboardPage() {
   const [user, setUser] = useState<AuthSession | null>(null);
@@ -98,19 +99,7 @@ export default function UserDashboardPage() {
     return () => window.clearTimeout(timer);
   }, [fetchDashboardData]);
 
-  useEffect(() => {
-    const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') void fetchDashboardData(false);
-    };
-
-    const intervalId = window.setInterval(refreshWhenVisible, 1_000);
-    document.addEventListener('visibilitychange', refreshWhenVisible);
-
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', refreshWhenVisible);
-    };
-  }, [fetchDashboardData]);
+  useAutoRefresh(() => void fetchDashboardData(false));
 
   return (
     <>

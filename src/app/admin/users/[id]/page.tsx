@@ -12,7 +12,6 @@ import {
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 import { IssueWarningForm } from '@/components/profile/IssueWarningForm';
-import { AutoRefresh } from '@/components/profile/AutoRefresh';
 import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 import { formatIndonesianDate, formatIndonesianDateTime } from '@/lib/utils/date';
 
@@ -106,7 +105,6 @@ export default async function AdminStaffProfilePage({
 
   return (
     <>
-      <AutoRefresh />
       <div className="mx-auto max-w-3xl space-y-6">
         <Link
           href="/admin/users"

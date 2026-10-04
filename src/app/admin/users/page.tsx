@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { formatIndonesianDate } from '@/lib/utils/date';
 import { ATTENDANCE_ROLES, AuthSession, AttendanceRole, UserRole, UserStatus } from '@/types';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 interface AdminUser {
   id: number;
@@ -73,6 +74,7 @@ export default function AdminUsersPage() {
   const [newPassword, setNewPassword] = useState('');
   const [newAttendanceRole, setNewAttendanceRole] = useState<AttendanceRole>('CSOT');
   const [isUpdating, setIsUpdating] = useState(false);
+  const isFetchingUsersRef = React.useRef(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -82,8 +84,10 @@ export default function AdminUsersPage() {
       });
   }, []);
 
-  const fetchUsers = useCallback(async () => {
-    setIsLoading(true);
+  const fetchUsers = useCallback(async (showLoading = true) => {
+    if (isFetchingUsersRef.current) return;
+    isFetchingUsersRef.current = true;
+    if (showLoading) setIsLoading(true);
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -94,20 +98,29 @@ export default function AdminUsersPage() {
       if (attendanceRoleFilter !== 'ALL') params.set('attendanceRole', attendanceRoleFilter);
       if (statusFilter !== 'ALL') params.set('status', statusFilter);
 
-      const res = await fetch(`/api/admin/users?${params.toString()}`);
+      const res = await fetch(`/api/admin/users?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json();
 
       if (data.success) {
-        setUsers(data.data.records || []);
+        const updatedUsers = (data.data.records || []) as AdminUser[];
+        setUsers(updatedUsers);
+        setViewUser((current) =>
+          current
+            ? updatedUsers.find((updatedUser) => updatedUser.id === current.id) || current
+            : null
+        );
         setTotalPages(data.data.pagination.totalPages || 1);
         setTotalItems(data.data.pagination.totalItems || 0);
       }
     } catch (err) {
       console.error('Failed to load users:', err);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
+      isFetchingUsersRef.current = false;
     }
   }, [attendanceRoleFilter, currentPage, roleFilter, search, statusFilter]);
+
+  useAutoRefresh(() => void fetchUsers(false));
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

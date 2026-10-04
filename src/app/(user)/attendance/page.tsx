@@ -21,6 +21,7 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
 import { ATTENDANCE_ROLES, Attendance, AuthSession } from '@/types';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 export default function AttendancePage() {
   const router = useRouter();
@@ -105,6 +106,24 @@ export default function AttendancePage() {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, [router]);
+
+  useAutoRefresh(() => {
+    void (async () => {
+      try {
+        const response = await fetch('/api/attendance/today', { cache: 'no-store' });
+        const data = await response.json();
+        if (!data.success) return;
+
+        setTodayDateStr(data.todayDate);
+        setAttendanceWindowOpen(data.attendanceWindowOpen);
+        setAttendanceWindowMessage(data.attendanceWindowMessage);
+        setAlreadyAttended(data.hasAttended);
+        setExistingAttendance(data.attendance);
+      } catch (error: unknown) {
+        console.error('Failed to refresh attendance status:', error);
+      }
+    })();
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

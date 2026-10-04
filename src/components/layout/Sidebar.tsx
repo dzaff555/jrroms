@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { AuthSession } from '@/types';
 import { useToast } from '../ui/Toast';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 interface SidebarStaff {
   id: number;
@@ -50,29 +51,31 @@ export function Sidebar({
 
   const isAdmin = user?.role === 'ADMIN';
   const userId = user?.id;
+  const refreshStaff = React.useCallback(async () => {
+    if (userId === undefined) return;
+
+    try {
+      const response = await fetch('/api/staff?limit=8', { cache: 'no-store' });
+      const data = await response.json();
+      if (data.success) {
+        setStaffCount(data.data.totalStaff);
+        setStaffMembers(data.data.records);
+      }
+    } catch {
+      setStaffCount(null);
+    }
+  }, [userId]);
   const isCurrentStaff = (staff: SidebarStaff) =>
     staff.id === user?.id || staff.username === user?.username;
+
+  useAutoRefresh(() => void refreshStaff());
 
   React.useEffect(() => {
     if (userId === undefined) return;
 
-    let isActive = true;
-    fetch('/api/staff?limit=8')
-      .then((response) => response.json())
-      .then((data) => {
-        if (isActive && data.success) {
-          setStaffCount(data.data.totalStaff);
-          setStaffMembers(data.data.records);
-        }
-      })
-      .catch(() => {
-        if (isActive) setStaffCount(null);
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [userId]);
+    const timer = window.setTimeout(() => void refreshStaff(), 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshStaff, userId]);
 
   const userNavItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },

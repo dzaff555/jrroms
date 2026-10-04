@@ -6,6 +6,7 @@ import { Header } from './Header';
 import { AuthSession } from '@/types';
 import { useSearchParams } from 'next/navigation';
 import { useToast } from '../ui/Toast';
+import { AutoRefresh } from '@/components/profile/AutoRefresh';
 
 export interface AppLayoutProps {
   children: React.ReactNode;
@@ -36,6 +37,7 @@ export function AppLayout({ children, user, showSidebar = true, showUserMenu = t
 
   return (
     <div className="min-h-screen bg-[#F5F8FC] flex flex-col antialiased">
+      <AutoRefresh />
       <Suspense fallback={null}>
         <AccessDeniedAlert />
       </Suspense>

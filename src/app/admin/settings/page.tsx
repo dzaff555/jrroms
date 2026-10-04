@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 export default function AdminSettingsPage() {
   const toast = useToast();
@@ -23,26 +24,31 @@ export default function AdminSettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
-  const loadSettings = async () => {
-    setIsLoading(true);
+  const loadSettings = async (showLoading = true) => {
+    if (showLoading) setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/settings');
+      const res = await fetch('/api/admin/settings', { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
-        if (data.data.user) {
+        const activeElement = document.activeElement;
+        const isEditing = activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement;
+        if (data.data.user && (!isEditing || showLoading)) {
           setUsername(data.data.user.username || '');
         }
       }
     } catch (err) {
       console.error('Failed to load settings:', err);
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadSettings(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useAutoRefresh(() => void loadSettings(false));
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();

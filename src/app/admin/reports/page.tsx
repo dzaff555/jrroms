@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
 import { ATTENDANCE_ROLES } from '@/types';
 import { useToast } from '@/components/ui/Toast';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 type AttendanceReportRecord = {
   id: number | string;
@@ -44,9 +45,12 @@ export default function AdminReportsPage() {
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const isFetchingRef = React.useRef(false);
 
-  const fetchReports = useCallback(async () => {
-    setIsLoading(true);
+  const fetchReports = useCallback(async (showLoading = true) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    if (showLoading) setIsLoading(true);
     try {
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -58,7 +62,7 @@ export default function AdminReportsPage() {
       if (status !== 'ALL') params.set('status', status);
       if (attendanceRole !== 'ALL') params.set('attendanceRole', attendanceRole);
 
-      const res = await fetch(`/api/admin/reports?${params.toString()}`);
+      const res = await fetch(`/api/admin/reports?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json();
 
       if (res.ok && data.success) {
@@ -70,15 +74,20 @@ export default function AdminReportsPage() {
       }
     } catch (error) {
       console.error('Error fetching reports:', error);
-      toast.error(
-        'Gagal',
-        error instanceof Error ? error.message : 'Terjadi kesalahan saat memuat laporan.'
-      );
-      setRecords([]);
+      if (showLoading) {
+        toast.error(
+          'Gagal',
+          error instanceof Error ? error.message : 'Terjadi kesalahan saat memuat laporan.'
+        );
+        setRecords([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
+      isFetchingRef.current = false;
     }
   }, [attendanceRole, currentPage, endDate, search, startDate, status, toast]);
+
+  useAutoRefresh(() => void fetchReports(false));
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
