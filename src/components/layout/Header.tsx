@@ -23,6 +23,7 @@ import { AuthSession } from '@/types';
 import { formatIndonesianDate, formatIndonesianDateTime, getJakartaTimeString } from '@/lib/utils/date';
 import { useToast } from '../ui/Toast';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 interface InboxWarning {
   id: number;
@@ -71,6 +72,29 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
   const { toggleTheme } = useTheme();
   const isStaff = user?.role === 'USER';
 
+  const refreshInbox = React.useCallback(async () => {
+    try {
+      const response = await fetch('/api/inbox', { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal memuat inbox.');
+      }
+
+      if (isStaff) {
+        setInboxWarnings(result.data.warnings as InboxWarning[]);
+        setUnreadWarningCount(Number(result.data.unreadCount || 0));
+      } else if (user?.role === 'ADMIN') {
+        setInboxAttendances(result.data.attendances as InboxAttendance[]);
+        setUnreadAttendanceCount(Number(result.data.unreadCount || 0));
+      }
+      setInboxError('');
+    } catch (error: unknown) {
+      setInboxError(error instanceof Error ? error.message : 'Gagal memuat inbox.');
+    }
+  }, [isStaff, user]);
+
+  useAutoRefresh(() => void refreshInbox());
+
   const loadInbox = async () => {
     setIsInboxLoading(true);
     setInboxError('');
@@ -96,67 +120,12 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
   };
 
   useEffect(() => {
-    if (!isStaff) return;
+    const timer = window.setTimeout(() => {
+      if (isStaff || user?.role === 'ADMIN') void refreshInbox();
+    }, 0);
 
-    let isActive = true;
-    const refreshWarningInbox = async () => {
-      try {
-        const response = await fetch('/api/inbox', { cache: 'no-store' });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || 'Gagal memuat inbox.');
-        }
-        if (isActive) {
-          setInboxWarnings(result.data.warnings as InboxWarning[]);
-          setUnreadWarningCount(Number(result.data.unreadCount || 0));
-          setInboxError('');
-        }
-      } catch (error: unknown) {
-        if (isActive) {
-          setInboxError(error instanceof Error ? error.message : 'Gagal memuat inbox.');
-        }
-      }
-    };
-
-    void refreshWarningInbox();
-    const timer = window.setInterval(() => void refreshWarningInbox(), 1_000);
-
-    return () => {
-      isActive = false;
-      window.clearInterval(timer);
-    };
-  }, [isStaff, user?.id]);
-
-  useEffect(() => {
-    if (user?.role !== 'ADMIN') return;
-
-    let isActive = true;
-    const refreshAttendanceInbox = async () => {
-      try {
-        const response = await fetch('/api/inbox', { cache: 'no-store' });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || 'Gagal memuat inbox absensi.');
-        }
-        if (isActive) {
-          setInboxAttendances(result.data.attendances as InboxAttendance[]);
-          setUnreadAttendanceCount(Number(result.data.unreadCount || 0));
-          setInboxError('');
-        }
-      } catch (error: unknown) {
-        if (isActive) {
-          setInboxError(error instanceof Error ? error.message : 'Gagal memuat inbox absensi.');
-        }
-      }
-    };
-
-    void refreshAttendanceInbox();
-    const timer = window.setInterval(() => void refreshAttendanceInbox(), 1_000);
-    return () => {
-      isActive = false;
-      window.clearInterval(timer);
-    };
-  }, [user?.id, user?.role]);
+    return () => window.clearTimeout(timer);
+  }, [isStaff, refreshInbox, user?.id, user?.role]);
 
   const toggleInbox = () => {
     const shouldOpen = !notificationsOpen;
