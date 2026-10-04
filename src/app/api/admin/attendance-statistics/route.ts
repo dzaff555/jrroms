@@ -77,13 +77,19 @@ export async function GET(request: Request) {
         u.username,
         u.attendance_role,
         u.profile_photo,
-        DATE_FORMAT(u.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+        DATE_FORMAT(
+          CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
+          '%Y-%m-%d %H:%i:%s'
+        ) AS created_at,
         COUNT(DISTINCT a.attendance_date) AS attended_days,
         COUNT(DISTINCT CASE WHEN a.attendance_date <= ? THEN a.attendance_date END) AS completed_attended_days
       FROM users u
       LEFT JOIN attendance a
         ON a.user_id = u.id
-        AND a.attendance_date >= GREATEST(?, DATE(u.created_at))
+        AND a.attendance_date >= GREATEST(
+          ?,
+          DATE(CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'))
+        )
         AND a.attendance_date <= ?
         AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)
       WHERE ${whereSql}

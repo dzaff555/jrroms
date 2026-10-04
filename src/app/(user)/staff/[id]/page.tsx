@@ -34,12 +34,17 @@ export default async function StaffProfilePage({
   const staffRows = await query<StaffProfile[]>(
     `SELECT u.id, u.username, u.role, u.attendance_role, u.profile_photo,
       u.roblox_username, u.discord_username,
-      DATE_FORMAT(u.created_at, '%Y-%m-%d %H:%i:%s') AS joined_at,
+      DATE_FORMAT(
+        CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
+        '%Y-%m-%d %H:%i:%s'
+      ) AS joined_at,
       (SELECT COUNT(*) FROM attendance a
        WHERE a.user_id = u.id AND a.status = 'Hadir') AS attendance_count,
       (SELECT COUNT(*) FROM attendance a
        WHERE a.user_id = u.id AND a.status = 'Hadir'
-         AND a.attendance_date BETWEEN DATE(u.created_at) AND ?
+         AND a.attendance_date BETWEEN DATE(
+           CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00')
+         ) AND ?
          AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)) AS weekend_attendance_count,
       (SELECT COUNT(*) FROM staff_warnings w WHERE w.user_id = u.id) AS warning_count,
       (SELECT DATE_FORMAT(a.attendance_date, '%Y-%m-%d') FROM attendance a
@@ -107,7 +112,7 @@ export default async function StaffProfilePage({
               <p className="mt-2 text-sm font-bold text-slate-800">
                 {staff.last_attendance
                   ? `${formatIndonesianDate(staff.last_attendance)} · ${staff.last_attendance_status || 'Tercatat'}`
-                  : 'Belum pernah absen'}
+                  : 'Belum Absen'}
               </p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
