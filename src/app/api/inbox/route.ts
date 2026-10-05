@@ -50,7 +50,7 @@ export async function GET() {
              (a.id <= ?) AS is_read
            FROM attendance a
            JOIN users u ON u.id = a.user_id
-           WHERE u.role IN ('USER', 'DEVELOPER') AND a.status = 'Hadir'
+           WHERE u.role = 'USER' AND a.status = 'Hadir'
            ORDER BY a.id DESC
            LIMIT 50`,
           [readThroughId]
@@ -59,7 +59,7 @@ export async function GET() {
           `SELECT COUNT(*) AS total
            FROM attendance a
            JOIN users u ON u.id = a.user_id
-           WHERE a.id > ? AND u.role IN ('USER', 'DEVELOPER') AND a.status = 'Hadir'`,
+           WHERE a.id > ? AND u.role = 'USER' AND a.status = 'Hadir'`,
           [readThroughId]
         ),
       ]);

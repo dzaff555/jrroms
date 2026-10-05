@@ -1,18 +1,25 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth/auth';
+import { getActiveSession } from '@/lib/auth/active-session';
 import { query } from '@/lib/database/db';
 import { getJakartaDateString, getJakartaTimeString, isAttendanceWindowOpen } from '@/lib/utils/date';
 import { ATTENDANCE_ROLES, Attendance, AttendanceRole } from '@/types';
 
 export async function POST(request: Request) {
   try {
-    const session = await getSessionUser();
-    if (!session) {
+    const active = await getActiveSession();
+    if (!active) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Silakan login terlebih dahulu.' },
         { status: 401 }
       );
     }
+    if (active.role === 'DEVELOPER') {
+      return NextResponse.json(
+        { success: false, error: 'Absensi harian tidak tersedia untuk role Developer.' },
+        { status: 403 }
+      );
+    }
+    const { session } = active;
 
     if (!isAttendanceWindowOpen()) {
       return NextResponse.json(

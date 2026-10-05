@@ -168,7 +168,7 @@ export default async function AdminStaffProfilePage({
               </div>
               <p className="mt-2 text-sm font-bold text-slate-800">{staff.created_at}</p>
             </div>
-            {staff.role !== 'ADMIN' && (
+            {staff.role === 'USER' && (
               <>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
@@ -194,14 +194,16 @@ export default async function AdminStaffProfilePage({
                   <p className="mt-2 text-2xl font-extrabold text-slate-800">{missedAttendanceCount}</p>
                   <p className="mt-1 text-xs text-slate-500">hari Jumat–Minggu tanpa catatan hadir</p>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                    <AlertTriangle className="h-4 w-4 text-amber-600" /> Peringatan
-                  </div>
-                  <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.warning_count)}</p>
-                  <p className="mt-1 text-xs text-slate-500">kali diperingatkan oleh admin</p>
-                </div>
               </>
+            )}
+            {staff.role !== 'ADMIN' && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" /> Peringatan
+                </div>
+                <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.warning_count)}</p>
+                <p className="mt-1 text-xs text-slate-500">kali diperingatkan oleh admin</p>
+              </div>
             )}
           </div>
         </section>

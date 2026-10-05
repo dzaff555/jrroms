@@ -60,9 +60,9 @@ format, up to 1 GB each, and are only downloadable by Admins through the authent
 app.
 
 Admins can create User or Developer accounts, or change an existing account's
-system role. Developer accounts use the same Friday–Sunday attendance rules and
-attendance reports as User accounts, and can see tasks published from **Tugas
-Developer** in the sidebar.
+system role. Developer accounts do not have daily attendance and are not counted
+in attendance statistics or absence reports. They can see tasks published from
+**Tugas Developer** in the sidebar.
 
 ## Local development
 
