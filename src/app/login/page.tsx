@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { CalendarCheck, ShieldCheck, ArrowRight, UserCheck, Lock } from 'lucide-react';
+import { ShieldCheck, ArrowRight, UserCheck, Lock } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { Button } from '@/components/ui/Button';
@@ -83,7 +83,13 @@ export default function LoginPage() {
         {/* Brand Header */}
         <div className="flex items-center gap-3 relative z-20">
           <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/30 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <CalendarCheck className="w-6 h-6 text-blue-300" />
+            <Image
+              src="/jrr-logo.svg"
+              alt="JRR"
+              width={40}
+              height={40}
+              className="h-9 w-9 object-contain"
+            />
           </div>
           <div>
             <span className="font-extrabold text-xl tracking-tight block">Operation Managing System - JRR</span>
@@ -137,7 +143,13 @@ export default function LoginPage() {
           {/* Mobile Brand Logo */}
           <div className="lg:hidden flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-              <CalendarCheck className="w-5 h-5" />
+              <Image
+                src="/jrr-logo.svg"
+                alt="JRR"
+                width={36}
+                height={36}
+                className="h-8 w-8 object-contain"
+              />
             </div>
             <span className="font-bold text-lg text-slate-900">Operation Managing System - JRR</span>
           </div>
