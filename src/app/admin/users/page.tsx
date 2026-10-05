@@ -72,7 +72,7 @@ export default function AdminUsersPage() {
   const [newUsername, setNewUsername] = useState('');
   const [newRealName, setNewRealName] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [newSystemRole, setNewSystemRole] = useState<'USER' | 'DEVELOPER'>('USER');
+  const [newSystemRole, setNewSystemRole] = useState<UserRole>('USER');
   const [newAttendanceRole, setNewAttendanceRole] = useState<AttendanceRole>('CSOT');
   const [isUpdating, setIsUpdating] = useState(false);
   const isFetchingUsersRef = React.useRef(false);
@@ -148,7 +148,7 @@ export default function AdminUsersPage() {
           real_name: newRealName,
           password: newPassword,
           role: newSystemRole,
-          attendance_role: newAttendanceRole,
+          ...(newSystemRole === 'USER' ? { attendance_role: newAttendanceRole } : {}),
         }),
       });
       const data = await res.json();
@@ -486,7 +486,7 @@ export default function AdminUsersPage() {
                             </Badge>
                           </td>
                           <td className="py-3.5 px-4 text-center font-semibold text-slate-700">
-                            {u.attendance_role || '-'}
+                            {u.role === 'USER' ? u.attendance_role || '-' : '-'}
                           </td>
                           <td className="py-3.5 px-4 text-center">
                             <Badge
@@ -534,9 +534,9 @@ export default function AdminUsersPage() {
                                       : 'CSOT'
                                   );
                                 }}
-                                disabled={isUpdating}
+                                disabled={isUpdating || u.role !== 'USER'}
                                 className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                                title="Ubah Role Absensi"
+                                title={u.role === 'USER' ? 'Ubah Role Absensi' : 'Role absensi hanya berlaku untuk User'}
                               >
                                 <BriefcaseBusiness className="w-4 h-4" />
                               </button>
@@ -606,7 +606,7 @@ export default function AdminUsersPage() {
           isOpen={isCreateUserOpen}
           onClose={() => setIsCreateUserOpen(false)}
           title="Buat Akun Pengguna"
-          description="Pilih akses User atau Developer. Keduanya mengikuti aturan absensi."
+          description="Pilih role akun. Role absensi hanya berlaku untuk User."
           maxWidth="md"
         >
           <form onSubmit={handleCreateUser} className="space-y-4">
@@ -641,25 +641,28 @@ export default function AdminUsersPage() {
               <select
                 id="new-system-role"
                 value={newSystemRole}
-                onChange={(event) => setNewSystemRole(event.target.value as 'USER' | 'DEVELOPER')}
+                onChange={(event) => setNewSystemRole(event.target.value as UserRole)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
                 <option value="USER">User</option>
                 <option value="DEVELOPER">Developer</option>
+                <option value="ADMIN">Admin</option>
               </select>
             </div>
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">Role Absensi</label>
-              <select
-                value={newAttendanceRole}
-                onChange={(event) => setNewAttendanceRole(event.target.value as AttendanceRole)}
-                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                {ATTENDANCE_ROLES.map((attendanceRole) => (
-                  <option key={attendanceRole} value={attendanceRole}>{attendanceRole}</option>
-                ))}
-              </select>
-            </div>
+            {newSystemRole === 'USER' && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-slate-700">Role Absensi</label>
+                <select
+                  value={newAttendanceRole}
+                  onChange={(event) => setNewAttendanceRole(event.target.value as AttendanceRole)}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                >
+                  {ATTENDANCE_ROLES.map((attendanceRole) => (
+                    <option key={attendanceRole} value={attendanceRole}>{attendanceRole}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setIsCreateUserOpen(false)} disabled={isUpdating}>
                 Batal
@@ -720,7 +723,9 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-400 block font-medium">Role Absensi</span>
-                  <span className="font-bold text-slate-800 mt-0.5 block">{viewUser.attendance_role || '-'}</span>
+                  <span className="font-bold text-slate-800 mt-0.5 block">
+                    {viewUser.role === 'USER' ? viewUser.attendance_role || '-' : '-'}
+                  </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-400 block font-medium">Terdaftar Sejak</span>

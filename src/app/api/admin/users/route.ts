@@ -137,12 +137,13 @@ export async function POST(request: Request) {
     if (realName.length > 100) {
       return NextResponse.json({ success: false, error: 'Nama asli maksimal 100 karakter.' }, { status: 400 });
     }
-    if (!ATTENDANCE_ROLES.includes(attendanceRole as AttendanceRole)) {
+    if (role !== 'USER' && role !== 'DEVELOPER' && role !== 'ADMIN') {
+      return NextResponse.json({ success: false, error: 'Role sistem tidak valid.' }, { status: 400 });
+    }
+    if (role === 'USER' && !ATTENDANCE_ROLES.includes(attendanceRole as AttendanceRole)) {
       return NextResponse.json({ success: false, error: 'Role absensi tidak valid.' }, { status: 400 });
     }
-    if (role !== 'USER' && role !== 'DEVELOPER') {
-      return NextResponse.json({ success: false, error: 'Role akun baru harus User atau Developer.' }, { status: 400 });
-    }
+    const storedAttendanceRole = role === 'USER' ? attendanceRole : 'CSOT';
 
     const existing = await query<{ id: number }[]>(
       'SELECT id FROM users WHERE username = ? LIMIT 1',
@@ -155,13 +156,13 @@ export async function POST(request: Request) {
     const result = await query<{ insertId: number }>(
       `INSERT INTO users (username, real_name, email, password, role, status, attendance_role, profile_completed)
        VALUES (?, ?, NULL, ?, ?, 'ACTIVE', ?, FALSE)`,
-      [username, realName || null, await hashPassword(password), role, attendanceRole]
+      [username, realName || null, await hashPassword(password), role, storedAttendanceRole]
     );
 
     return NextResponse.json({
       success: true,
       message: 'Akun berhasil dibuat.',
-      data: { id: result.insertId, username, role, attendance_role: attendanceRole },
+      data: { id: result.insertId, username, role, attendance_role: role === 'USER' ? attendanceRole : null },
     }, { status: 201 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Gagal membuat akun.';
