@@ -98,7 +98,6 @@ export function Sidebar({
   const developerNavItems = [
     { label: 'Tugas', href: '/developer/tasks', icon: ClipboardList },
     { label: 'Upload Tugas', href: '/developer/upload', icon: Upload },
-    { label: 'Attendance History', href: '/attendance/history', icon: History },
   ];
 
   const navItems = isAdmin ? adminNavItems : isDeveloper ? developerNavItems : userNavItems;

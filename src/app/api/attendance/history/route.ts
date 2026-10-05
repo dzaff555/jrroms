@@ -1,17 +1,24 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/lib/auth/auth';
+import { getActiveSession } from '@/lib/auth/active-session';
 import { query } from '@/lib/database/db';
 import { Attendance } from '@/types';
 
 export async function GET(request: Request) {
   try {
-    const session = await getSessionUser();
-    if (!session) {
+    const active = await getActiveSession();
+    if (!active) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized. Silakan login terlebih dahulu.' },
         { status: 401 }
       );
     }
+    if (active.role !== 'USER') {
+      return NextResponse.json(
+        { success: false, error: 'Riwayat absensi tidak tersedia untuk role ini.' },
+        { status: 403 }
+      );
+    }
+    const { session } = active;
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search')?.trim() || '';
