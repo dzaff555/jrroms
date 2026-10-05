@@ -66,12 +66,22 @@ export default function LoginPage() {
     <div className="min-h-screen w-full flex bg-[#F5F8FC]">
       {/* Left side: Premium Branding & Illustration (Desktop only) */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#0F2747] via-[#122B4F] to-[#1E3A8A] p-12 flex-col justify-between relative overflow-hidden text-white">
+        <Image
+          src="/login-train-background.png"
+          alt=""
+          fill
+          priority
+          sizes="50vw"
+          className="object-cover opacity-30"
+        />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0F2747]/75 via-[#122B4F]/70 to-[#1E3A8A]/75" />
+
         {/* Decorative ambient background glows */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-blue-600/20 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-indigo-500/20 blur-3xl pointer-events-none" />
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-blue-600/20 blur-3xl pointer-events-none z-10" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-indigo-500/20 blur-3xl pointer-events-none z-10" />
 
         {/* Brand Header */}
-        <div className="flex items-center gap-3 relative z-10">
+        <div className="flex items-center gap-3 relative z-20">
           <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/30 flex items-center justify-center shadow-lg shadow-blue-500/20">
             <CalendarCheck className="w-6 h-6 text-blue-300" />
           </div>
@@ -82,7 +92,7 @@ export default function LoginPage() {
         </div>
 
         {/* Center Presentation */}
-        <div className="max-w-md my-auto relative z-10 space-y-6">
+        <div className="max-w-md my-auto relative z-20 space-y-6">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-semibold text-blue-200">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             Sistem Absensi Harian Terintegrasi (WIB)
@@ -112,23 +122,14 @@ export default function LoginPage() {
         </div>
 
         {/* Footer info */}
-        <div className="text-xs text-slate-400 relative z-10">
+        <div className="text-xs text-slate-400 relative z-20">
           &copy; {new Date().getFullYear()} Daily Attendance System. Hak cipta dilindungi.
         </div>
       </div>
 
       {/* Right side: Login Form */}
-      <div className="relative isolate w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10 lg:p-16 overflow-hidden bg-[#F5F8FC] dark:bg-[#0d1117]">
-        <Image
-          src="/login-train-background.png"
-          alt=""
-          fill
-          priority
-          sizes="(min-width: 1024px) 50vw, 100vw"
-          className="object-cover opacity-70"
-        />
-        <div className="absolute inset-0 bg-white/75 dark:bg-[#0d1117]/65" />
-        <div className="relative z-10 w-full max-w-md space-y-8 animate-fade-in">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10 lg:p-16">
+        <div className="w-full max-w-md space-y-8 animate-fade-in">
           {/* Mobile Brand Logo */}
           <div className="lg:hidden flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
