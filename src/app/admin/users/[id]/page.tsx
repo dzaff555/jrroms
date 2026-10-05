@@ -130,7 +130,9 @@ export default async function AdminStaffProfilePage({
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Profil Staff</p>
               <h1 className="mt-1 text-2xl font-extrabold">{staff.username}</h1>
-              <p className="mt-1 text-sm text-blue-100">{staff.attendance_role || 'Role belum ditentukan'}</p>
+              {staff.role === 'USER' && (
+                <p className="mt-1 text-sm text-blue-100">{staff.attendance_role || 'Role belum ditentukan'}</p>
+              )}
             </div>
             <span className={`sm:ml-auto rounded-full px-3 py-1 text-xs font-bold ${staff.status === 'ACTIVE' ? 'bg-emerald-400/20 text-emerald-100' : 'bg-rose-400/20 text-rose-100'}`}>
               {staff.status === 'ACTIVE' ? 'Aktif' : 'Nonaktif'}
