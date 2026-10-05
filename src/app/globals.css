@@ -195,6 +195,7 @@ html.dark [class~="divide-slate-100"] > :not([hidden]) ~ :not([hidden]) {
 }
 
 html.dark [class~="hover:bg-slate-50"]:hover,
+html.dark [class~="hover:bg-slate-50/80"]:hover,
 html.dark [class~="hover:bg-slate-100"]:hover {
   background-color: #252c35 !important;
 }
