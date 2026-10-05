@@ -82,17 +82,15 @@ export default function LoginPage() {
 
         {/* Brand Header */}
         <div className="flex items-center gap-3 relative z-20">
-          <div className="w-11 h-11 rounded-2xl bg-blue-600/30 border border-blue-400/30 flex items-center justify-center shadow-lg shadow-blue-500/20">
-            <Image
-              src="/jrr-logo.svg"
-              alt="JRR"
-              width={40}
-              height={40}
-              className="h-9 w-9 object-contain"
-            />
-          </div>
-          <div>
-            <span className="font-extrabold text-xl tracking-tight block">Operation Managing System - JRR</span>
+          <Image
+            src="/jrr-logo.svg"
+            alt="JRR"
+            width={58}
+            height={20}
+            className="h-5 w-[58px] shrink-0 object-contain"
+          />
+          <div className="max-w-[190px]">
+            <span className="font-extrabold text-sm tracking-tight block leading-tight">Operation Managing System - JRR</span>
             <span className="text-xs text-blue-300 font-medium">JRR Operations</span>
           </div>
         </div>
@@ -142,16 +140,16 @@ export default function LoginPage() {
         <div className="relative z-10 w-full max-w-md space-y-8 animate-fade-in">
           {/* Mobile Brand Logo */}
           <div className="lg:hidden flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-              <Image
-                src="/jrr-logo.svg"
-                alt="JRR"
-                width={36}
-                height={36}
-                className="h-8 w-8 object-contain"
-              />
-            </div>
-            <span className="font-bold text-lg text-slate-900">Operation Managing System - JRR</span>
+            <Image
+              src="/jrr-logo.svg"
+              alt="JRR"
+              width={58}
+              height={20}
+              className="h-5 w-[58px] shrink-0 object-contain brightness-0 dark:brightness-100"
+            />
+            <span className="max-w-[190px] font-bold text-sm leading-tight text-slate-900">
+              Operation Managing System - JRR
+            </span>
           </div>
 
           {/* Headings */}
