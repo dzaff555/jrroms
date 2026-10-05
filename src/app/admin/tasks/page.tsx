@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { Download, Plus, ClipboardList } from 'lucide-react';
+import { Download, Plus, ClipboardList, Pencil, Save, Trash2, X } from 'lucide-react';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
@@ -55,6 +55,9 @@ export default function AdminTasksPage() {
   const [endsOn, setEndsOn] = useState(localDate);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [editingTask, setEditingTask] = useState<DeveloperTask | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<number | null>(null);
 
   const loadTasks = useCallback(async () => {
     try {
@@ -102,6 +105,63 @@ export default function AdminTasksPage() {
       toast.error('Gagal membuat tugas', error instanceof Error ? error.message : 'Terjadi kesalahan.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const saveTask = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingTask) return;
+
+    setIsSavingEdit(true);
+    try {
+      const response = await fetch(`/api/admin/tasks/${editingTask.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editingTask.title,
+          description: editingTask.description,
+          category: editingTask.category,
+          fileRequired: editingTask.file_required,
+          startsOn: editingTask.starts_on,
+          endsOn: editingTask.ends_on,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal memperbarui tugas.');
+      }
+      toast.success('Tugas diperbarui', 'Perubahan quest berhasil disimpan.');
+      setEditingTask(null);
+      await loadTasks();
+    } catch (error: unknown) {
+      toast.error('Gagal memperbarui tugas', error instanceof Error ? error.message : 'Terjadi kesalahan.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const deleteTask = async (task: DeveloperTask) => {
+    const confirmed = window.confirm(
+      `Hapus quest "${task.title}"? Semua kiriman Developer untuk quest ini juga akan dihapus permanen.`
+    );
+    if (!confirmed) return;
+
+    setDeletingTaskId(task.id);
+    try {
+      const response = await fetch(`/api/admin/tasks/${task.id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal menghapus tugas.');
+      }
+      toast.success('Tugas dihapus', result.cleanupWarning
+        ? 'Quest dan kiriman terhapus, tetapi sebagian file perlu dibersihkan dari penyimpanan.'
+        : result.message || 'Quest dan kiriman terkait berhasil dihapus.');
+      if (editingTask?.id === task.id) setEditingTask(null);
+      await loadTasks();
+    } catch (error: unknown) {
+      toast.error('Gagal menghapus tugas', error instanceof Error ? error.message : 'Terjadi kesalahan.');
+    } finally {
+      setDeletingTaskId(null);
     }
   };
 
@@ -175,19 +235,114 @@ export default function AdminTasksPage() {
           tasks.map((task) => (
             <Card key={task.id} className="overflow-hidden">
               <div className="space-y-3 p-5 sm:p-6">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">{task.title}</h3>
-                    <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                      {task.category === 'MODELLING' ? 'Modelling' : 'Scripting'}
-                    </span>
-                  </div>
-                  <span className="text-xs text-slate-500">{task.starts_on} – {task.ends_on}</span>
-                </div>
-                <p className="whitespace-pre-wrap text-sm text-slate-700">{task.description}</p>
-                <p className="text-xs font-medium text-slate-500">
-                  {task.file_required ? 'File wajib diunggah' : 'File opsional'} · {task.files.length} file terkirim
-                </p>
+                {editingTask?.id === task.id ? (
+                  <form onSubmit={saveTask} className="space-y-4">
+                    <Input
+                      label="Judul quest"
+                      value={editingTask.title}
+                      onChange={(event) => setEditingTask({ ...editingTask, title: event.target.value })}
+                      maxLength={180}
+                      required
+                    />
+                    <div className="space-y-1.5">
+                      <label htmlFor={`task-description-${task.id}`} className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        Isi tugas
+                      </label>
+                      <textarea
+                        id={`task-description-${task.id}`}
+                        value={editingTask.description}
+                        onChange={(event) => setEditingTask({ ...editingTask, description: event.target.value })}
+                        maxLength={10000}
+                        required
+                        rows={4}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <label className="space-y-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                        Jenis tugas
+                        <select
+                          value={editingTask.category}
+                          onChange={(event) => setEditingTask({ ...editingTask, category: event.target.value as DeveloperTask['category'] })}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal normal-case text-slate-800"
+                        >
+                          <option value="MODELLING">Modelling</option>
+                          <option value="SCRIPTING">Scripting</option>
+                        </select>
+                      </label>
+                      <Input
+                        label="Tanggal mulai"
+                        type="date"
+                        value={editingTask.starts_on}
+                        onChange={(event) => setEditingTask({ ...editingTask, starts_on: event.target.value })}
+                        required
+                      />
+                      <Input
+                        label="Tanggal akhir"
+                        type="date"
+                        value={editingTask.ends_on}
+                        onChange={(event) => setEditingTask({ ...editingTask, ends_on: event.target.value })}
+                        min={editingTask.starts_on}
+                        required
+                      />
+                      <label className="flex items-center gap-3 self-end rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={editingTask.file_required}
+                          onChange={(event) => setEditingTask({ ...editingTask, file_required: event.target.checked })}
+                          className="h-4 w-4 accent-blue-600"
+                        />
+                        <span>Wajib mengunggah file</span>
+                      </label>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="submit" isLoading={isSavingEdit} loadingText="Menyimpan..." icon={<Save className="h-4 w-4" />}>
+                        Simpan Perubahan
+                      </Button>
+                      <Button type="button" variant="outline" onClick={() => setEditingTask(null)} icon={<X className="h-4 w-4" />}>
+                        Batal
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900">{task.title}</h3>
+                        <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                          {task.category === 'MODELLING' ? 'Modelling' : 'Scripting'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">{task.starts_on} – {task.ends_on}</span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          icon={<Pencil className="h-4 w-4" />}
+                          onClick={() => setEditingTask({ ...task })}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          icon={<Trash2 className="h-4 w-4" />}
+                          isLoading={deletingTaskId === task.id}
+                          loadingText="Menghapus..."
+                          onClick={() => void deleteTask(task)}
+                        >
+                          Hapus
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm text-slate-700">{task.description}</p>
+                    <p className="text-xs font-medium text-slate-500">
+                      {task.file_required ? 'File wajib diunggah' : 'File opsional'} · {task.files.length} file terkirim
+                    </p>
+                  </>
+                )}
               </div>
               {task.files.length > 0 && (
                 <div className="border-t border-slate-100 bg-slate-50/70 p-4 sm:p-5">
