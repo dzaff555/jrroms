@@ -99,12 +99,8 @@ export default function LoginPage() {
           </div>
 
           <h2 className="text-4xl font-extrabold tracking-tight leading-tight text-white">
-            Kelola & Catat Absensi dengan Cepat, Akurat, dan Modern.
+            Luangkan waktu anda untuk absen kehadiran di JRR
           </h2>
-
-          <p className="text-sm text-slate-300 leading-relaxed">
-            Pantau kehadiran harian, kelola data user, dan dapatkan ringkasan analitik real-time dalam satu dashboard yang aman dan intuitif.
-          </p>
 
           {/* Feature highlights */}
           <div className="pt-4 grid grid-cols-2 gap-4">
