@@ -258,7 +258,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
     if (pathname.startsWith('/attendance/history')) return 'Riwayat Absensi';
     if (pathname.startsWith('/attendance')) return 'Form Absensi Hari Ini';
     if (pathname.startsWith('/dashboard')) return 'Dashboard Staff';
-    return 'Daily Attendance';
+    return 'Operation Managing System - JRR';
   };
 
   return (

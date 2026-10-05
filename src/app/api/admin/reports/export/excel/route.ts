@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     const records = await getAttendanceReportRecords(filters);
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Daily Attendance';
+    workbook.creator = 'Operation Managing System - JRR';
     workbook.created = new Date();
     const sheet = workbook.addWorksheet('Laporan Absensi');
     sheet.columns = [

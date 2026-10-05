@@ -11,8 +11,8 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'Daily Attendance — Sistem Absensi Modern & Profesional',
-  description: 'Aplikasi dashboard SaaS sistem absensi harian modern, aman, dan responsif.',
+  title: 'Operation Managing System - JRR',
+  description: 'Operation Managing System - JRR',
 };
 
 export default function RootLayout({

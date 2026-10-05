@@ -137,8 +137,8 @@ export function Sidebar({
           </div>
           {!collapsed && (
             <div className="flex min-w-0 flex-col">
-                <span className="whitespace-nowrap font-extrabold text-sm tracking-tight text-white leading-tight">
-                  Daily Attendance
+                <span className="font-extrabold text-xs tracking-tight text-white leading-tight">
+                  Operation Managing System - JRR
               </span>
               <span className="text-[10px] font-semibold text-blue-300 uppercase tracking-wider flex items-center gap-1">
                 {isAdmin ? (
