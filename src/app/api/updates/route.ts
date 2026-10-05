@@ -34,6 +34,7 @@ export async function GET() {
       ),
       query<ChangeFingerprint[]>(
         `SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
+           COALESCE(SUM(created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR), 0),
            COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, user_id, name, attendance_role,
              discord_username, roblox_username, attendance_date, attendance_time, status))), 0)
          ) AS attendance
@@ -41,16 +42,28 @@ export async function GET() {
       ),
       query<ChangeFingerprint[]>(
         `SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
+           COALESCE(SUM(created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR), 0),
            COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, user_id, COALESCE(issued_by, 0),
              reason, COALESCE(DATE_FORMAT(read_at, '%Y%m%d%H%i%s.%f'), '')))), 0)
          ) AS warnings
          FROM staff_warnings`
       ),
       query<ChangeFingerprint[]>(
-        `SELECT CONCAT_WS(':', COUNT(*),
-           COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', admin_id, read_through_id))), 0)
-         ) AS adminInbox
-         FROM admin_attendance_inbox`
+        `SELECT CONCAT_WS(':',
+           (SELECT CONCAT_WS(':', COUNT(*),
+             COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', admin_id, read_through_id))), 0))
+            FROM admin_attendance_inbox),
+           (SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
+             COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', admin_id, event_key, title, message,
+               COALESCE(DATE_FORMAT(read_at, '%Y%m%d%H%i%s.%f'), '')))), 0))
+            FROM admin_inbox_notifications),
+           (SELECT COUNT(*) FROM admin_inbox_notifications
+            WHERE created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR),
+           (SELECT COUNT(*) FROM attendance a
+            JOIN users u ON u.id = a.user_id
+            WHERE u.role = 'USER' AND a.status = 'Hadir'
+              AND a.created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR)
+         ) AS adminInbox`
       ),
       query<ChangeFingerprint[]>(
         `SELECT CONCAT_WS(':',

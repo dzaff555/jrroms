@@ -43,9 +43,16 @@ export async function PUT(
       byte_size: number;
       status: 'PENDING' | 'UPLOADING' | 'COMPLETE';
       task_id: number;
+      task_title: string;
+      developer_username: string;
+      original_name: string;
     }[]>(
-      `SELECT blob_name, byte_size, status, task_id FROM developer_task_files
-       WHERE id = ? AND developer_id = ? LIMIT 1`,
+      `SELECT f.blob_name, f.byte_size, f.status, f.task_id, f.original_name,
+         t.title AS task_title, u.username AS developer_username
+       FROM developer_task_files f
+       JOIN developer_tasks t ON t.id = f.task_id
+       JOIN users u ON u.id = f.developer_id
+       WHERE f.id = ? AND f.developer_id = ? LIMIT 1`,
       [uploadId, active.session.id]
     );
     const file = files[0];
@@ -137,6 +144,15 @@ export async function PUT(
     }
     permanentPath = null;
     claimedUploadId = null;
+    await query(
+      `INSERT IGNORE INTO admin_inbox_notifications
+        (admin_id, event_key, title, message)
+       SELECT id, ?, 'Project Quest telah diunggah',
+         CONCAT(?, ' telah mengunggah project untuk quest "', ?, '" (file: "', ?, '").')
+       FROM users
+       WHERE role = 'ADMIN'`,
+      [`developer-upload:${uploadId}`, file.developer_username, file.task_title, file.original_name]
+    );
 
     return NextResponse.json({ success: true, message: 'File berhasil diunggah ke aplikasi.' });
   } catch (error: unknown) {

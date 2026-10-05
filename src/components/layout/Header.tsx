@@ -43,6 +43,14 @@ interface InboxAttendance {
   is_read: boolean;
 }
 
+interface AdminInboxNotification {
+  id: number;
+  title: string;
+  message: string;
+  created_at: string;
+  read_at: string | null;
+}
+
 export interface HeaderProps {
   user: AuthSession | null;
   onMenuClick: () => void;
@@ -59,7 +67,8 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
   const [inboxWarnings, setInboxWarnings] = useState<InboxWarning[]>([]);
   const [unreadWarningCount, setUnreadWarningCount] = useState(0);
   const [inboxAttendances, setInboxAttendances] = useState<InboxAttendance[]>([]);
-  const [unreadAttendanceCount, setUnreadAttendanceCount] = useState(0);
+  const [inboxNotifications, setInboxNotifications] = useState<AdminInboxNotification[]>([]);
+  const [unreadAdminInboxCount, setUnreadAdminInboxCount] = useState(0);
   const [isInboxLoading, setIsInboxLoading] = useState(false);
   const [isMarkingRead, setIsMarkingRead] = useState(false);
   const [inboxError, setInboxError] = useState('');
@@ -85,7 +94,8 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
         setUnreadWarningCount(Number(result.data.unreadCount || 0));
       } else if (user?.role === 'ADMIN') {
         setInboxAttendances(result.data.attendances as InboxAttendance[]);
-        setUnreadAttendanceCount(Number(result.data.unreadCount || 0));
+        setInboxNotifications(result.data.notifications as AdminInboxNotification[]);
+        setUnreadAdminInboxCount(Number(result.data.unreadCount || 0));
       }
       setInboxError('');
     } catch (error: unknown) {
@@ -110,7 +120,8 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
         setUnreadWarningCount(Number(result.data.unreadCount || 0));
       } else {
         setInboxAttendances(result.data.attendances as InboxAttendance[]);
-        setUnreadAttendanceCount(Number(result.data.unreadCount || 0));
+        setInboxNotifications(result.data.notifications as AdminInboxNotification[]);
+        setUnreadAdminInboxCount(Number(result.data.unreadCount || 0));
       }
     } catch (error: unknown) {
       setInboxError(error instanceof Error ? error.message : 'Gagal memuat inbox.');
@@ -126,6 +137,12 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
 
     return () => window.clearTimeout(timer);
   }, [isStaff, refreshInbox, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!notificationsOpen || (!isStaff && user?.role !== 'ADMIN')) return;
+    const timer = window.setInterval(() => void refreshInbox(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [isStaff, notificationsOpen, refreshInbox, user?.role]);
 
   const toggleInbox = () => {
     const shouldOpen = !notificationsOpen;
@@ -161,7 +178,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
   };
 
   const markAllInboxRead = async () => {
-    const unreadCount = isStaff ? unreadWarningCount : unreadAttendanceCount;
+    const unreadCount = isStaff ? unreadWarningCount : unreadAdminInboxCount;
     if (unreadCount === 0 || isMarkingRead) return;
 
     setIsMarkingRead(true);
@@ -182,7 +199,10 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
         setUnreadWarningCount(0);
       } else {
         setInboxAttendances((current) => current.map((item) => ({ ...item, is_read: true })));
-        setUnreadAttendanceCount(0);
+        setInboxNotifications((current) =>
+          current.map((item) => ({ ...item, read_at: item.read_at || readAt }))
+        );
+        setUnreadAdminInboxCount(0);
       }
     } catch (error: unknown) {
       toast.error('Pesan gagal diperbarui', error instanceof Error ? error.message : 'Silakan coba lagi.');
@@ -299,16 +319,16 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
             aria-label={isStaff
               ? `Buka inbox, ${unreadWarningCount} pesan belum dibaca`
               : user?.role === 'ADMIN'
-                ? `Buka inbox, ${unreadAttendanceCount} notifikasi absensi belum dibaca`
+                ? `Buka inbox, ${unreadAdminInboxCount} notifikasi belum dibaca`
                 : 'Lihat notifikasi'}
             aria-expanded={notificationsOpen}
           >
             <Bell className="w-5 h-5" />
-            {(isStaff ? unreadWarningCount : user?.role === 'ADMIN' ? unreadAttendanceCount : 0) > 0 && (
+            {(isStaff ? unreadWarningCount : user?.role === 'ADMIN' ? unreadAdminInboxCount : 0) > 0 && (
               <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold text-white ring-2 ring-white">
-                {(isStaff ? unreadWarningCount : unreadAttendanceCount) > 9
+                {(isStaff ? unreadWarningCount : unreadAdminInboxCount) > 9
                   ? '9+'
-                  : isStaff ? unreadWarningCount : unreadAttendanceCount}
+                  : isStaff ? unreadWarningCount : unreadAdminInboxCount}
               </span>
             )}
           </button>
@@ -317,9 +337,9 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
             <div className="absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-100 bg-white py-3 shadow-xl animate-scale-in">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
                 <span className="text-sm font-bold text-slate-800">
-                  {isStaff ? 'Inbox Peringatan' : user?.role === 'ADMIN' ? 'Inbox Absensi' : 'Notifikasi'}
+                  {isStaff ? 'Inbox Peringatan' : user?.role === 'ADMIN' ? 'Inbox Notifikasi' : 'Notifikasi'}
                 </span>
-                {(isStaff ? unreadWarningCount : user?.role === 'ADMIN' ? unreadAttendanceCount : 0) > 0 && (
+                {(isStaff ? unreadWarningCount : user?.role === 'ADMIN' ? unreadAdminInboxCount : 0) > 0 && (
                   <button
                     type="button"
                     onClick={() => void markAllInboxRead()}
@@ -384,13 +404,43 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
                         </button>
                       ))}
                     </div>
-                  ) : inboxAttendances.length === 0 ? (
+                  ) : inboxAttendances.length === 0 && inboxNotifications.length === 0 ? (
                     <div className="p-5 text-center">
                       <MailOpen className="mx-auto h-6 w-6 text-slate-300" />
-                      <p className="mt-2 text-xs text-slate-500">Belum ada user yang baru absen.</p>
+                      <p className="mt-2 text-xs text-slate-500">Belum ada notifikasi dalam 24 jam terakhir.</p>
                     </div>
                   ) : (
                     <div className="space-y-1">
+                      {inboxNotifications.map((notification) => (
+                        <div
+                          key={`notification-${notification.id}`}
+                          className={`flex items-start gap-3 rounded-xl p-3 ${
+                            notification.read_at ? 'bg-white' : 'bg-blue-50/70'
+                          }`}
+                        >
+                          <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                            notification.title.toLowerCase().includes('absensi')
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-violet-100 text-violet-700'
+                          }`}>
+                            {notification.title.toLowerCase().includes('absensi')
+                              ? <Calendar className="h-4 w-4" />
+                              : <CheckCircle2 className="h-4 w-4" />}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-slate-800">{notification.title}</span>
+                              {!notification.read_at && <span className="h-2 w-2 shrink-0 rounded-full bg-blue-600" />}
+                            </span>
+                            <span className="mt-1 block whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-600">
+                              {notification.message}
+                            </span>
+                            <span className="mt-1.5 block text-[10px] text-slate-400">
+                              {formatIndonesianDateTime(notification.created_at)}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
                       {inboxAttendances.map((attendance) => (
                         <div
                           key={attendance.id}

@@ -67,6 +67,19 @@ CREATE TABLE IF NOT EXISTS admin_attendance_inbox (
   CONSTRAINT fk_admin_attendance_inbox_user FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS admin_inbox_notifications (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  admin_id INT NOT NULL,
+  event_key VARCHAR(100) NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  message VARCHAR(1000) NOT NULL,
+  read_at TIMESTAMP NULL DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_admin_inbox_notification_user FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_admin_inbox_event (admin_id, event_key),
+  INDEX idx_admin_inbox_notifications_created (admin_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS developer_tasks (
   id INT AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(180) NOT NULL,

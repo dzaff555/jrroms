@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
+import { getJakartaDateString, isAttendanceWindowOpen } from '@/lib/utils/date';
 
 interface InboxWarning {
   id: number;
@@ -20,6 +21,14 @@ interface AttendanceInboxItem {
   is_read: boolean;
 }
 
+interface AdminInboxNotification {
+  id: number;
+  title: string;
+  message: string;
+  created_at: string;
+  read_at: string | null;
+}
+
 export async function GET() {
   try {
     const session = await getSessionUser();
@@ -32,6 +41,19 @@ export async function GET() {
 
     if (session.role === 'ADMIN') {
       await query(
+        'DELETE FROM admin_inbox_notifications WHERE created_at <= CURRENT_TIMESTAMP - INTERVAL 24 HOUR'
+      );
+      if (isAttendanceWindowOpen()) {
+        const eventKey = `attendance-opened:${getJakartaDateString()}`;
+        await query(
+          `INSERT IGNORE INTO admin_inbox_notifications (admin_id, event_key, title, message)
+           SELECT id, ?, 'Absensi dibuka', 'Absensi untuk hari ini telah dibuka dan dapat diisi pada pukul 05.00–18.00 WIB.'
+           FROM users
+           WHERE role = 'ADMIN'`,
+          [eventKey]
+        );
+      }
+      await query(
         `INSERT IGNORE INTO admin_attendance_inbox (admin_id, read_through_id)
          SELECT ?, COALESCE((SELECT MAX(id) FROM attendance), 0)`,
         [session.id]
@@ -42,7 +64,7 @@ export async function GET() {
       );
       const readThroughId = Number(cursorRows[0]?.read_through_id || 0);
 
-      const [attendances, unreadRows] = await Promise.all([
+      const [attendances, notifications, unreadRows, unreadNotifications] = await Promise.all([
         query<AttendanceInboxItem[]>(
           `SELECT a.id, u.username,
              DATE_FORMAT(a.attendance_date, '%Y-%m-%d') AS attendance_date,
@@ -51,22 +73,44 @@ export async function GET() {
            FROM attendance a
            JOIN users u ON u.id = a.user_id
            WHERE u.role = 'USER' AND a.status = 'Hadir'
+             AND a.created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR
            ORDER BY a.id DESC
            LIMIT 50`,
           [readThroughId]
+        ),
+        query<AdminInboxNotification[]>(
+          `SELECT id, title, message,
+             DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+             DATE_FORMAT(read_at, '%Y-%m-%d %H:%i:%s') AS read_at
+           FROM admin_inbox_notifications
+           WHERE admin_id = ? AND created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR
+           ORDER BY created_at DESC, id DESC
+           LIMIT 50`,
+          [session.id]
         ),
         query<{ total: number }[]>(
           `SELECT COUNT(*) AS total
            FROM attendance a
            JOIN users u ON u.id = a.user_id
-           WHERE a.id > ? AND u.role = 'USER' AND a.status = 'Hadir'`,
+           WHERE a.id > ? AND u.role = 'USER' AND a.status = 'Hadir'
+             AND a.created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR`,
           [readThroughId]
+        ),
+        query<{ total: number }[]>(
+          `SELECT COUNT(*) AS total FROM admin_inbox_notifications
+           WHERE admin_id = ? AND read_at IS NULL
+             AND created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR`,
+          [session.id]
         ),
       ]);
 
       return NextResponse.json({
         success: true,
-        data: { attendances, unreadCount: Number(unreadRows[0]?.total || 0) },
+        data: {
+          attendances,
+          notifications,
+          unreadCount: Number(unreadRows[0]?.total || 0) + Number(unreadNotifications[0]?.total || 0),
+        },
       });
     }
 
@@ -84,13 +128,15 @@ export async function GET() {
            issuer.username AS issued_by_username
          FROM staff_warnings w
          LEFT JOIN users issuer ON issuer.id = w.issued_by
-         WHERE w.user_id = ?
+         WHERE w.user_id = ? AND w.created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR
          ORDER BY w.created_at DESC, w.id DESC
          LIMIT 50`,
         [session.id]
       ),
       query<{ total: number }[]>(
-        'SELECT COUNT(*) AS total FROM staff_warnings WHERE user_id = ? AND read_at IS NULL',
+        `SELECT COUNT(*) AS total FROM staff_warnings
+         WHERE user_id = ? AND read_at IS NULL
+           AND created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR`,
         [session.id]
       ),
     ]);
@@ -140,7 +186,12 @@ export async function PATCH(request: Request) {
          WHERE admin_id = ?`,
         [session.id]
       );
-      return NextResponse.json({ success: true, message: 'Semua notifikasi absensi ditandai sudah dibaca.' });
+      await query(
+        `UPDATE admin_inbox_notifications SET read_at = CURRENT_TIMESTAMP
+         WHERE admin_id = ? AND read_at IS NULL`,
+        [session.id]
+      );
+      return NextResponse.json({ success: true, message: 'Semua notifikasi ditandai sudah dibaca.' });
     }
     let body: unknown;
     try {
@@ -155,7 +206,9 @@ export async function PATCH(request: Request) {
 
     if ('all' in body && body.all === true) {
       await query(
-        'UPDATE staff_warnings SET read_at = CURRENT_TIMESTAMP WHERE user_id = ? AND read_at IS NULL',
+        `UPDATE staff_warnings SET read_at = CURRENT_TIMESTAMP
+         WHERE user_id = ? AND read_at IS NULL
+           AND created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR`,
         [session.id]
       );
       return NextResponse.json({ success: true, message: 'Semua pesan ditandai sudah dibaca.' });
