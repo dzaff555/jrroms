@@ -65,6 +65,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
+  const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
@@ -218,7 +219,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   };
 
   const handleDeleteMessage = async (message: ChatMessage) => {
-    if (isDeveloper || !window.confirm('Hapus pesan ini untuk semua pengguna?') || deletingMessageId !== null) return;
+    if (isDeveloper || deletingMessageId !== null) return;
 
     setDeletingMessageId(message.id);
     setError(null);
@@ -230,6 +231,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       }
 
       mergeMessages([{ ...message, message: '', deleted_at: new Date().toISOString() }]);
+      setPendingDeleteMessage(null);
     } catch (deleteError: unknown) {
       setError(deleteError instanceof Error ? deleteError.message : 'Gagal menghapus pesan.');
     } finally {
@@ -415,7 +417,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                   {canDelete && (
                     <button
                       type="button"
-                      onClick={() => void handleDeleteMessage(message)}
+                      onClick={() => setPendingDeleteMessage(message)}
                       disabled={deletingMessageId !== null}
                       aria-label={`Hapus pesan dari ${senderName}`}
                       title={ownMessage ? 'Hapus pesan untuk semua' : 'Admin: hapus pesan untuk semua'}
@@ -480,6 +482,58 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           </button>
         </div>
       </form>
+      {pendingDeleteMessage && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && deletingMessageId === null) setPendingDeleteMessage(null);
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-chat-message-title"
+            aria-describedby="delete-chat-message-description"
+            className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-[#161b22]"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h2 id="delete-chat-message-title" className="text-base font-bold text-slate-900 dark:text-white">
+                  Hapus pesan?
+                </h2>
+                <p id="delete-chat-message-description" className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  Pesan ini akan dihapus untuk semua pengguna dan tindakan ini tidak dapat dibatalkan.
+                </p>
+                <p className="mt-3 line-clamp-3 break-words rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-[#0d1117] dark:text-slate-300">
+                  {pendingDeleteMessage.message}
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingDeleteMessage(null)}
+                disabled={deletingMessageId !== null}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeleteMessage(pendingDeleteMessage)}
+                disabled={deletingMessageId !== null}
+                className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingMessageId === pendingDeleteMessage.id && <Loader2 className="h-4 w-4 animate-spin" />}
+                Hapus untuk semua
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
