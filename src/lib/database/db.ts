@@ -88,6 +88,40 @@ async function ensureChatDeletedAtIndex(dbPool: mysql.Pool) {
   }
 }
 
+async function ensureChatReplySchema(dbPool: mysql.Pool) {
+  const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
+    'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+    ['staff_admin_chat_messages', 'reply_to_id']
+  );
+  if (columns.length === 0) {
+    await dbPool.query(
+      'ALTER TABLE staff_admin_chat_messages ADD COLUMN reply_to_id BIGINT UNSIGNED NULL AFTER sender_id'
+    );
+  }
+
+  const [indexes] = await dbPool.query<mysql.RowDataPacket[]>(
+    'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+    ['staff_admin_chat_messages', 'idx_staff_admin_chat_reply_to']
+  );
+  if (indexes.length === 0) {
+    await dbPool.query(
+      'CREATE INDEX idx_staff_admin_chat_reply_to ON staff_admin_chat_messages (reply_to_id)'
+    );
+  }
+
+  const [constraints] = await dbPool.query<mysql.RowDataPacket[]>(
+    'SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?',
+    ['staff_admin_chat_messages', 'fk_staff_admin_chat_reply_to']
+  );
+  if (constraints.length === 0) {
+    await dbPool.query(`
+      ALTER TABLE staff_admin_chat_messages
+      ADD CONSTRAINT fk_staff_admin_chat_reply_to
+      FOREIGN KEY (reply_to_id) REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL
+    `);
+  }
+}
+
 async function ensureProfilePhotoCapacity(dbPool: mysql.Pool) {
   const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
     'SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
@@ -314,6 +348,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       { table: 'staff_admin_chat_messages', column: 'deleted_by', definition: 'INT NULL AFTER deleted_at' },
     ]);
     await ensureChatDeletedAtIndex(dbPool);
+    await ensureChatReplySchema(dbPool);
     await ensureProfilePhotoCapacity(dbPool);
     await ensureEmailIsOptional(dbPool);
 

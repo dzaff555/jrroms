@@ -101,6 +101,7 @@ export function Sidebar({
   const developerNavItems = [
     { label: 'Tugas', href: '/developer/tasks', icon: ClipboardList },
     { label: 'Upload Tugas', href: '/developer/upload', icon: Upload },
+    { label: 'Chat Staff', href: '/developer/chat', icon: MessageCircle },
   ];
 
   const navItems = isAdmin ? adminNavItems : isDeveloper ? developerNavItems : userNavItems;

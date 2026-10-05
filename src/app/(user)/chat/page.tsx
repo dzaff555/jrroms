@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation';
 import { ChatRoom } from '@/components/chat/ChatRoom';
-import { getSessionUser } from '@/lib/auth/auth';
+import { getActiveSession } from '@/lib/auth/active-session';
 
 export default async function ChatPage() {
-  const session = await getSessionUser();
-  if (!session) redirect('/login');
-  if (session.role !== 'USER') {
-    redirect(session.role === 'ADMIN' ? '/admin/chat' : '/developer/tasks');
+  const active = await getActiveSession();
+  if (!active) redirect('/login');
+  if (active.role !== 'USER') {
+    redirect(active.role === 'ADMIN' ? '/admin/chat' : '/developer/chat');
   }
 
-  return <ChatRoom currentUserId={session.id} currentUserRole={session.role} />;
+  return <ChatRoom currentUserId={active.session.id} currentUserRole={active.role} />;
 }

@@ -6,6 +6,34 @@ import { usePathname, useRouter } from 'next/navigation';
 const REFRESH_INTERVAL_MS = 1_000;
 export const AUTO_REFRESH_EVENT = 'app:auto-refresh';
 
+type UserRole = 'USER' | 'ADMIN' | 'DEVELOPER';
+
+function getRoleDestination(role: UserRole, pathname: string) {
+  const isChatRoute = ['/chat', '/admin/chat', '/developer/chat'].includes(pathname);
+  if (isChatRoute) {
+    return role === 'ADMIN' ? '/admin/chat' : role === 'DEVELOPER' ? '/developer/chat' : '/chat';
+  }
+
+  return role === 'ADMIN' ? '/admin/dashboard' : role === 'DEVELOPER' ? '/developer/tasks' : '/dashboard';
+}
+
+function isRoleRouteMismatch(role: UserRole, pathname: string) {
+  if (pathname === '/chat') return role !== 'USER';
+  if (pathname === '/admin/chat') return role !== 'ADMIN';
+  if (pathname === '/developer/chat') return role !== 'DEVELOPER';
+
+  const isAdminRoute = pathname.startsWith('/admin');
+  const isDeveloperRoute = pathname.startsWith('/developer');
+  const isDashboardRoute = pathname === '/dashboard';
+  return isAdminRoute
+    ? role !== 'ADMIN'
+    : isDeveloperRoute
+      ? role !== 'DEVELOPER'
+      : isDashboardRoute
+        ? role !== 'USER'
+        : role === 'ADMIN';
+}
+
 export function AutoRefresh() {
   const router = useRouter();
   const pathname = usePathname();
@@ -29,24 +57,11 @@ export function AutoRefresh() {
       const roleChanged =
         result.roleChanged === true || (currentRole !== null && currentRole !== role);
       currentRole = role;
-      const targetPath = role === 'ADMIN'
-        ? '/admin/dashboard'
-        : role === 'DEVELOPER'
-          ? '/developer/tasks'
-          : '/dashboard';
-      const isAdminRoute = pathname.startsWith('/admin');
-      const isDeveloperRoute = pathname.startsWith('/developer');
-      const isDashboardRoute = pathname === '/dashboard';
-      const routeRoleMismatch = isAdminRoute
-        ? role !== 'ADMIN'
-        : isDeveloperRoute
-          ? role !== 'DEVELOPER'
-          : isDashboardRoute
-            ? role !== 'USER'
-            : role === 'ADMIN';
+      const routeRoleMismatch = isRoleRouteMismatch(role, pathname);
+      const targetPath = routeRoleMismatch ? getRoleDestination(role, pathname) : pathname;
 
       if (roleChanged || routeRoleMismatch) {
-        router.replace(targetPath);
+        if (targetPath !== pathname) router.replace(targetPath);
         return true;
       }
 
@@ -69,16 +84,7 @@ export function AutoRefresh() {
           throw new Error(result.error || 'Gagal memeriksa perubahan data.');
         }
 
-        const isAdminRoute = pathname.startsWith('/admin');
-        const isDeveloperRoute = pathname.startsWith('/developer');
-        const isDashboardRoute = pathname === '/dashboard';
-        const routeRoleMismatch = isAdminRoute
-          ? result.role !== 'ADMIN'
-          : isDeveloperRoute
-            ? result.role !== 'DEVELOPER'
-            : isDashboardRoute
-              ? result.role !== 'USER'
-              : result.role === 'ADMIN';
+        const routeRoleMismatch = isRoleRouteMismatch(result.role, pathname);
         const dataChanged = currentVersion !== null && currentVersion !== result.version;
 
         if (routeRoleMismatch || dataChanged) {

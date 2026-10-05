@@ -83,14 +83,17 @@ CREATE TABLE IF NOT EXISTS admin_inbox_notifications (
 CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   sender_id INT NOT NULL,
+  reply_to_id BIGINT UNSIGNED NULL,
   message VARCHAR(2000) NOT NULL,
   deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
   deleted_by INT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_staff_admin_chat_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_staff_admin_chat_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_staff_admin_chat_reply_to FOREIGN KEY (reply_to_id) REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL,
   INDEX idx_staff_admin_chat_sender (sender_id),
-  INDEX idx_staff_admin_chat_deleted_at (deleted_at)
+  INDEX idx_staff_admin_chat_deleted_at (deleted_at),
+  INDEX idx_staff_admin_chat_reply_to (reply_to_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS developer_tasks (
