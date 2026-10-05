@@ -15,6 +15,7 @@ interface ChatMessage {
   message: string;
   deleted_at: string | null;
   created_at: string;
+  profile_photo_loaded?: boolean | number;
 }
 
 interface ChatApiResponse {
@@ -48,6 +49,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const profilePhotosRef = useRef(new Map<number, string | null>());
   const messageCursorRef = useRef<number | null>(null);
   const deletionCursorRef = useRef<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -57,12 +59,21 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const initialScrollPositionedRef = useRef(false);
 
   const mergeMessages = useCallback((incoming: ChatMessage[], replace = false) => {
+    if (replace) profilePhotosRef.current.clear();
     const byId = new Map((replace ? [] : messagesRef.current).map((message) => [message.id, message]));
     for (const message of incoming) {
+      if (message.profile_photo_loaded || message.profile_photo !== null) {
+        profilePhotosRef.current.set(message.sender_id, message.profile_photo);
+      }
       if (message.deleted_at) byId.delete(message.id);
       else byId.set(message.id, message);
     }
-    const unique = Array.from(byId.values()).sort((left, right) => left.id - right.id);
+    const unique = Array.from(byId.values())
+      .map((message) => ({
+        ...message,
+        profile_photo: message.profile_photo ?? profilePhotosRef.current.get(message.sender_id) ?? null,
+      }))
+      .sort((left, right) => left.id - right.id);
     const latest = unique.slice(-100);
     messagesRef.current = latest;
     setMessages(latest);

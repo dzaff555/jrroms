@@ -70,6 +70,24 @@ async function ensureColumns(
   }
 }
 
+async function ensureChatDeletedAtIndex(dbPool: mysql.Pool) {
+  const [indexes] = await dbPool.query<mysql.RowDataPacket[]>(
+    'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+    ['staff_admin_chat_messages', 'idx_staff_admin_chat_deleted_at']
+  );
+
+  if (indexes.length > 0) return;
+
+  try {
+    await dbPool.query(
+      'CREATE INDEX idx_staff_admin_chat_deleted_at ON staff_admin_chat_messages (deleted_at)'
+    );
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+    if (code !== 'ER_DUP_KEYNAME') throw error;
+  }
+}
+
 async function ensureProfilePhotoCapacity(dbPool: mysql.Pool) {
   const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
     'SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
@@ -295,6 +313,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       { table: 'staff_admin_chat_messages', column: 'deleted_at', definition: 'TIMESTAMP(6) NULL DEFAULT NULL AFTER message' },
       { table: 'staff_admin_chat_messages', column: 'deleted_by', definition: 'INT NULL AFTER deleted_at' },
     ]);
+    await ensureChatDeletedAtIndex(dbPool);
     await ensureProfilePhotoCapacity(dbPool);
     await ensureEmailIsOptional(dbPool);
 

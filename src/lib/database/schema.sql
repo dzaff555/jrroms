@@ -89,7 +89,8 @@ CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_staff_admin_chat_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_staff_admin_chat_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL,
-  INDEX idx_staff_admin_chat_sender (sender_id)
+  INDEX idx_staff_admin_chat_sender (sender_id),
+  INDEX idx_staff_admin_chat_deleted_at (deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS developer_tasks (
