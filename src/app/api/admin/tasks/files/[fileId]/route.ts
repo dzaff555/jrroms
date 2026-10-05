@@ -59,6 +59,12 @@ export async function GET(
     });
   } catch (error: unknown) {
     console.error('[Admin Task File Download Error]:', error);
+    if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+      return NextResponse.json(
+        { success: false, error: 'File tidak ditemukan di penyimpanan. Pastikan Railway Volume terpasang pada UPLOAD_DIR yang sama dengan saat upload.' },
+        { status: 404 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: 'Gagal menyiapkan tautan unduhan file.' },
       { status: 500 }

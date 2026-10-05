@@ -165,14 +165,27 @@ export default function AdminTasksPage() {
     }
   };
 
-  const downloadFile = async (fileId: number) => {
+  const downloadFile = async (fileId: number, fileName: string) => {
     try {
+      const response = await fetch(`/api/admin/tasks/files/${fileId}`, { cache: 'no-store' });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(result?.error || `Gagal mengunduh file (${response.status}).`);
+      }
+
+      const file = await response.blob();
+      if (file.size === 0) {
+        throw new Error('File yang diunduh kosong.');
+      }
+      const objectUrl = URL.createObjectURL(file);
       const link = document.createElement('a');
-      link.href = `/api/admin/tasks/files/${fileId}`;
-      link.download = '';
+      link.href = objectUrl;
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      toast.success('Unduhan dimulai', `${fileName} sedang diunduh.`);
     } catch (error: unknown) {
       toast.error('Unduhan gagal', error instanceof Error ? error.message : 'Terjadi kesalahan.');
     }
@@ -353,7 +366,7 @@ export default function AdminTasksPage() {
                           <p className="truncate text-sm font-semibold text-slate-800">{file.original_name}</p>
                           <p className="text-xs text-slate-500">{file.developer_username} · {formatBytes(file.byte_size)} · {file.uploaded_at}</p>
                         </div>
-                        <Button type="button" variant="outline" size="sm" icon={<Download className="h-4 w-4" />} onClick={() => void downloadFile(file.id)}>
+                        <Button type="button" variant="outline" size="sm" icon={<Download className="h-4 w-4" />} onClick={() => void downloadFile(file.id, file.original_name)}>
                           Unduh
                         </Button>
                       </li>
