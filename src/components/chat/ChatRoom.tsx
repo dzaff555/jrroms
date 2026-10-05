@@ -1,6 +1,6 @@
 'use client';
 
-import React, { FormEvent, KeyboardEvent, useCallback, useEffect, useRef, useState } from 'react';
+import React, { FormEvent, KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Loader2, MessageCircle, Send, ShieldCheck, Trash2, Users } from 'lucide-react';
@@ -50,9 +50,11 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const messagesRef = useRef<ChatMessage[]>([]);
   const messageCursorRef = useRef<number | null>(null);
   const deletionCursorRef = useRef<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const shouldScrollRef = useRef(true);
   const isLoadingMessagesRef = useRef(false);
+  const initialMessagesLoadedRef = useRef(false);
+  const initialScrollPositionedRef = useRef(false);
 
   const mergeMessages = useCallback((incoming: ChatMessage[], replace = false) => {
     const byId = new Map((replace ? [] : messagesRef.current).map((message) => [message.id, message]));
@@ -85,6 +87,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       }
 
       if (cursor === null) {
+        initialMessagesLoadedRef.current = true;
         messageCursorRef.current = result.data.at(-1)?.id ?? 0;
       } else {
         messageCursorRef.current = result.data.reduce(
@@ -118,11 +121,17 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     };
   }, [loadMessages]);
 
-  useEffect(() => {
-    if (shouldScrollRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (isLoading || !initialMessagesLoadedRef.current || !container) return;
+
+    if (!initialScrollPositionedRef.current) {
+      container.scrollTop = container.scrollHeight;
+      initialScrollPositionedRef.current = true;
+    } else if (shouldScrollRef.current) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     }
-  }, [messages]);
+  }, [isLoading, messages]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -203,6 +212,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       </header>
 
       <div
+        ref={messagesContainerRef}
         className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6 dark:bg-[#0d1117]"
         onScroll={(event) => {
           const element = event.currentTarget;
@@ -306,7 +316,6 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             );
           })
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {error && (
