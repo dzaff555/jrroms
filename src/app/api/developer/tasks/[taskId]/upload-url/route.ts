@@ -60,16 +60,27 @@ export async function POST(
     }
 
     const today = getJakartaDateString();
-    const tasks = await query<{ id: number }[]>(
-      `SELECT id FROM developer_tasks
-       WHERE id = ? AND starts_on <= ? AND ends_on >= ?
+    const tasks = await query<{ id: number; is_completed: boolean | number }[]>(
+      `SELECT t.id,
+        EXISTS (
+          SELECT 1 FROM developer_task_completions c
+          WHERE c.task_id = t.id AND c.developer_id = ?
+        ) AS is_completed
+       FROM developer_tasks t
+       WHERE t.id = ? AND t.starts_on <= ? AND t.ends_on >= ?
        LIMIT 1`,
-      [taskId, today, today]
+      [active.session.id, taskId, today, today]
     );
     if (!tasks[0]) {
       return NextResponse.json(
         { success: false, error: 'Tugas belum dimulai atau sudah melewati tanggal akhir.' },
         { status: 403 }
+      );
+    }
+    if (Boolean(tasks[0].is_completed)) {
+      return NextResponse.json(
+        { success: false, error: 'Tugas ini sudah selesai. Anda tidak dapat mengunggah file lagi.' },
+        { status: 409 }
       );
     }
 

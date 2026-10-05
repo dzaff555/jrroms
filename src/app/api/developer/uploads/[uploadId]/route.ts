@@ -42,8 +42,9 @@ export async function PUT(
       blob_name: string;
       byte_size: number;
       status: 'PENDING' | 'UPLOADING' | 'COMPLETE';
+      task_id: number;
     }[]>(
-      `SELECT blob_name, byte_size, status FROM developer_task_files
+      `SELECT blob_name, byte_size, status, task_id FROM developer_task_files
        WHERE id = ? AND developer_id = ? LIMIT 1`,
       [uploadId, active.session.id]
     );
@@ -53,6 +54,17 @@ export async function PUT(
     }
     if (file.status !== 'PENDING') {
       return NextResponse.json({ success: false, error: 'Upload ini sudah dimulai atau sudah selesai.' }, { status: 409 });
+    }
+    const completedTasks = await query<{ task_id: number }[]>(
+      `SELECT task_id FROM developer_task_completions
+       WHERE task_id = ? AND developer_id = ? LIMIT 1`,
+      [file.task_id, active.session.id]
+    );
+    if (completedTasks[0]) {
+      return NextResponse.json(
+        { success: false, error: 'Tugas ini sudah selesai. Upload baru tidak dapat diproses.' },
+        { status: 409 }
+      );
     }
 
     const expectedSize = Number(file.byte_size);

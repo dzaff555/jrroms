@@ -12,6 +12,7 @@ interface DeveloperTaskRecord {
   starts_on: string;
   ends_on: string;
   created_at: string;
+  is_completed: boolean | number;
 }
 
 interface DeveloperTaskFileRecord {
@@ -50,13 +51,17 @@ export async function GET(request: Request) {
 
     const [tasks, files] = await Promise.all([
       query<DeveloperTaskRecord[]>(
-        `SELECT id, title, description, category, file_required,
-          DATE_FORMAT(starts_on, '%Y-%m-%d') AS starts_on,
-          DATE_FORMAT(ends_on, '%Y-%m-%d') AS ends_on,
-          DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at
-         FROM developer_tasks ${where}
-         ORDER BY starts_on DESC, id DESC`,
-        values
+        `SELECT t.id, t.title, t.description, t.category, t.file_required,
+          DATE_FORMAT(t.starts_on, '%Y-%m-%d') AS starts_on,
+          DATE_FORMAT(t.ends_on, '%Y-%m-%d') AS ends_on,
+          DATE_FORMAT(t.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+          EXISTS (
+            SELECT 1 FROM developer_task_completions c
+            WHERE c.task_id = t.id AND c.developer_id = ?
+          ) AS is_completed
+         FROM developer_tasks t ${where}
+         ORDER BY t.starts_on DESC, t.id DESC`,
+        [active.session.id, ...values]
       ),
       query<DeveloperTaskFileRecord[]>(
         `SELECT id, task_id, original_name, content_type, byte_size,
@@ -75,6 +80,7 @@ export async function GET(request: Request) {
         tasks: tasks.map((task) => ({
           ...task,
           file_required: Boolean(task.file_required),
+          is_completed: Boolean(task.is_completed),
           files: files.filter((file) => file.task_id === task.id),
         })),
       },

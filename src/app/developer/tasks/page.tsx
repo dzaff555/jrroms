@@ -23,6 +23,7 @@ interface DeveloperTask {
   file_required: boolean;
   starts_on: string;
   ends_on: string;
+  is_completed: boolean;
   files: TaskFile[];
 }
 
@@ -93,7 +94,11 @@ export default function DeveloperTasksPage() {
       ) : (
         <div className="space-y-4">
           {tasks.map((task) => {
-            const status = today < task.starts_on ? 'Belum dimulai' : today > task.ends_on ? 'Selesai' : 'Sedang berlangsung';
+            const status = task.is_completed || today > task.ends_on
+              ? 'Selesai'
+              : today < task.starts_on
+                ? 'Belum dimulai'
+                : 'Sedang berlangsung';
             return (
               <Card key={task.id} className="space-y-4 p-5 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">

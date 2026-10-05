@@ -23,6 +23,7 @@ interface DeveloperTask {
   file_required: boolean;
   starts_on: string;
   ends_on: string;
+  is_completed: boolean;
   files: TaskFile[];
 }
 
@@ -151,7 +152,17 @@ export default function DeveloperTaskUploadPage() {
         );
       }
 
-      toast.success('Upload selesai', `${files.length} file berhasil dikirim ke tugas "${selectedTask.title}".`);
+      const completeResponse = await fetch(`/api/developer/tasks/${selectedTask.id}/complete`, {
+        method: 'POST',
+      });
+      const completion = await completeResponse.json();
+      if (!completeResponse.ok || !completion.success) {
+        throw new Error(completion.error || 'File terkirim, tetapi status tugas belum dapat diselesaikan.');
+      }
+      toast.success(
+        'Tugas selesai',
+        `${files.length} file berhasil dikirim. Quest ditandai selesai dan upload berikutnya dikunci.`
+      );
       if (fileInput.current) fileInput.current.value = '';
       await loadTasks();
     } catch (error: unknown) {
@@ -167,7 +178,7 @@ export default function DeveloperTaskUploadPage() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-extrabold text-slate-900">Upload Tugas</h1>
-        <p className="mt-1 text-sm text-slate-500">Pilih quest yang sedang aktif, lalu kirim satu atau beberapa file.</p>
+        <p className="mt-1 text-sm text-slate-500">Pilih quest yang sedang aktif, kirim satu atau beberapa file, lalu quest akan ditandai selesai.</p>
       </header>
 
       <Card className="space-y-5 p-5 sm:p-6">
@@ -181,7 +192,9 @@ export default function DeveloperTaskUploadPage() {
           >
             <option value="">Pilih tugas aktif</option>
             {availableTasks.map((task) => (
-              <option key={task.id} value={task.id}>{task.title} · {task.category === 'MODELLING' ? 'Modelling' : 'Scripting'}</option>
+              <option key={task.id} value={task.id} disabled={task.is_completed}>
+                {task.title} · {task.category === 'MODELLING' ? 'Modelling' : 'Scripting'}{task.is_completed ? ' · Selesai' : ''}
+              </option>
             ))}
           </select>
         </label>
@@ -193,6 +206,11 @@ export default function DeveloperTaskUploadPage() {
             <p className="mt-2 text-xs text-slate-500">
               Deadline: {selectedTask.ends_on} · {selectedTask.file_required ? 'File wajib' : 'File opsional'} · Maksimal 1 GB per file
             </p>
+            {selectedTask.is_completed && (
+              <p className="mt-2 text-sm font-semibold text-emerald-700">
+                Tugas selesai. Upload untuk quest ini sudah ditutup.
+              </p>
+            )}
             {selectedTask.files.length > 0 && (
               <p className="mt-2 text-xs font-medium text-emerald-700">
                 Sudah terkirim: {selectedTask.files.map((file) => `${file.original_name} (${formatBytes(file.byte_size)})`).join(', ')}
@@ -206,14 +224,14 @@ export default function DeveloperTaskUploadPage() {
           label="File tugas"
           type="file"
           multiple
-          disabled={!selectedTask || isUploading}
+          disabled={!selectedTask || selectedTask.is_completed || isUploading}
           helperText="Format bebas, dapat memilih beberapa file. Maksimal 1 GB untuk setiap file."
         />
         {uploadProgress && <p role="status" className="text-sm font-medium text-blue-700">{uploadProgress}</p>}
         <Button
           type="button"
           onClick={() => void submitFiles()}
-          disabled={!selectedTask}
+          disabled={!selectedTask || selectedTask.is_completed}
           isLoading={isUploading}
           loadingText="Mengunggah..."
           icon={<UploadCloud className="h-4 w-4" />}
