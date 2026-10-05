@@ -45,7 +45,11 @@ function getDatabaseConfigurationError(): string | null {
 
 async function ensureColumns(
   dbPool: mysql.Pool,
-  migrations: { table: 'users' | 'attendance' | 'staff_warnings'; column: string; definition: string }[]
+  migrations: {
+    table: 'users' | 'attendance' | 'staff_warnings' | 'staff_admin_chat_messages';
+    column: string;
+    definition: string;
+  }[]
 ) {
   for (const migration of migrations) {
     const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
@@ -211,6 +215,19 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         INDEX idx_admin_inbox_notifications_created (admin_id, created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        sender_id INT NOT NULL,
+        message VARCHAR(2000) NOT NULL,
+        deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
+        deleted_by INT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_staff_admin_chat_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_staff_admin_chat_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL,
+        INDEX idx_staff_admin_chat_sender (sender_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
     await ensureDeveloperRole(dbPool);
     await dbPool.query(`
       CREATE TABLE IF NOT EXISTS developer_tasks (
@@ -275,6 +292,8 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       { table: 'users', column: 'profile_completed', definition: 'BOOLEAN NOT NULL DEFAULT FALSE' },
       { table: 'attendance', column: 'attendance_role', definition: "ENUM('CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL') NOT NULL DEFAULT 'CSOT'" },
       { table: 'staff_warnings', column: 'read_at', definition: 'TIMESTAMP NULL DEFAULT NULL AFTER reason' },
+      { table: 'staff_admin_chat_messages', column: 'deleted_at', definition: 'TIMESTAMP(6) NULL DEFAULT NULL AFTER message' },
+      { table: 'staff_admin_chat_messages', column: 'deleted_by', definition: 'INT NULL AFTER deleted_at' },
     ]);
     await ensureProfilePhotoCapacity(dbPool);
     await ensureEmailIsOptional(dbPool);

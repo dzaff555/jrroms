@@ -1,0 +1,54 @@
+import { NextResponse } from 'next/server';
+import { getActiveSession } from '@/lib/auth/active-session';
+import { query } from '@/lib/database/db';
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ messageId: string }> }
+) {
+  try {
+    const active = await getActiveSession();
+    if (!active) {
+      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+    }
+    if (active.role !== 'USER' && active.role !== 'ADMIN') {
+      return NextResponse.json({ success: false, error: 'Akses chat hanya untuk staff dan admin.' }, { status: 403 });
+    }
+
+    const { messageId: messageIdParam } = await params;
+    if (!/^\d+$/.test(messageIdParam) || !Number.isSafeInteger(Number(messageIdParam))) {
+      return NextResponse.json({ success: false, error: 'ID pesan tidak valid.' }, { status: 400 });
+    }
+    const messageId = Number(messageIdParam);
+
+    const messages = await query<{ sender_id: number; deleted_at: Date | null }[]>(
+      'SELECT sender_id, deleted_at FROM staff_admin_chat_messages WHERE id = ? LIMIT 1',
+      [messageId]
+    );
+    const message = messages[0];
+    if (!message) {
+      return NextResponse.json({ success: false, error: 'Pesan tidak ditemukan.' }, { status: 404 });
+    }
+    if (message.deleted_at) {
+      return NextResponse.json({ success: false, error: 'Pesan sudah dihapus.' }, { status: 404 });
+    }
+    if (active.role !== 'ADMIN' && message.sender_id !== active.session.id) {
+      return NextResponse.json({ success: false, error: 'Anda hanya dapat menghapus pesan sendiri.' }, { status: 403 });
+    }
+
+    const result = await query<{ affectedRows: number }>(
+      `UPDATE staff_admin_chat_messages
+       SET message = '', deleted_at = CURRENT_TIMESTAMP(6), deleted_by = ?
+       WHERE id = ? AND deleted_at IS NULL`,
+      [active.session.id, messageId]
+    );
+    if (result.affectedRows === 0) {
+      return NextResponse.json({ success: false, error: 'Pesan sudah dihapus.' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, message: 'Pesan berhasil dihapus untuk semua pengguna.' });
+  } catch (error: unknown) {
+    console.error('[Chat Message DELETE Error]:', error);
+    return NextResponse.json({ success: false, error: 'Gagal menghapus pesan.' }, { status: 500 });
+  }
+}

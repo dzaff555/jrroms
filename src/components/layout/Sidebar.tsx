@@ -17,6 +17,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  MessageCircle,
 } from 'lucide-react';
 import { AuthSession } from '@/types';
 import { useToast } from '../ui/Toast';
@@ -84,10 +85,12 @@ export function Sidebar({
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { label: "Today's Attendance", href: '/attendance', icon: UserCheck },
     { label: 'Attendance History', href: '/attendance/history', icon: History },
+    { label: 'Chat Staff', href: '/chat', icon: MessageCircle },
   ];
 
   const adminNavItems = [
     { label: 'Admin Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+    { label: 'Chat Staff', href: '/admin/chat', icon: MessageCircle },
     { label: 'Tugas Developer', href: '/admin/tasks', icon: ClipboardList },
     { label: 'Attendance Reports', href: '/admin/reports', icon: FileSpreadsheet },
     { label: 'Attendance Statistics', href: '/admin/attendance-statistics', icon: ChartNoAxesColumn },
