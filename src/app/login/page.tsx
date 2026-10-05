@@ -128,8 +128,16 @@ export default function LoginPage() {
       </div>
 
       {/* Right side: Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10 lg:p-16">
-        <div className="w-full max-w-md space-y-8 animate-fade-in">
+      <div className="relative isolate w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10 lg:p-16 overflow-hidden">
+        <Image
+          src="/login-train-background.png"
+          alt=""
+          fill
+          sizes="(max-width: 1023px) 100vw, 0px"
+          className="object-cover opacity-45 lg:hidden"
+        />
+        <div className="absolute inset-0 bg-white/85 dark:bg-[#0d1117]/75 lg:hidden" />
+        <div className="relative z-10 w-full max-w-md space-y-8 animate-fade-in">
           {/* Mobile Brand Logo */}
           <div className="lg:hidden flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
