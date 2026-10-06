@@ -100,15 +100,66 @@ export async function GET(request: Request) {
     const access = await getChatUser({ allowDeveloper: true });
     if ('response' in access) return access.response;
 
-    const afterParam = new URL(request.url).searchParams.get('after');
-    const deletedAfter = new URL(request.url).searchParams.get('deletedAfter');
+    const searchParams = new URL(request.url).searchParams;
+    const searchParam = searchParams.get('search');
+    const aroundParam = searchParams.get('around');
+    const afterParam = searchParams.get('after');
+    const deletedAfter = searchParams.get('deletedAfter');
+    if (searchParam !== null && (searchParam.trim().length < 1 || searchParam.length > 200)) {
+      return NextResponse.json({ success: false, error: 'Kata pencarian harus berisi 1 hingga 200 karakter.' }, { status: 400 });
+    }
     if (deletedAfter !== null && !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{6}$/.test(deletedAfter)) {
       return NextResponse.json({ success: false, error: 'Parameter sinkronisasi chat tidak valid.' }, { status: 400 });
     }
     let messages: ChatMessage[];
     let clock: { server_time: string }[];
+    let searchTotal: number | null = null;
 
-    if (afterParam === null) {
+    if (aroundParam !== null) {
+      if (!/^\d+$/.test(aroundParam) || !Number.isSafeInteger(Number(aroundParam)) || Number(aroundParam) < 1) {
+        return NextResponse.json({ success: false, error: 'ID pesan tidak valid.' }, { status: 400 });
+      }
+      const targetId = Number(aroundParam);
+      const [before, after] = await Promise.all([
+        query<ChatMessage[]>(
+          `${chatMessageSelect} WHERE cm.id < ? ORDER BY cm.id DESC LIMIT 50`,
+          [targetId]
+        ),
+        query<ChatMessage[]>(
+          `${chatMessageSelect} WHERE cm.id >= ? ORDER BY cm.id ASC LIMIT 51`,
+          [targetId]
+        ),
+      ]);
+      if (!after.some((message) => message.id === targetId)) {
+        return NextResponse.json({ success: false, error: 'Pesan tidak ditemukan.' }, { status: 404 });
+      }
+      messages = [...before.reverse(), ...after];
+      clock = await query<{ server_time: string }[]>(
+        "SELECT DATE_FORMAT(CURRENT_TIMESTAMP(6), '%Y-%m-%d %H:%i:%s.%f') AS server_time"
+      );
+    } else if (searchParam !== null) {
+      const term = searchParam.trim();
+      const [matches, count, serverClock] = await Promise.all([
+        query<ChatMessage[]>(
+          `${chatMessageSelect}
+           WHERE cm.deleted_at IS NULL AND LOCATE(LOWER(?), LOWER(COALESCE(cm.message, ''))) > 0
+           ORDER BY cm.id DESC
+           LIMIT 101`,
+          [term]
+        ),
+        query<{ total: number }[]>(
+          `SELECT COUNT(*) AS total FROM staff_admin_chat_messages cm
+           WHERE cm.deleted_at IS NULL AND LOCATE(LOWER(?), LOWER(COALESCE(cm.message, ''))) > 0`,
+          [term]
+        ),
+        query<{ server_time: string }[]>(
+          "SELECT DATE_FORMAT(CURRENT_TIMESTAMP(6), '%Y-%m-%d %H:%i:%s.%f') AS server_time"
+        ),
+      ]);
+      messages = matches.slice(0, 100).reverse();
+      searchTotal = Number(count[0]?.total || 0);
+      clock = serverClock;
+    } else if (afterParam === null) {
       [messages, clock] = await Promise.all([
         query<ChatMessage[]>(`
           SELECT cm.id, cm.sender_id, u.username, u.real_name,
@@ -208,6 +259,7 @@ export async function GET(request: Request) {
           : null,
       })),
       serverTime: clock[0]?.server_time,
+      ...(searchTotal === null ? {} : { searchTotal }),
     });
   } catch (error: unknown) {
     console.error('[Chat messages GET Error]:', error);

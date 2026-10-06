@@ -30,6 +30,7 @@ interface SidebarStaff {
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string;
   profile_photo: string | null;
+  is_online: boolean | number;
 }
 
 export interface SidebarProps {
@@ -49,6 +50,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [staffCount, setStaffCount] = React.useState<number | null>(null);
   const [staffMembers, setStaffMembers] = React.useState<SidebarStaff[]>([]);
+  const [unreadChatCount, setUnreadChatCount] = React.useState(0);
   const pathname = usePathname();
   const router = useRouter();
   const toast = useToast();
@@ -70,10 +72,25 @@ export function Sidebar({
       setStaffCount(null);
     }
   }, [userId]);
+  const refreshChatUnread = React.useCallback(async () => {
+    if (userId === undefined) return;
+
+    try {
+      const response = await fetch('/api/chat/unread', { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal memuat jumlah pesan belum dibaca.');
+      }
+      setUnreadChatCount(Number(result.data?.unread_count || 0));
+    } catch (error: unknown) {
+      console.error('[Sidebar Chat Unread Error]:', error);
+    }
+  }, [userId]);
   const isCurrentStaff = (staff: SidebarStaff) =>
     staff.id === user?.id || staff.username === user?.username;
 
   useAutoRefresh(() => void refreshStaff());
+  useAutoRefresh(() => void refreshChatUnread());
 
   React.useEffect(() => {
     if (userId === undefined) return;
@@ -81,6 +98,30 @@ export function Sidebar({
     const timer = window.setTimeout(() => void refreshStaff(), 0);
     return () => window.clearTimeout(timer);
   }, [refreshStaff, userId]);
+
+  React.useEffect(() => {
+    if (userId === undefined) return;
+
+    const sendPresenceHeartbeat = () => {
+      void fetch('/api/presence', { method: 'POST' }).catch((error: unknown) => {
+        console.error('[Sidebar Presence Heartbeat Error]:', error);
+      });
+    };
+    const refreshSidebarData = () => {
+      void refreshStaff();
+      void refreshChatUnread();
+    };
+    sendPresenceHeartbeat();
+    refreshSidebarData();
+    const presenceTimer = window.setInterval(sendPresenceHeartbeat, 20_000);
+    const refreshTimer = window.setInterval(refreshSidebarData, 15_000);
+    document.addEventListener('visibilitychange', refreshSidebarData);
+    return () => {
+      window.clearInterval(presenceTimer);
+      window.clearInterval(refreshTimer);
+      document.removeEventListener('visibilitychange', refreshSidebarData);
+    };
+  }, [refreshChatUnread, refreshStaff, userId]);
 
   const userNavItems = [
     { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -180,6 +221,7 @@ export function Sidebar({
 
         {navItems.map((item) => {
           const active = isActive(item.href);
+          const isChatItem = item.label === 'Chat Staff';
           const Icon = item.icon;
 
           return (
@@ -187,7 +229,7 @@ export function Sidebar({
               key={item.href}
               href={item.href}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 group ${
+              className={`relative flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-150 group ${
                 active
                   ? 'bg-blue-600 text-white font-semibold shadow-sm shadow-blue-600/30'
                   : 'text-slate-300 hover:text-white hover:bg-white/8'
@@ -200,6 +242,19 @@ export function Sidebar({
                 }`}
               />
               {!collapsed && <span>{item.label}</span>}
+              {isChatItem && unreadChatCount > 0 && (
+                <span
+                  aria-label={`${unreadChatCount} pesan belum dibaca`}
+                  title={`${unreadChatCount} pesan belum dibaca`}
+                  className={`rounded-full bg-emerald-500 text-center text-[10px] font-bold leading-none text-white shadow-sm ${
+                    collapsed
+                      ? 'absolute right-1 top-1 min-w-4 px-1 py-1'
+                      : 'ml-auto min-w-5 px-1.5 py-1'
+                  }`}
+                >
+                  {unreadChatCount > 99 ? '99+' : unreadChatCount}
+                </span>
+              )}
             </Link>
           );
         })}
@@ -220,7 +275,7 @@ export function Sidebar({
                 key={staff.id}
                 href={isAdmin ? `/admin/users/${staff.id}` : `/staff/${staff.id}`}
                 onClick={() => setMobileOpen(false)}
-                title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (You)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role}` : undefined}
+                title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (You)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role} · ${staff.is_online ? 'Online' : 'Offline'}` : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/8 hover:text-white ${collapsed ? 'justify-center px-0' : ''}`}
               >
                 {staff.profile_photo ? (
@@ -235,12 +290,17 @@ export function Sidebar({
                   </div>
                 )}
                 {!collapsed && (
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-semibold text-white">
-                      {staff.username}{isCurrentStaff(staff) ? ' (You)' : ''}
+                  <span className="flex min-w-0 flex-1 items-center justify-between gap-1">
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-semibold text-white">
+                        {staff.username}{isCurrentStaff(staff) ? ' (You)' : ''}
+                      </span>
+                      <span className="truncate text-[11px] text-slate-400">
+                        {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role}
+                      </span>
                     </span>
-                    <span className="truncate text-[11px] text-slate-400">
-                      {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role}
+                    <span className={`shrink-0 text-[10px] font-semibold ${staff.is_online ? 'text-emerald-300' : 'text-slate-500'}`}>
+                      {staff.is_online ? 'Online' : 'Offline'}
                     </span>
                   </span>
                 )}

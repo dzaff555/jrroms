@@ -25,10 +25,14 @@ export async function GET(request: Request) {
       role: 'USER' | 'ADMIN' | 'DEVELOPER';
       attendance_role: string | null;
       profile_photo: string | null;
+      is_online: number | boolean;
     }[]>(
-      `SELECT id, username, role, attendance_role, profile_photo
-       FROM users WHERE status = 'ACTIVE'
-       ORDER BY username ASC LIMIT ? OFFSET ?`,
+      `SELECT users.id, users.username, users.role, users.attendance_role, users.profile_photo,
+         CASE WHEN presence.last_seen_at >= CURRENT_TIMESTAMP - INTERVAL 60 SECOND THEN TRUE ELSE FALSE END AS is_online
+       FROM users
+       LEFT JOIN user_presence AS presence ON presence.user_id = users.id
+       WHERE users.status = 'ACTIVE'
+       ORDER BY users.username ASC LIMIT ? OFFSET ?`,
       [limit, offset]
     );
 

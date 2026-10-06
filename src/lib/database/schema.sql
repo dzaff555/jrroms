@@ -115,6 +115,32 @@ CREATE TABLE IF NOT EXISTS chat_favorite_stickers (
   INDEX idx_chat_favorite_stickers_user (user_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS chat_user_wallpapers (
+  user_id INT PRIMARY KEY,
+  image_type VARCHAR(50) NOT NULL,
+  image_data MEDIUMBLOB NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_chat_user_wallpaper_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS chat_user_chat_reads (
+  user_id INT PRIMARY KEY,
+  last_read_message_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_chat_user_read_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO chat_user_chat_reads (user_id, last_read_message_id)
+SELECT id, COALESCE((SELECT MAX(id) FROM staff_admin_chat_messages), 0)
+FROM users;
+
+CREATE TABLE IF NOT EXISTS user_presence (
+  user_id INT PRIMARY KEY,
+  last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_user_presence_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_user_presence_last_seen (last_seen_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS developer_tasks (
   id INT AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(180) NOT NULL,

@@ -4,7 +4,7 @@ import React, { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, use
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Download, Headphones, Loader2, MessageCircle, Mic, MoreVertical, Paperclip, Pause, Play, Reply, RotateCcw, Send, ShieldCheck, Smile, Star, Trash2, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Download, Headphones, ImagePlus, Loader2, MessageCircle, Mic, MoreVertical, Paperclip, Pause, Play, Reply, RotateCcw, Search, Send, ShieldCheck, Smile, Star, Trash2, Upload, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 import { MAX_CHAT_AUDIO_SIZE, MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
 
@@ -57,11 +57,18 @@ interface ChatApiResponse {
   error?: string;
   serverTime?: string;
   deletedCount?: number;
+  searchTotal?: number;
 }
 
 interface FavoriteStickersApiResponse {
   success: boolean;
   data?: FavoriteSticker[];
+  error?: string;
+}
+
+interface WallpaperApiResponse {
+  success: boolean;
+  data?: { media_url: string | null };
   error?: string;
 }
 
@@ -401,6 +408,13 @@ function renderMessageWithLinks(message: string, ownMessage: boolean) {
 export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const isDeveloper = currentUserRole === 'DEVELOPER';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [searchResults, setSearchResults] = useState<ChatMessage[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTotal, setSearchTotal] = useState(0);
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSearchingMessages, setIsSearchingMessages] = useState(false);
+  const [isJumpingToMessage, setIsJumpingToMessage] = useState(false);
   const [draft, setDraft] = useState('');
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
@@ -429,6 +443,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [messageActionsPosition, setMessageActionsPosition] = useState<{ top: number; left: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [chatWallpaperUrl, setChatWallpaperUrl] = useState<string | null>(null);
+  const [isWallpaperSettingsOpen, setIsWallpaperSettingsOpen] = useState(false);
+  const [isWallpaperLoading, setIsWallpaperLoading] = useState(true);
+  const [isWallpaperSaving, setIsWallpaperSaving] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
@@ -438,6 +456,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const messageSearchInputRef = useRef<HTMLInputElement>(null);
+  const wallpaperInputRef = useRef<HTMLInputElement>(null);
   const stickerInputRef = useRef<HTMLInputElement>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
@@ -651,6 +671,27 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       }
       deletionCursorRef.current = result.serverTime;
       mergeMessages(result.data, cursor === null);
+      if (
+        document.visibilityState === 'visible' &&
+        (cursor === null || result.data.some((message) => message.id > cursor))
+      ) {
+        const lastReadMessageId = result.data.reduce((latestId, message) => Math.max(latestId, message.id), cursor ?? 0);
+        void fetch('/api/chat/unread', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lastReadMessageId }),
+        })
+          .then(async (readResponse) => {
+            const readResult = await readResponse.json() as { success: boolean; error?: string };
+            if (!readResponse.ok || !readResult.success) {
+              throw new Error(readResult.error || 'Gagal memperbarui status pesan terbaca.');
+            }
+          })
+          .catch((readError: unknown) => {
+            console.error('[Chat Read Status Error]:', readError);
+            setError(readError instanceof Error ? readError.message : 'Gagal memperbarui status pesan terbaca.');
+          });
+      }
       setError(null);
     } catch (loadError: unknown) {
       if (loadError instanceof Error && loadError.name === 'AbortError') return;
@@ -660,6 +701,44 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       if (initial) setIsLoading(false);
     }
   }, [mergeMessages]);
+
+  const handleJumpToSearchMessage = async (messageId: number) => {
+    setIsJumpingToMessage(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/chat/messages?around=${messageId}`, { cache: 'no-store' });
+      const result = await response.json() as ChatApiResponse;
+      if (!response.ok || !result.success || !Array.isArray(result.data)) {
+        throw new Error(result.error || 'Gagal membuka pesan yang ditemukan.');
+      }
+
+      const contextMessages = result.data;
+      if (!contextMessages.some((message) => message.id === messageId)) {
+        throw new Error('Pesan yang ditemukan sudah tidak tersedia.');
+      }
+      messagesRef.current = contextMessages;
+      setMessages(contextMessages);
+      shouldScrollRef.current = false;
+      setIsSearchOpen(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      setSearchTotal(0);
+      setIsSearchingMessages(false);
+      window.requestAnimationFrame(() => {
+        document.getElementById(`chat-message-${messageId}`)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+        setHighlightedMessageId(messageId);
+        if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = window.setTimeout(() => setHighlightedMessageId(null), 1800);
+      });
+    } catch (jumpError: unknown) {
+      setError(jumpError instanceof Error ? jumpError.message : 'Gagal membuka pesan yang ditemukan.');
+    } finally {
+      setIsJumpingToMessage(false);
+    }
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -676,9 +755,76 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     };
   }, [loadMessages]);
 
+  useEffect(() => {
+    let isMounted = true;
+    const loadWallpaper = async () => {
+      try {
+        const response = await fetch('/api/chat/wallpaper', { cache: 'no-store' });
+        const result = await response.json() as WallpaperApiResponse;
+        if (!response.ok || !result.success || !result.data) {
+          throw new Error(result.error || 'Gagal memuat wallpaper chat.');
+        }
+        if (isMounted) setChatWallpaperUrl(result.data.media_url);
+      } catch (wallpaperError: unknown) {
+        if (isMounted) {
+          setError(wallpaperError instanceof Error ? wallpaperError.message : 'Gagal memuat wallpaper chat.');
+        }
+      } finally {
+        if (isMounted) setIsWallpaperLoading(false);
+      }
+    };
+    void loadWallpaper();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const term = searchQuery.trim();
+    if (!isSearchOpen || !term) return;
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      const params = new URLSearchParams({ search: term });
+      void fetch(`/api/chat/messages?${params.toString()}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          const result = await response.json() as ChatApiResponse;
+          if (!response.ok || !result.success || !Array.isArray(result.data)) {
+            throw new Error(result.error || 'Gagal mencari pesan chat.');
+          }
+          setSearchResults(result.data);
+          setSearchTotal(result.searchTotal || 0);
+          setSearchMatchIndex(Math.max(0, result.data.length - 1));
+          setError(null);
+        })
+        .catch((searchError: unknown) => {
+          if (searchError instanceof Error && searchError.name === 'AbortError') return;
+          setError(searchError instanceof Error ? searchError.message : 'Gagal mencari pesan chat.');
+          setSearchResults([]);
+          setSearchTotal(0);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setIsSearchingMessages(false);
+        });
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [isSearchOpen, searchQuery]);
+
+  useEffect(() => {
+    if (!isSearchOpen || searchQuery.trim()) return;
+    messageSearchInputRef.current?.focus();
+  }, [isSearchOpen, searchQuery]);
+
   useLayoutEffect(() => {
     const container = messagesContainerRef.current;
-    if (isLoading || !initialMessagesLoadedRef.current || !container) return;
+    if (isLoading || isWallpaperSettingsOpen || isSearchOpen || !initialMessagesLoadedRef.current || !container) return;
 
     if (!initialScrollPositionedRef.current) {
       container.scrollTop = container.scrollHeight;
@@ -686,7 +832,14 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     } else if (shouldScrollRef.current) {
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
     }
-  }, [isLoading, messages]);
+  }, [isLoading, isWallpaperSettingsOpen, isSearchOpen, messages]);
+
+  useLayoutEffect(() => {
+    if (!isSearchOpen || searchResults.length === 0) return;
+    const match = searchResults[searchMatchIndex];
+    const target = document.getElementById(`chat-message-${match.id}`);
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [isSearchOpen, searchMatchIndex, searchResults]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1244,23 +1397,278 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     }
   };
 
+  const handleWallpaperUpload = async (file: File | undefined) => {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      setError('Format wallpaper harus JPEG, PNG, GIF, atau WebP.');
+      return;
+    }
+    if (file.size < 1 || file.size > MAX_CHAT_PHOTO_SIZE) {
+      setError('Ukuran wallpaper maksimal 5 MB.');
+      return;
+    }
+
+    setIsWallpaperSaving(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.set('wallpaper', file);
+      const response = await fetch('/api/chat/wallpaper', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json() as WallpaperApiResponse;
+      if (!response.ok || !result.success || !result.data?.media_url) {
+        throw new Error(result.error || 'Gagal menyimpan wallpaper chat.');
+      }
+      setChatWallpaperUrl(result.data.media_url);
+    } catch (wallpaperError: unknown) {
+      setError(wallpaperError instanceof Error ? wallpaperError.message : 'Gagal menyimpan wallpaper chat.');
+    } finally {
+      setIsWallpaperSaving(false);
+      if (wallpaperInputRef.current) wallpaperInputRef.current.value = '';
+    }
+  };
+
+  const handleResetWallpaper = async () => {
+    setIsWallpaperSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/chat/wallpaper', { method: 'DELETE' });
+      const result = await response.json() as WallpaperApiResponse;
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal mengatur wallpaper ke Default.');
+      }
+      setChatWallpaperUrl(null);
+    } catch (wallpaperError: unknown) {
+      setError(wallpaperError instanceof Error ? wallpaperError.message : 'Gagal mengatur wallpaper ke Default.');
+    } finally {
+      setIsWallpaperSaving(false);
+    }
+  };
+
+  const isShowingSearchResults = isSearchOpen && searchQuery.trim().length > 0;
+  const displayedMessages = isShowingSearchResults ? searchResults : messages;
+
   return (
     <section className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-[#161b22]">
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-slate-700 dark:bg-[#161b22]">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
-          <Users className="h-5 w-5" />
-        </div>
+        {isWallpaperSettingsOpen ? (
+          <button
+            type="button"
+            onClick={() => setIsWallpaperSettingsOpen(false)}
+            aria-label="Kembali ke chat"
+            title="Kembali ke chat"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+        ) : (
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+            <Users className="h-5 w-5" />
+          </div>
+        )}
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-bold text-slate-900 dark:text-white">Chat Staff &amp; Admin</h1>
-          <p className="truncate text-xs text-slate-500 dark:text-slate-400">Grup bersama untuk staff dan admin JRR</p>
+          <h1 className="truncate text-base font-bold text-slate-900 dark:text-white">
+            {isWallpaperSettingsOpen ? 'Pengaturan wallpaper' : 'Chat Staff & Admin'}
+          </h1>
+          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+            {isWallpaperSettingsOpen ? 'Wallpaper ini hanya terlihat oleh akun Anda' : 'Grup bersama untuk staff dan admin JRR'}
+          </p>
         </div>
-        <div className="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:flex dark:bg-emerald-900/30 dark:text-emerald-300">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          Grup internal
-        </div>
+        {!isWallpaperSettingsOpen && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setIsSearchOpen(true);
+                setSearchQuery('');
+                setSearchResults([]);
+                setSearchTotal(0);
+                setSearchMatchIndex(0);
+                setIsSearchingMessages(false);
+              }}
+              aria-label="Cari pesan"
+              title="Cari pesan"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-300"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsWallpaperSettingsOpen(true)}
+              aria-label="Ubah wallpaper chat"
+              title="Ubah wallpaper chat"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-300"
+            >
+              <ImagePlus className="h-5 w-5" />
+            </button>
+            <div className="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:flex dark:bg-emerald-900/30 dark:text-emerald-300">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              Grup internal
+            </div>
+          </>
+        )}
       </header>
 
-      {isMessageSelectionMode && (
+      {isSearchOpen && !isWallpaperSettingsOpen && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-[#161b22] sm:px-6">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={messageSearchInputRef}
+              type="search"
+              value={searchQuery}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setSearchQuery(value);
+                setSearchResults([]);
+                setSearchTotal(0);
+                setSearchMatchIndex(0);
+                setIsSearchingMessages(value.trim().length > 0);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  setIsSearchOpen(false);
+                  setSearchQuery('');
+                  setSearchResults([]);
+                  setSearchTotal(0);
+                  setIsSearchingMessages(false);
+                }
+              }}
+              maxLength={200}
+              placeholder="Cari teks dalam pesan..."
+              aria-label="Cari pesan"
+              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-slate-700 dark:bg-[#0d1117] dark:text-slate-100 dark:focus:border-blue-700 dark:focus:ring-blue-950"
+            />
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <span className="min-w-14 text-center text-xs tabular-nums text-slate-500 dark:text-slate-400" aria-live="polite">
+              {isSearchingMessages
+                ? <Loader2 className="mx-auto h-4 w-4 animate-spin" />
+                : searchQuery.trim()
+                  ? searchTotal > 100
+                    ? `${searchMatchIndex + 1} / 100+`
+                    : searchTotal > 0
+                      ? `${searchMatchIndex + 1} / ${searchTotal}`
+                      : '0 hasil'
+                  : 'Cari'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSearchMatchIndex((index) => (
+                searchResults.length ? (index - 1 + searchResults.length) % searchResults.length : index
+              ))}
+              disabled={searchResults.length < 2 || isSearchingMessages}
+              aria-label="Hasil sebelumnya"
+              title="Hasil sebelumnya"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSearchMatchIndex((index) => (
+                searchResults.length ? (index + 1) % searchResults.length : index
+              ))}
+              disabled={searchResults.length < 2 || isSearchingMessages}
+              aria-label="Hasil berikutnya"
+              title="Hasil berikutnya"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsSearchOpen(false);
+                setSearchQuery('');
+                setSearchResults([]);
+                setSearchTotal(0);
+                setIsSearchingMessages(false);
+              }}
+              aria-label="Tutup pencarian"
+              title="Tutup pencarian"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isWallpaperSettingsOpen && (
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-8 dark:bg-[#0d1117]">
+          <div className="mx-auto w-full max-w-lg">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">Wallpaper chat grup</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              Pilih tampilan latar belakang chat. Pengaturan ini hanya berlaku untuk akun Anda.
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => void handleResetWallpaper()}
+                disabled={isWallpaperLoading || isWallpaperSaving}
+                aria-pressed={!chatWallpaperUrl}
+                className={`flex min-h-36 flex-col items-center justify-center gap-2 rounded-2xl border-2 bg-white p-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#161b22] ${
+                  !chatWallpaperUrl
+                    ? 'border-blue-500 text-blue-700 dark:text-blue-300'
+                    : 'border-slate-200 text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-600'
+                }`}
+              >
+                <span className="flex h-16 w-full items-center justify-center rounded-xl bg-slate-50 text-xs font-medium text-slate-500 dark:bg-[#0d1117] dark:text-slate-400">
+                  Default / kosong
+                </span>
+                <span>{!chatWallpaperUrl ? 'Sedang digunakan' : 'Gunakan Default'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => wallpaperInputRef.current?.click()}
+                disabled={isWallpaperLoading || isWallpaperSaving}
+                className={`flex min-h-36 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  chatWallpaperUrl
+                    ? 'border-blue-500 bg-white text-blue-700 dark:bg-[#161b22] dark:text-blue-300'
+                    : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-200 dark:hover:border-blue-500'
+                }`}
+              >
+                {chatWallpaperUrl ? (
+                  <span
+                    className="h-16 w-full rounded-xl bg-cover bg-center"
+                    style={{ backgroundImage: `url("${chatWallpaperUrl}")` }}
+                    aria-label="Pratinjau wallpaper kustom"
+                  />
+                ) : (
+                  <span className="flex h-16 w-full items-center justify-center rounded-xl bg-slate-50 text-slate-400 dark:bg-[#0d1117]">
+                    <ImagePlus className="h-6 w-6" />
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-2">
+                  {isWallpaperSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {isWallpaperSaving ? 'Menyimpan...' : chatWallpaperUrl ? 'Ganti gambar' : 'Atur gambar kustom'}
+                </span>
+              </button>
+            </div>
+            <input
+              ref={wallpaperInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+              onChange={(event) => void handleWallpaperUpload(event.currentTarget.files?.[0])}
+            />
+            <p className="mt-4 text-xs text-slate-500 dark:text-slate-400">
+              Format JPEG, PNG, GIF, atau WebP. Ukuran maksimal 5 MB.
+            </p>
+            {isWallpaperLoading && (
+              <p className="mt-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Memuat pengaturan wallpaper...
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!isWallpaperSettingsOpen && isMessageSelectionMode && (
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-900 dark:bg-blue-950/30">
           <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
             {selectedMessages.length} pesan dipilih
@@ -1300,7 +1708,13 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
 
       <div
         ref={messagesContainerRef}
-        className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-slate-50 px-3 py-4 sm:px-6 dark:bg-[#0d1117]"
+        className={`${isWallpaperSettingsOpen ? 'hidden' : 'min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-slate-50 px-3 py-4 sm:px-6 dark:bg-[#0d1117]'}`}
+        style={chatWallpaperUrl ? {
+          backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.18)), url("${chatWallpaperUrl}")`,
+          backgroundPosition: 'center',
+          backgroundSize: 'cover',
+          backgroundAttachment: 'fixed',
+        } : undefined}
         onScroll={(event) => {
           const element = event.currentTarget;
           shouldScrollRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
@@ -1313,7 +1727,18 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             <Loader2 className="h-4 w-4 animate-spin" />
             Memuat pesan...
           </div>
-        ) : messages.length === 0 ? (
+        ) : isShowingSearchResults && isSearchingMessages ? (
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Mencari pesan...
+          </div>
+        ) : isShowingSearchResults && searchResults.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+            <Search className="mb-3 h-8 w-8 text-slate-400" />
+            <h2 className="font-semibold text-slate-800 dark:text-slate-100">Tidak ada pesan yang cocok</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Coba kata atau kalimat lain.</p>
+          </div>
+        ) : displayedMessages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center">
             <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
               <MessageCircle className="h-7 w-7" />
@@ -1326,7 +1751,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             </p>
           </div>
         ) : (
-          messages.map((message) => {
+          displayedMessages.map((message) => {
             const ownMessage = isOwnMessage(message);
             const canDelete = canDeleteMessage(message);
             const isSelected = selectedMessageIds.includes(message.id);
@@ -1339,7 +1764,15 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 id={`chat-message-${message.id}`}
                 className={`relative flex touch-pan-y scroll-m-4 rounded-xl transition-colors duration-500 ${
                   ownMessage ? 'justify-end' : 'justify-start'
-                } ${isMessageSelectionMode ? 'pl-8' : ''} ${isSelected ? 'bg-rose-100/70 dark:bg-rose-950/30' : highlightedMessageId === message.id ? 'bg-blue-100/70 dark:bg-blue-900/30' : ''}`}
+                } ${isMessageSelectionMode ? 'pl-8' : ''} ${
+                  isSearchOpen && searchResults[searchMatchIndex]?.id === message.id
+                    ? 'bg-amber-200/70 dark:bg-amber-900/40'
+                    : isSelected
+                      ? 'bg-rose-100/70 dark:bg-rose-950/30'
+                      : highlightedMessageId === message.id
+                        ? 'bg-blue-100/70 dark:bg-blue-900/30'
+                        : ''
+                }`}
                 onPointerDown={(event) => handleReplySwipeStart(event, message)}
                 onPointerMove={(event) => handleReplySwipeMove(event, message)}
                 onPointerUp={(event) => finishReplySwipe(event, message)}
@@ -1539,6 +1972,21 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                       </time>
                     </div>}
                   </article>
+                  {isShowingSearchResults && (
+                    <button
+                      type="button"
+                      onClick={() => void handleJumpToSearchMessage(message.id)}
+                      disabled={isJumpingToMessage}
+                      aria-label={`Ke pesan dari ${senderName}`}
+                      title="Buka pesan di percakapan"
+                      className="mb-1 inline-flex shrink-0 items-center gap-1 rounded-full border border-blue-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:border-blue-400 hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60 dark:border-blue-900 dark:bg-[#161b22] dark:text-blue-300 dark:hover:bg-blue-950/40"
+                    >
+                      {isJumpingToMessage
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <ArrowRight className="h-3.5 w-3.5" />}
+                      <span className="hidden sm:inline">Ke pesan</span>
+                    </button>
+                  )}
                   <div
                     ref={openMessageActionsId === message.id ? messageActionsRef : null}
                     className="relative mb-1 shrink-0"
@@ -1797,6 +2245,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         </div>
       )}
 
+      {!isWallpaperSettingsOpen && (
       <form onSubmit={handleSubmit} className="z-10 shrink-0 bg-transparent px-2 pb-2 pt-2 sm:px-4 sm:pb-3">
         {replyTarget && (
           <div className="mb-3 flex items-center gap-2 rounded-xl border-l-4 border-blue-500 bg-blue-50 px-3 py-2 dark:bg-blue-950/30">
@@ -2099,6 +2548,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           </button>
         </div>
       </form>
+      )}
       {(pendingDeleteMessage || pendingBulkDelete) && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
