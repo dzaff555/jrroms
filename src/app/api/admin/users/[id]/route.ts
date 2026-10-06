@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getSessionUser, hashPassword } from '@/lib/auth/auth';
-import { query } from '@/lib/database/db';
+import { getDbPool, query } from '@/lib/database/db';
 import { isAttendanceRole } from '@/types';
 
 export async function GET(
@@ -230,12 +230,50 @@ export async function DELETE(
       );
     }
 
-    const result = await query<{ affectedRows: number }>(
-      'DELETE FROM users WHERE id = ?',
-      [userId]
-    );
-    if (result.affectedRows === 0) {
-      return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
+    const connection = await getDbPool().getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [userRows] = await connection.query(
+        'SELECT id FROM users WHERE id = ? FOR UPDATE',
+        [userId]
+      );
+      if (!Array.isArray(userRows) || userRows.length === 0) {
+        await connection.rollback();
+        return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
+      }
+
+      await connection.query('UPDATE staff_warnings SET issued_by = NULL WHERE issued_by = ?', [userId]);
+      await connection.query('UPDATE staff_admin_chat_messages SET deleted_by = NULL WHERE deleted_by = ?', [userId]);
+      await connection.query('UPDATE developer_tasks SET created_by = NULL WHERE created_by = ?', [userId]);
+
+      await connection.query('DELETE FROM developer_task_files WHERE developer_id = ?', [userId]);
+      await connection.query('DELETE FROM developer_task_completions WHERE developer_id = ?', [userId]);
+      await connection.query('DELETE FROM chat_favorite_stickers WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM chat_user_wallpapers WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM chat_user_chat_reads WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM user_presence WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM admin_inbox_notifications WHERE admin_id = ?', [userId]);
+      await connection.query('DELETE FROM admin_attendance_inbox WHERE admin_id = ?', [userId]);
+      await connection.query('DELETE FROM staff_warnings WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM attendance WHERE user_id = ?', [userId]);
+      await connection.query('DELETE FROM staff_admin_chat_messages WHERE sender_id = ?', [userId]);
+
+      const [deleteResult] = await connection.query(
+        'DELETE FROM users WHERE id = ?',
+        [userId]
+      );
+      if (!('affectedRows' in deleteResult) || deleteResult.affectedRows !== 1) {
+        await connection.rollback();
+        return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
+      }
+
+      await connection.commit();
+    } catch (deleteError: unknown) {
+      await connection.rollback();
+      throw deleteError;
+    } finally {
+      connection.release();
     }
 
     return NextResponse.json({ success: true, message: 'Akun dan riwayat absensinya berhasil dihapus.' });
