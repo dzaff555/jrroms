@@ -31,13 +31,13 @@ export default function ProfilePage() {
         if (!data.success) return;
 
         setUser(data.data);
-        if (data.data.role !== 'ADMIN') {
-          const profileResponse = await fetch('/api/profile', { cache: 'no-store' });
-          const profileData = await profileResponse.json();
-          if (profileResponse.ok && profileData.success) {
+        const profileResponse = await fetch('/api/profile', { cache: 'no-store' });
+        const profileData = await profileResponse.json();
+        if (profileResponse.ok && profileData.success) {
+          if (data.data.role !== 'ADMIN') {
             setRealName(profileData.data.real_name || '');
-            setNip(profileData.data.nip || null);
           }
+          setNip(profileData.data.nip || null);
         }
       } catch (error: unknown) {
         console.error('Failed to refresh profile:', error);
@@ -56,15 +56,15 @@ export default function ProfilePage() {
         }
         setUser(data.data);
 
-        if (data.data.role !== 'ADMIN') {
-          const profileRes = await fetch('/api/profile');
-          const profileData = await profileRes.json();
-          if (!profileRes.ok || !profileData.success) {
-            throw new Error(profileData.error || 'Nama asli tidak dapat dimuat.');
-          }
-          setRealName(profileData.data.real_name || '');
-          setNip(profileData.data.nip || null);
+        const profileRes = await fetch('/api/profile');
+        const profileData = await profileRes.json();
+        if (!profileRes.ok || !profileData.success) {
+          throw new Error(profileData.error || 'Data profil tidak dapat dimuat.');
         }
+        if (data.data.role !== 'ADMIN') {
+          setRealName(profileData.data.real_name || '');
+        }
+        setNip(profileData.data.nip || null);
       } catch (error: unknown) {
         console.error('Failed to load profile:', error);
         router.replace('/login');
@@ -172,15 +172,13 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          {user?.role !== 'ADMIN' && (
-            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">NIP</p>
-              <p className="mt-1 break-words text-sm font-bold text-slate-800">
-                {nip || 'Belum ditetapkan administrator'}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">NIP bersifat tetap dan hanya dapat diubah oleh administrator melalui Kelola Pengguna.</p>
-            </div>
-          )}
+          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">NIP</p>
+            <p className="mt-1 break-words text-sm font-bold text-slate-800">
+              {nip || 'Belum ditetapkan administrator'}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">NIP bersifat tetap dan hanya dapat diubah oleh administrator melalui Kelola Pengguna.</p>
+          </div>
 
           <ProfileForm
             initialValues={{

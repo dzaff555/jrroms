@@ -11,6 +11,7 @@ interface StaffProfile {
   username: string;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string | null;
+  nip: string | null;
   profile_photo: string | null;
   roblox_username: string | null;
   discord_username: string | null;
@@ -33,7 +34,7 @@ export default async function StaffProfilePage({
 
   const attendanceThroughDate = getLastCompletedAttendanceDate();
   const staffRows = await query<StaffProfile[]>(
-    `SELECT u.id, u.username, u.role, u.attendance_role, u.profile_photo,
+    `SELECT u.id, u.username, u.role, u.attendance_role, u.nip, u.profile_photo,
       u.roblox_username, u.discord_username,
       DATE_FORMAT(
         CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
@@ -98,6 +99,12 @@ export default async function StaffProfilePage({
           </div>
 
           <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 sm:p-6">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                <UserRound className="h-4 w-4" /> NIP
+              </div>
+              <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.nip || 'Belum ditetapkan'}</p>
+            </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                 <UserRound className="h-4 w-4" /> Nama pengguna Roblox

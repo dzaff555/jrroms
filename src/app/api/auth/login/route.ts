@@ -6,7 +6,8 @@ import { User, AuthSession, AttendanceRole, isAttendanceRole } from '@/types';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { username, password, rememberMe } = body;
+    const { nip, password, rememberMe } = body;
+    const loginNip = typeof nip === 'string' ? nip.trim() : '';
 
     // Check connection first
     const connCheck = await testConnection();
@@ -26,23 +27,28 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!username || !password) {
+    if (!loginNip || typeof password !== 'string' || !password) {
       return NextResponse.json(
-        { success: false, error: 'Nama pengguna dan kata sandi wajib diisi.' },
+        { success: false, error: 'NIP dan kata sandi wajib diisi.' },
         { status: 400 }
       );
     }
 
-    // Query user by username or email
     const users = await query<User[]>(
-      'SELECT id, username, email, password, role, status FROM users WHERE username = ? OR email = ? LIMIT 1',
-      [username.trim(), username.trim()]
+      'SELECT id, username, email, password, role, status FROM users WHERE nip = ? LIMIT 2',
+      [loginNip]
     );
 
     if (!users || users.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'ID atau kata sandi salah.' },
+        { success: false, error: 'NIP atau kata sandi salah.' },
         { status: 401 }
+      );
+    }
+    if (users.length > 1) {
+      return NextResponse.json(
+        { success: false, error: 'NIP ini terdaftar pada lebih dari satu akun. Hubungi administrator untuk memperbaikinya.' },
+        { status: 409 }
       );
     }
 
@@ -60,7 +66,7 @@ export async function POST(request: Request) {
     const isPasswordValid = await comparePassword(password, user.password || '');
     if (!isPasswordValid) {
       return NextResponse.json(
-        { success: false, error: 'ID atau kata sandi salah.' },
+        { success: false, error: 'NIP atau kata sandi salah.' },
         { status: 401 }
       );
     }

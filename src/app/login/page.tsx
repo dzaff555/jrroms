@@ -12,7 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 export default function LoginPage() {
   const toast = useToast();
 
-  const [username, setUsername] = useState('');
+  const [nip, setNip] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -22,8 +22,8 @@ export default function LoginPage() {
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!username.trim() || !password) {
-      setErrorMessage('Harap masukkan nama pengguna dan kata sandi Anda.');
+    if (!nip.trim() || !password) {
+      setErrorMessage('Harap masukkan NIP dan kata sandi Anda.');
       return;
     }
 
@@ -33,13 +33,13 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, rememberMe }),
+        body: JSON.stringify({ nip, password, rememberMe }),
       });
 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        const err = data.error || 'ID atau kata sandi salah.';
+        const err = data.error || 'NIP atau kata sandi salah.';
         setErrorMessage(err);
         toast.error('Gagal Masuk', err);
         return;
@@ -172,12 +172,13 @@ export default function LoginPage() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             <Input
-              label="ID / Nama pengguna atau email"
-              placeholder="Nama pengguna"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              label="NIP"
+              placeholder="Masukkan NIP yang ditetapkan admin"
+              value={nip}
+              onChange={(e) => setNip(e.target.value)}
               required
               autoComplete="username"
+              inputMode="numeric"
             />
 
             <div className="space-y-1">

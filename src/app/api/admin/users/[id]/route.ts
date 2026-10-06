@@ -93,6 +93,18 @@ export async function PATCH(
     if (typeof nip === 'string' && nip.trim().length > 50) {
       return NextResponse.json({ success: false, error: 'NIP maksimal 50 karakter.' }, { status: 400 });
     }
+    if (typeof nip === 'string' && nip.trim()) {
+      const existingNipUsers = await query<{ id: number }[]>(
+        'SELECT id FROM users WHERE nip = ? AND id <> ? LIMIT 1',
+        [nip.trim(), targetUserId]
+      );
+      if (existingNipUsers.length > 0) {
+        return NextResponse.json(
+          { success: false, error: 'NIP tersebut sudah digunakan akun lain.' },
+          { status: 409 }
+        );
+      }
+    }
 
     if (
       attendanceRole !== undefined &&
