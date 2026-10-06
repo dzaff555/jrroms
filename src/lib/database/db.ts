@@ -274,12 +274,27 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         message VARCHAR(2000) NOT NULL,
         image_path VARCHAR(255) NULL,
         image_type VARCHAR(50) NULL,
+        is_sticker BOOLEAN NOT NULL DEFAULT FALSE,
         deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
         deleted_by INT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_staff_admin_chat_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
         CONSTRAINT fk_staff_admin_chat_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL,
         INDEX idx_staff_admin_chat_sender (sender_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS chat_favorite_stickers (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        source_message_id BIGINT UNSIGNED NULL,
+        image_type VARCHAR(50) NOT NULL,
+        image_data MEDIUMBLOB NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_chat_favorite_sticker_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_chat_favorite_sticker_source FOREIGN KEY (source_message_id) REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL,
+        UNIQUE KEY unique_chat_favorite_sticker_source (user_id, source_message_id),
+        INDEX idx_chat_favorite_stickers_user (user_id, created_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await ensureDeveloperRole(dbPool);
@@ -351,6 +366,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       { table: 'staff_admin_chat_messages', column: 'image_path', definition: 'VARCHAR(255) NULL AFTER message' },
       { table: 'staff_admin_chat_messages', column: 'image_type', definition: 'VARCHAR(50) NULL AFTER image_path' },
       { table: 'staff_admin_chat_messages', column: 'image_data', definition: 'MEDIUMBLOB NULL AFTER image_type' },
+      { table: 'staff_admin_chat_messages', column: 'is_sticker', definition: 'BOOLEAN NOT NULL DEFAULT FALSE AFTER image_data' },
     ]);
     await ensureChatDeletedAtIndex(dbPool);
     await ensureChatReplySchema(dbPool);

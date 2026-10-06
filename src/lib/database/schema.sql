@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
   image_path VARCHAR(255) NULL,
   image_type VARCHAR(50) NULL,
   image_data MEDIUMBLOB NULL,
+  is_sticker BOOLEAN NOT NULL DEFAULT FALSE,
   deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
   deleted_by INT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -97,6 +98,19 @@ CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
   INDEX idx_staff_admin_chat_sender (sender_id),
   INDEX idx_staff_admin_chat_deleted_at (deleted_at),
   INDEX idx_staff_admin_chat_reply_to (reply_to_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS chat_favorite_stickers (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  source_message_id BIGINT UNSIGNED NULL,
+  image_type VARCHAR(50) NOT NULL,
+  image_data MEDIUMBLOB NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_chat_favorite_sticker_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_chat_favorite_sticker_source FOREIGN KEY (source_message_id) REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL,
+  UNIQUE KEY unique_chat_favorite_sticker_source (user_id, source_message_id),
+  INDEX idx_chat_favorite_stickers_user (user_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS developer_tasks (

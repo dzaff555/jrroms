@@ -3,9 +3,9 @@
 import React, { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Download, ImagePlus, ListChecks, Loader2, MessageCircle, MoreVertical, Reply, RotateCcw, Send, ShieldCheck, Trash2, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Download, Headphones, Loader2, MessageCircle, Mic, MoreVertical, Paperclip, Pause, Play, Reply, RotateCcw, Send, ShieldCheck, Smile, Star, Trash2, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
-import { MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
+import { MAX_CHAT_AUDIO_SIZE, MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
 
 interface RepliedMessage {
   id: number;
@@ -33,6 +33,14 @@ interface ChatMessage {
   reply_to?: RepliedMessage | null;
   media_url?: string | null;
   media_type?: string | null;
+  is_sticker?: boolean | number;
+}
+
+interface FavoriteSticker {
+  id: number;
+  image_type: string;
+  source_message_id: number | null;
+  media_url: string;
 }
 
 interface ChatApiResponse {
@@ -41,6 +49,12 @@ interface ChatApiResponse {
   error?: string;
   serverTime?: string;
   deletedCount?: number;
+}
+
+interface FavoriteStickersApiResponse {
+  success: boolean;
+  data?: FavoriteSticker[];
+  error?: string;
 }
 
 interface ChatRoomProps {
@@ -65,20 +79,228 @@ function formatAccountRole(message: Pick<ChatMessage, 'role' | 'attendance_role'
   return message.attendance_role || 'Staff';
 }
 
+function formatAudioTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function ChatAudioPlayer({
+  src,
+  senderName,
+  profilePhoto,
+  onDownload,
+  ownMessage,
+}: {
+  src: string;
+  senderName: string;
+  profilePhoto: string | null;
+  onDownload: () => void;
+  ownMessage: boolean;
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [hasPlaybackError, setHasPlaybackError] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const progress = duration > 0 ? currentTime / duration : 0;
+
+  const togglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      setHasPlaybackError(false);
+      void audio.play().catch(() => {
+        setIsPlaying(false);
+        setHasPlaybackError(true);
+      });
+    } else {
+      audio.pause();
+    }
+  };
+
+  return (
+    <div className={`flex w-72 max-w-full items-center gap-2 rounded-2xl p-2 ${
+      ownMessage
+        ? 'bg-white/10'
+        : 'bg-slate-100 dark:bg-slate-800/80'
+    }`}>
+      <audio
+        ref={audioRef}
+        src={src}
+        preload="metadata"
+        controls={hasPlaybackError}
+        className={hasPlaybackError ? 'mt-1 h-8 w-full' : 'hidden'}
+        onError={() => setHasPlaybackError(true)}
+        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => {
+          setIsPlaying(false);
+          setCurrentTime(0);
+        }}
+      />
+      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+        {profilePhoto ? (
+          <ProtectedProfilePhoto src={profilePhoto} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-amber-500 text-white">
+            <Headphones className="h-5 w-5" />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex h-8 items-center gap-1">
+          <button
+            type="button"
+            onClick={togglePlayback}
+            aria-label={`${isPlaying ? 'Jeda' : 'Putar'} audio dari ${senderName}`}
+            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition ${
+              ownMessage
+                ? 'text-emerald-300 hover:bg-white/10'
+                : 'text-emerald-700 hover:bg-emerald-900/10 dark:text-emerald-300 dark:hover:bg-white/10'
+            }`}
+          >
+            {isPlaying
+              ? <Pause className="h-4 w-4 fill-current" />
+              : <Play className="ml-0.5 h-4 w-4 fill-current" />}
+          </button>
+          <div className="relative flex h-8 min-w-0 flex-1 items-center gap-[2px]">
+            {Array.from({ length: 36 }, (_, index) => {
+              const height = 4 + ((index * 17 + index * index * 7) % 21);
+              return (
+                <span
+                  key={index}
+                  className={`flex-1 rounded-full ${
+                    index / 36 <= progress
+                      ? 'bg-emerald-400'
+                      : ownMessage
+                        ? 'bg-blue-100/50'
+                        : 'bg-emerald-800/35 dark:bg-emerald-100/40'
+                  }`}
+                  style={{ height }}
+                />
+              );
+            })}
+            <input
+              type="range"
+              min={0}
+              max={duration || 1}
+              step={0.1}
+              value={Math.min(currentTime, duration || 0)}
+              onChange={(event) => {
+                const audio = audioRef.current;
+                if (audio) audio.currentTime = Number(event.target.value);
+              }}
+              aria-label="Posisi audio"
+              className="absolute inset-0 h-8 w-full cursor-pointer opacity-0"
+            />
+          </div>
+        </div>
+        <div className={`flex items-center justify-between text-[10px] ${
+          ownMessage ? 'text-blue-100' : 'text-slate-600 dark:text-slate-300'
+        }`}>
+          <span>{formatAudioTime(currentTime)}</span>
+          <span>{formatAudioTime(duration)}</span>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onDownload}
+        aria-label={`Unduh audio dari ${senderName}`}
+        title="Unduh audio"
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
+          ownMessage
+            ? 'text-blue-100 hover:bg-white/10'
+            : 'text-slate-600 hover:bg-emerald-950/10 dark:text-slate-200 dark:hover:bg-white/10'
+        }`}
+      >
+        <Download className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function renderMessageWithLinks(message: string, ownMessage: boolean) {
+  const urlPattern = /https?:\/\/[^\s<>]+|(?:www\.)?[a-z\d](?:[a-z\d-]*[a-z\d])?(?:\.[a-z\d](?:[a-z\d-]*[a-z\d])?)+(?:\/[^\s<>]*)?/gi;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+
+  for (const match of message.matchAll(urlPattern)) {
+    const matchedUrl = match[0];
+    const matchIndex = match.index;
+    let linkText = matchedUrl.replace(/[.,!?;:]+$/, '');
+    while (/[)\]}]$/.test(linkText)) {
+      const closingCharacter = linkText.at(-1);
+      const openingCharacter = closingCharacter === ')' ? '(' : closingCharacter === ']' ? '[' : '{';
+      if (linkText.split(openingCharacter).length >= linkText.split(closingCharacter!).length) break;
+      linkText = linkText.slice(0, -1);
+    }
+
+    if (!linkText) continue;
+    if (matchIndex > lastIndex) parts.push(message.slice(lastIndex, matchIndex));
+
+    const href = /^https?:\/\//i.test(linkText) ? linkText : `https://${linkText}`;
+    let parsedUrl: URL | null = null;
+    try {
+      const candidateUrl = new URL(href);
+      if (candidateUrl.protocol === 'http:' || candidateUrl.protocol === 'https:') {
+        parsedUrl = candidateUrl;
+      }
+    } catch {
+      parsedUrl = null;
+    }
+
+    if (parsedUrl) {
+      parts.push(
+        <a
+          key={`${matchIndex}-${linkText}`}
+          href={parsedUrl.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`break-all underline underline-offset-2 ${
+            ownMessage
+              ? 'text-blue-100 hover:text-white'
+              : 'text-blue-700 hover:text-blue-900 dark:text-blue-300 dark:hover:text-blue-100'
+          }`}
+        >
+          {linkText}
+        </a>
+      );
+    } else {
+      parts.push(linkText);
+    }
+    parts.push(matchedUrl.slice(linkText.length));
+    lastIndex = matchIndex + matchedUrl.length;
+  }
+
+  if (lastIndex < message.length) parts.push(message.slice(lastIndex));
+  return parts;
+}
+
 export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const isDeveloper = currentUserRole === 'DEVELOPER';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [isVoiceRecordingPaused, setIsVoiceRecordingPaused] = useState(false);
+  const [voiceRecordingDuration, setVoiceRecordingDuration] = useState(0);
+  const [favoriteStickers, setFavoriteStickers] = useState<FavoriteSticker[]>([]);
+  const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ url: string; senderName: string } | null>(null);
+  const [videoViewer, setVideoViewer] = useState<{ url: string; senderName: string; message: ChatMessage } | null>(null);
   const [photoZoom, setPhotoZoom] = useState(1);
   const [photoOffset, setPhotoOffset] = useState({ x: 0, y: 0 });
   const [isDraggingPhoto, setIsDraggingPhoto] = useState(false);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
+  const [isMessageSelectionMode, setIsMessageSelectionMode] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [openMessageActionsId, setOpenMessageActionsId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,6 +314,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const stickerInputRef = useRef<HTMLInputElement>(null);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
   const attachmentPreviewUrlRef = useRef<string | null>(null);
   const photoViewerRef = useRef<HTMLDivElement>(null);
   const photoImageRef = useRef<HTMLImageElement>(null);
@@ -111,9 +337,33 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     setAttachmentFile(file);
   }, []);
 
+  const loadFavoriteStickers = useCallback(async () => {
+    try {
+      const response = await fetch('/api/chat/stickers', { cache: 'no-store' });
+      const result = await response.json() as FavoriteStickersApiResponse;
+      if (!response.ok || !result.success || !Array.isArray(result.data)) {
+        throw new Error(result.error || 'Gagal memuat stiker favorit.');
+      }
+      setFavoriteStickers(result.data);
+    } catch (stickerError: unknown) {
+      setError(stickerError instanceof Error ? stickerError.message : 'Gagal memuat stiker favorit.');
+    }
+  }, []);
+
   useEffect(() => () => {
     if (attachmentPreviewUrlRef.current) URL.revokeObjectURL(attachmentPreviewUrlRef.current);
+    const recorder = voiceRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+    voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
   }, []);
+
+  useEffect(() => {
+    if (!isRecordingVoice || isVoiceRecordingPaused) return;
+    const timer = window.setInterval(() => {
+      setVoiceRecordingDuration((duration) => duration + 1);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isRecordingVoice, isVoiceRecordingPaused]);
 
   useEffect(() => {
     if (openMessageActionsId === null) return;
@@ -145,6 +395,17 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [photoViewer]);
+
+  useEffect(() => {
+    if (!videoViewer) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setVideoViewer(null);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [videoViewer]);
 
   const mergeMessages = useCallback((incoming: ChatMessage[], replace = false) => {
     if (replace) profilePhotosRef.current.clear();
@@ -297,6 +558,172 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     }
   };
 
+  const startVoiceRecording = async () => {
+    if (isSending || isRecordingVoice || attachmentFile) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('Perekam suara tidak didukung di browser ini.');
+      return;
+    }
+
+    setError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      const supportedTypes = [
+        'audio/webm;codecs=opus',
+        'audio/mp4',
+        'audio/ogg;codecs=opus',
+        'audio/webm',
+      ];
+      const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      voiceChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const recordedMimeType = recorder.mimeType.split(';')[0] || voiceChunksRef.current[0]?.type.split(';')[0] || 'audio/webm';
+        const blob = new Blob(voiceChunksRef.current, { type: recordedMimeType });
+        voiceChunksRef.current = [];
+        stream.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        voiceRecorderRef.current = null;
+        setIsRecordingVoice(false);
+        setIsVoiceRecordingPaused(false);
+
+        if (blob.size < 1) {
+          setError('Rekaman suara kosong. Coba rekam kembali.');
+          return;
+        }
+        if (blob.size > MAX_CHAT_AUDIO_SIZE) {
+          setError('Ukuran voice note maksimal 15 MB. Rekam suara yang lebih pendek.');
+          return;
+        }
+
+        const extensionByType: Record<string, string> = {
+          'audio/mp4': 'm4a',
+          'audio/ogg': 'ogg',
+          'audio/webm': 'webm',
+        };
+        const extension = extensionByType[recordedMimeType];
+        if (!extension) {
+          setError('Format rekaman suara tidak didukung.');
+          return;
+        }
+        updateAttachment(new File([blob], `voice-note.${extension}`, { type: recordedMimeType }));
+      };
+
+      voiceRecorderRef.current = recorder;
+      setVoiceRecordingDuration(0);
+      setIsVoiceRecordingPaused(false);
+      recorder.start(250);
+      setIsRecordingVoice(true);
+    } catch (recordError: unknown) {
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+      voiceRecorderRef.current = null;
+      setError(
+        recordError instanceof Error && recordError.name === 'NotAllowedError'
+          ? 'Izin mikrofon ditolak. Izinkan akses mikrofon lalu coba lagi.'
+          : recordError instanceof Error
+            ? `Gagal memulai rekaman suara: ${recordError.message}`
+            : 'Gagal memulai rekaman suara.'
+      );
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    const recorder = voiceRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') recorder.stop();
+  };
+
+  const toggleVoiceRecordingPause = () => {
+    const recorder = voiceRecorderRef.current;
+    if (!recorder) return;
+    if (recorder.state === 'recording') {
+      recorder.pause();
+      setIsVoiceRecordingPaused(true);
+    } else if (recorder.state === 'paused') {
+      recorder.resume();
+      setIsVoiceRecordingPaused(false);
+    }
+  };
+
+  const handleSendSticker = async (source: { file: File } | { favoriteId: number }) => {
+    if (isSending) return;
+
+    setIsSending(true);
+    setError(null);
+    const replyToId = replyTarget?.id ?? null;
+    setReplyTarget(null);
+    try {
+      let body: BodyInit;
+      let headers: HeadersInit | undefined;
+      if ('file' in source) {
+        const form = new FormData();
+        form.set('message', '');
+        if (replyToId !== null) form.set('replyToId', String(replyToId));
+        form.set('attachment', source.file);
+        form.set('isSticker', 'true');
+        body = form;
+      } else {
+        headers = { 'Content-Type': 'application/json' };
+        body = JSON.stringify({ message: '', replyToId, stickerId: source.favoriteId });
+      }
+
+      const response = await fetch('/api/chat/messages', { method: 'POST', headers, body });
+      const result = await response.json() as ChatApiResponse;
+      if (!response.ok || !result.success || !result.data || Array.isArray(result.data)) {
+        throw new Error(result.error || 'Gagal mengirim stiker.');
+      }
+      shouldScrollRef.current = true;
+      mergeMessages([result.data]);
+      messageCursorRef.current = Math.max(messageCursorRef.current ?? 0, result.data.id);
+      setIsStickerPickerOpen(false);
+    } catch (sendError: unknown) {
+      setReplyTarget((currentTarget) => currentTarget || replyTarget);
+      setError(sendError instanceof Error ? sendError.message : 'Gagal mengirim stiker.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleAddStickerToFavorites = async (messageId: number) => {
+    setOpenMessageActionsId(null);
+    setError(null);
+    try {
+      const response = await fetch('/api/chat/stickers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      });
+      const result = await response.json() as { success: boolean; error?: string };
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal menambahkan stiker ke favorit.');
+      }
+      await loadFavoriteStickers();
+    } catch (stickerError: unknown) {
+      setError(stickerError instanceof Error ? stickerError.message : 'Gagal menambahkan stiker ke favorit.');
+    }
+  };
+
+  const handleRemoveFavoriteSticker = async (stickerId: number) => {
+    setError(null);
+    try {
+      const response = await fetch(`/api/chat/stickers/${stickerId}`, { method: 'DELETE' });
+      const result = await response.json() as { success: boolean; error?: string };
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Gagal menghapus stiker favorit.');
+      }
+      setFavoriteStickers((stickers) => stickers.filter((sticker) => sticker.id !== stickerId));
+    } catch (stickerError: unknown) {
+      setError(stickerError instanceof Error ? stickerError.message : 'Gagal menghapus stiker favorit.');
+    }
+  };
+
   const handleDeleteMessage = async (message: ChatMessage) => {
     if (isDeveloper || deletingMessageId !== null) return;
 
@@ -328,6 +755,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
 
   const handleSelectAllDeletableMessages = () => {
     setSelectedMessageIds(messages.filter(canDeleteMessage).map((message) => message.id));
+    setIsMessageSelectionMode(true);
   };
 
   const handleBulkDeleteMessages = async () => {
@@ -368,11 +796,6 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     setOpenMessageActionsId(null);
     setReplyTarget(message);
     composerRef.current?.focus();
-  };
-
-  const handleSelectAllMessages = () => {
-    setSelectedMessageIds(messages.map((message) => message.id));
-    setOpenMessageActionsId(null);
   };
 
   const handleQuotedMessageClick = (messageId: number) => {
@@ -419,6 +842,66 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
     } catch (downloadError: unknown) {
       setError(downloadError instanceof Error ? downloadError.message : 'Gagal mengunduh foto.');
+    }
+  };
+
+  const handleDownloadVideo = async (message: ChatMessage) => {
+    if (!message.media_url) return;
+
+    try {
+      const response = await fetch(message.media_url, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Gagal mengunduh video.');
+
+      const video = await response.blob();
+      const extensionByType: Record<string, string> = {
+        'video/mp4': 'mp4',
+        'video/webm': 'webm',
+      };
+      const extension = extensionByType[message.media_type || video.type];
+      if (!extension) throw new Error('Format video tidak didukung untuk diunduh.');
+
+      const downloadUrl = URL.createObjectURL(video);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `video-chat-${message.id}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (downloadError: unknown) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Gagal mengunduh video.');
+    }
+  };
+
+  const handleDownloadAudio = async (message: ChatMessage) => {
+    if (!message.media_url) return;
+
+    try {
+      const response = await fetch(message.media_url, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Gagal mengunduh audio.');
+
+      const audio = await response.blob();
+      const extensionByType: Record<string, string> = {
+        'audio/aac': 'aac',
+        'audio/mp4': 'm4a',
+        'audio/mpeg': 'mp3',
+        'audio/ogg': 'ogg',
+        'audio/wav': 'wav',
+        'audio/webm': 'webm',
+      };
+      const extension = extensionByType[message.media_type || audio.type];
+      if (!extension) throw new Error('Format audio tidak didukung untuk diunduh.');
+
+      const downloadUrl = URL.createObjectURL(audio);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `audio-chat-${message.id}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (downloadError: unknown) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Gagal mengunduh audio.');
     }
   };
 
@@ -490,7 +973,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         </div>
       </header>
 
-      {selectedMessages.length > 0 && (
+      {isMessageSelectionMode && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-900 dark:bg-blue-950/30">
           <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
             {selectedMessages.length} pesan dipilih
@@ -507,7 +990,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             )}
             <button
               type="button"
-              onClick={() => setSelectedMessageIds([])}
+              onClick={() => {
+                setSelectedMessageIds([]);
+                setIsMessageSelectionMode(false);
+              }}
               className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               Batal pilih
@@ -515,7 +1001,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             <button
               type="button"
               onClick={() => setPendingBulkDelete(true)}
-              disabled={deletingMessageId !== null}
+              disabled={deletingMessageId !== null || selectedMessages.length === 0}
               className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50"
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -564,33 +1050,53 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               <div
                 key={message.id}
                 id={`chat-message-${message.id}`}
-                className={`flex scroll-m-4 rounded-xl transition-colors duration-500 ${
+                className={`relative flex scroll-m-4 rounded-xl transition-colors duration-500 ${
                   ownMessage ? 'justify-end' : 'justify-start'
-                } ${isSelected ? 'bg-rose-100/70 dark:bg-rose-950/30' : highlightedMessageId === message.id ? 'bg-blue-100/70 dark:bg-blue-900/30' : ''}`}
+                } ${isMessageSelectionMode ? 'pl-8' : ''} ${isSelected ? 'bg-rose-100/70 dark:bg-rose-950/30' : highlightedMessageId === message.id ? 'bg-blue-100/70 dark:bg-blue-900/30' : ''}`}
               >
-                <div className="flex max-w-[92%] items-end gap-2 sm:max-w-[80%]">
-                  <Link
-                    href={profileHref}
-                    aria-label={`Lihat profil ${senderName}`}
-                    title={`Lihat profil ${senderName}`}
-                    className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200 text-xs font-bold uppercase text-slate-600 ring-1 ring-slate-300 transition hover:ring-blue-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600"
+                {isMessageSelectionMode && canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => handleToggleMessageSelection(message.id)}
+                    aria-label={`${isSelected ? 'Batalkan pilihan' : 'Pilih'} pesan dari ${senderName}`}
+                    role="checkbox"
+                    aria-checked={isSelected}
+                    className={`absolute left-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded border transition ${
+                      isSelected
+                        ? 'border-emerald-500 bg-emerald-500 text-white'
+                        : 'border-slate-400 bg-white/80 text-transparent hover:border-emerald-500 dark:border-slate-500 dark:bg-[#161b22]'
+                    }`}
                   >
-                    {message.profile_photo ? (
-                      <ProtectedProfilePhoto
-                        src={message.profile_photo}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span className="flex h-full w-full items-center justify-center">{senderName.charAt(0)}</span>
-                    )}
-                  </Link>
-                  <article className={`min-w-0 rounded-2xl px-3.5 py-2.5 shadow-sm ${
-                    ownMessage
-                      ? 'rounded-br-sm bg-blue-600 text-white'
-                      : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-100'
-                  }`}>
-                    {message.reply_to && (
+                    <span className="text-sm font-bold leading-none">✓</span>
+                  </button>
+                )}
+                <div className="flex max-w-[92%] items-end gap-2 sm:max-w-[80%]">
+                  {!message.is_sticker && (
+                    <Link
+                      href={profileHref}
+                      aria-label={`Lihat profil ${senderName}`}
+                      title={`Lihat profil ${senderName}`}
+                      className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200 text-xs font-bold uppercase text-slate-600 ring-1 ring-slate-300 transition hover:ring-blue-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600"
+                    >
+                      {message.profile_photo ? (
+                        <ProtectedProfilePhoto
+                          src={message.profile_photo}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center">{senderName.charAt(0)}</span>
+                      )}
+                    </Link>
+                  )}
+                  <article className={message.is_sticker
+                    ? 'min-w-0'
+                    : `min-w-0 rounded-2xl px-3.5 py-2.5 shadow-sm ${
+                        ownMessage
+                          ? 'rounded-br-sm bg-blue-600 text-white'
+                          : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-100'
+                      }`}>
+                    {!message.is_sticker && message.reply_to && (
                       <button
                         type="button"
                         onClick={() => handleQuotedMessageClick(message.reply_to!.id)}
@@ -617,7 +1123,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                         </span>
                       </button>
                     )}
-                    <div className="mb-1 flex items-center gap-1.5">
+                    {!message.is_sticker && <div className="mb-1 flex items-center gap-1.5">
                       <Link
                         href={profileHref}
                         className={`max-w-48 truncate text-xs font-bold hover:underline ${
@@ -626,42 +1132,81 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                       >
                         {senderName}
                       </Link>
-                    </div>
-                    {message.media_url && message.media_type?.startsWith('video/') && (
-                      <video
+                    </div>}
+                    {message.media_url && message.media_type?.startsWith('audio/') && (
+                      <ChatAudioPlayer
                         src={message.media_url}
-                        controls
-                        playsInline
-                        preload="metadata"
-                        className="mb-2 max-h-80 max-w-full rounded-lg bg-black"
-                        aria-label={`Video dari ${senderName}`}
+                        senderName={senderName}
+                        profilePhoto={message.profile_photo}
+                        onDownload={() => void handleDownloadAudio(message)}
+                        ownMessage={ownMessage}
                       />
                     )}
+                    {message.media_url && message.media_type?.startsWith('video/') && (
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          onClick={() => setVideoViewer({
+                            url: message.media_url!,
+                            senderName,
+                            message,
+                          })}
+                          className="group relative flex h-36 w-56 max-w-full items-center justify-center overflow-hidden rounded-lg bg-slate-900 sm:h-44 sm:w-72"
+                          aria-label={`Putar video dari ${senderName}`}
+                        >
+                          <video
+                            src={message.media_url}
+                            playsInline
+                            preload="metadata"
+                            className="absolute inset-0 h-full w-full object-contain"
+                            aria-hidden="true"
+                          />
+                          <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-white shadow-lg ring-1 ring-white/40 transition group-hover:scale-110 group-hover:bg-black/75">
+                            <Play className="ml-1 h-7 w-7 fill-current" />
+                          </span>
+                        </button>
+                      </div>
+                    )}
                     {message.media_url && message.media_type?.startsWith('image/') && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPhotoZoom(1);
-                          setPhotoOffset({ x: 0, y: 0 });
-                          setPhotoViewer({ url: message.media_url!, senderName });
-                        }}
-                        className="mb-2 block overflow-hidden rounded-lg"
-                        aria-label={`Perbesar foto dari ${senderName}`}
-                      >
-                        <Image
-                          src={message.media_url}
-                          alt={`Foto yang dikirim ${senderName}`}
-                          width={640}
-                          height={480}
-                          unoptimized
-                          className="h-auto max-h-80 w-auto max-w-full object-contain"
-                        />
-                      </button>
+                      message.is_sticker ? (
+                        <div className="relative h-28 w-28 overflow-hidden">
+                          <Image
+                            src={message.media_url}
+                            alt={`Stiker dari ${senderName}`}
+                            fill
+                            unoptimized
+                            sizes="112px"
+                            className="object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPhotoZoom(1);
+                            setPhotoOffset({ x: 0, y: 0 });
+                            setPhotoViewer({ url: message.media_url!, senderName });
+                          }}
+                          className="mb-2 block overflow-hidden rounded-lg"
+                          aria-label={`Perbesar foto dari ${senderName}`}
+                        >
+                          <Image
+                            src={message.media_url}
+                            alt={`Foto yang dikirim ${senderName}`}
+                            width={640}
+                            height={480}
+                            unoptimized
+                            className="h-auto max-h-80 w-auto max-w-full object-contain"
+                          />
+                        </button>
+                      )
                     )}
                     {message.message && (
-                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.message}</p>
+                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                        {renderMessageWithLinks(message.message, ownMessage)}
+                      </p>
                     )}
-                    <div className="mt-1 flex items-center justify-between gap-3">
+                    {!message.is_sticker && <div className="mt-1 flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <span className={`truncate text-[10px] ${ownMessage ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'}`}>
                           {formatAccountRole(message)}
@@ -682,7 +1227,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                       >
                         {formatMessageTime(message.created_at)}
                       </time>
-                    </div>
+                    </div>}
                   </article>
                   <div
                     ref={openMessageActionsId === message.id ? messageActionsRef : null}
@@ -705,6 +1250,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     </button>
                     {openMessageActionsId === message.id && (
                       <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-[#161b22]">
+                        {message.is_sticker && (
+                          <button
+                            type="button"
+                            onClick={() => void handleAddStickerToFavorites(message.id)}
+                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-blue-700 transition hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-950/40"
+                          >
+                            <Star className="h-4 w-4" />
+                            Tambahkan ke favorit
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleReply(message)}
@@ -718,6 +1273,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                             type="button"
                             onClick={() => {
                               handleToggleMessageSelection(message.id);
+                              setIsMessageSelectionMode(true);
                               setOpenMessageActionsId(null);
                             }}
                             disabled={deletingMessageId !== null}
@@ -728,17 +1284,6 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                               {isSelected && <span className="h-2 w-2 rounded-sm bg-current" />}
                             </span>
                             {isSelected ? 'Batalkan pilihan' : 'Pilih pesan'}
-                          </button>
-                        )}
-                        {currentUserRole === 'ADMIN' && selectedMessageIds.length < messages.length && (
-                          <button
-                            type="button"
-                            onClick={handleSelectAllMessages}
-                            disabled={deletingMessageId !== null}
-                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
-                          >
-                            <ListChecks className="h-4 w-4" />
-                            Pilih semua pesan di chat
                           </button>
                         )}
                         {canDelete && (
@@ -880,6 +1425,56 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         </div>
       )}
 
+      {videoViewer && (
+        <div
+          className="fixed inset-0 z-[120] flex flex-col bg-black/95"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Video dari ${videoViewer.senderName}`}
+          onClick={() => setVideoViewer(null)}
+        >
+          <div className="flex h-14 shrink-0 items-center justify-between gap-3 px-4">
+            <span className="truncate text-sm font-semibold text-white">{videoViewer.senderName}</span>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleDownloadVideo(videoViewer.message);
+                }}
+                aria-label="Unduh video"
+                title="Unduh video"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/15"
+              >
+                <Download className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setVideoViewer(null)}
+                aria-label="Tutup video"
+                title="Tutup video"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/15"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+          <div
+            className="flex min-h-0 flex-1 items-center justify-center p-3 sm:p-6"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <video
+              src={videoViewer.url}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-full max-w-full rounded-lg"
+              aria-label={`Video dari ${videoViewer.senderName}`}
+            />
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="border-t border-slate-200 bg-white p-3 sm:px-5 sm:py-4 dark:border-slate-700 dark:bg-[#161b22]">
         {replyTarget && (
           <div className="mb-3 flex items-center gap-2 rounded-xl border-l-4 border-blue-500 bg-blue-50 px-3 py-2 dark:bg-blue-950/30">
@@ -899,9 +1494,73 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             </button>
           </div>
         )}
+        {isStickerPickerOpen && (
+          <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-[#0d1117]">
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Stiker favorit</h2>
+              <button
+                type="button"
+                onClick={() => stickerInputRef.current?.click()}
+                disabled={isSending}
+                className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+              >
+                Tambah dari gambar
+              </button>
+            </div>
+            {favoriteStickers.length === 0 ? (
+              <p className="py-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                Belum ada stiker favorit. Pilih gambar atau simpan stiker dari chat.
+              </p>
+            ) : (
+              <div className="grid max-h-48 grid-cols-5 gap-2 overflow-y-auto sm:grid-cols-7">
+                {favoriteStickers.map((sticker) => (
+                  <div key={sticker.id} className="relative aspect-square">
+                    <button
+                      type="button"
+                      onClick={() => void handleSendSticker({ favoriteId: sticker.id })}
+                      disabled={isSending}
+                      className="relative h-full w-full overflow-hidden disabled:opacity-50"
+                      aria-label="Kirim stiker favorit"
+                    >
+                      <Image
+                        src={sticker.media_url}
+                        alt="Stiker favorit"
+                        fill
+                        unoptimized
+                        sizes="64px"
+                        className="object-contain"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleRemoveFavoriteSticker(sticker.id)}
+                      className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-full bg-slate-800/80 text-white hover:bg-rose-600"
+                      aria-label="Hapus stiker dari favorit"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {attachmentPreviewUrl && attachmentFile && (
           <div className="mb-3 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-700 dark:bg-[#0d1117]">
-            {attachmentFile.type.startsWith('video/') ? (
+            {attachmentFile.type.startsWith('audio/') ? (
+              <ChatAudioPlayer
+                src={attachmentPreviewUrl}
+                senderName="Pratinjau voice note"
+                profilePhoto={null}
+                ownMessage
+                onDownload={() => {
+                  const link = document.createElement('a');
+                  link.href = attachmentPreviewUrl;
+                  link.download = attachmentFile.name;
+                  link.click();
+                }}
+              />
+            ) : attachmentFile.type.startsWith('video/') ? (
               <video
                 src={attachmentPreviewUrl}
                 controls
@@ -925,7 +1584,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {attachmentFile.type.startsWith('video/')
                   ? 'Video siap dikirim · Maksimal 15 MB'
-                  : 'Foto siap dikirim · Maksimal 5 MB'}
+                  : attachmentFile.type.startsWith('audio/')
+                    ? 'Audio siap dikirim · Maksimal 15 MB'
+                    : 'Foto siap dikirim · Maksimal 5 MB'}
               </p>
             </div>
             <button
@@ -944,9 +1605,31 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         )}
         <div className="flex items-end gap-2 sm:gap-3">
           <input
+            ref={stickerInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="sr-only"
+            aria-label="Pilih gambar untuk stiker"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              event.currentTarget.value = '';
+              if (!file) return;
+              if (file.size < 1 || file.size > MAX_CHAT_PHOTO_SIZE) {
+                setError('Ukuran gambar stiker maksimal 5 MB.');
+                return;
+              }
+              if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+                setError('Format gambar stiker harus JPEG, PNG, GIF, atau WebP.');
+                return;
+              }
+              setError(null);
+              void handleSendSticker({ file });
+            }}
+          />
+          <input
             ref={attachmentInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm"
+            accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,audio/mp4,audio/webm,audio/ogg,audio/mpeg,audio/wav,audio/aac"
             className="sr-only"
             aria-label="Pilih foto atau video untuk dikirim"
             onChange={(event) => {
@@ -954,16 +1637,29 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               event.currentTarget.value = '';
               if (!file) return;
               const isVideo = file.type.startsWith('video/');
-              const maxSize = isVideo ? MAX_CHAT_VIDEO_SIZE : MAX_CHAT_PHOTO_SIZE;
+              const isAudio = file.type.startsWith('audio/');
+              const maxSize = isVideo
+                ? MAX_CHAT_VIDEO_SIZE
+                : isAudio
+                  ? MAX_CHAT_AUDIO_SIZE
+                  : MAX_CHAT_PHOTO_SIZE;
               if (file.size > maxSize) {
-                setError(isVideo ? 'Ukuran video maksimal 15 MB.' : 'Ukuran foto maksimal 5 MB.');
+                setError(isVideo
+                  ? 'Ukuran video maksimal 15 MB.'
+                  : isAudio
+                    ? 'Ukuran audio maksimal 15 MB.'
+                    : 'Ukuran foto maksimal 5 MB.');
                 return;
               }
               if (
-                !['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm']
+                ![
+                  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+                  'video/mp4', 'video/webm',
+                  'audio/mp4', 'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/wav', 'audio/aac',
+                ]
                   .includes(file.type)
               ) {
-                setError('Format lampiran harus JPEG, PNG, GIF, WebP, MP4, atau WebM.');
+                setError('Format lampiran tidak didukung.');
                 return;
               }
               setError(null);
@@ -972,28 +1668,82 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           />
           <button
             type="button"
+            onClick={() => {
+              if (!isStickerPickerOpen) void loadFavoriteStickers();
+              setIsStickerPickerOpen(!isStickerPickerOpen);
+            }}
+            disabled={isSending}
+            aria-label="Buka stiker favorit"
+            aria-expanded={isStickerPickerOpen}
+            title="Stiker"
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:opacity-50 ${
+              isStickerPickerOpen
+                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'
+            }`}
+          >
+            <Smile className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
             onClick={() => attachmentInputRef.current?.click()}
             disabled={isSending}
-            aria-label="Kirim foto atau video"
-            title="Kirim foto atau video"
+            aria-label="Kirim foto, video, atau audio"
+            title="Kirim foto, video, atau audio"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
           >
-            <ImagePlus className="h-5 w-5" />
+            <Paperclip className="h-5 w-5" />
           </button>
           <textarea
             ref={composerRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={handleComposerKeyDown}
+            disabled={isRecordingVoice}
             maxLength={2000}
             rows={1}
             placeholder="Tulis pesan..."
             aria-label="Tulis pesan"
             className="max-h-32 min-h-11 flex-1 resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-[#0d1117] dark:text-white"
           />
+          {isRecordingVoice && (
+            <>
+              <span className="hidden whitespace-nowrap text-xs font-semibold text-rose-600 sm:inline dark:text-rose-300">
+                {isVoiceRecordingPaused ? 'Dijeda' : 'Merekam'} · {formatAudioTime(voiceRecordingDuration)}
+              </span>
+              <button
+                type="button"
+                onClick={toggleVoiceRecordingPause}
+                aria-label={isVoiceRecordingPaused ? 'Lanjutkan rekaman' : 'Jeda rekaman'}
+                title={isVoiceRecordingPaused ? 'Lanjutkan rekaman' : 'Jeda rekaman'}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 transition hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
+              >
+                {isVoiceRecordingPaused
+                  ? <Play className="h-5 w-5 fill-current" />
+                  : <Pause className="h-5 w-5 fill-current" />}
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (isRecordingVoice) stopVoiceRecording();
+              else void startVoiceRecording();
+            }}
+            disabled={!isRecordingVoice && (isSending || Boolean(attachmentFile))}
+            aria-label={isRecordingVoice ? 'Selesai merekam voice note' : 'Rekam voice note'}
+            title={isRecordingVoice ? 'Selesai merekam' : 'Rekam voice note'}
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
+              isRecordingVoice
+                ? 'bg-rose-600 text-white hover:bg-rose-700'
+                : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'
+            }`}
+          >
+            {isRecordingVoice ? <X className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+          </button>
           <button
             type="submit"
-            disabled={(!draft.trim() && !attachmentFile) || isSending}
+            disabled={(!draft.trim() && !attachmentFile) || isSending || isRecordingVoice}
             aria-label="Kirim pesan"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-[#161b22]"
           >

@@ -4,6 +4,7 @@ import { query } from '@/lib/database/db';
 import {
   isSupportedChatMediaType,
   matchesChatMediaType,
+  MAX_CHAT_AUDIO_SIZE,
   MAX_CHAT_PHOTO_SIZE,
   MAX_CHAT_VIDEO_SIZE,
   type ChatMediaType,
@@ -37,6 +38,7 @@ interface ChatMessage {
   image_path: string | null;
   image_type: string | null;
   has_image: number | boolean;
+  is_sticker: number | boolean;
   media_url?: string | null;
   media_type?: string | null;
   photo_url?: string | null;
@@ -67,6 +69,7 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
 const chatMessageSelect = `
   SELECT cm.id, cm.sender_id, u.username, u.real_name, u.profile_photo, u.role, u.attendance_role,
     cm.message, cm.image_path, cm.image_type, (cm.image_data IS NOT NULL) AS has_image,
+    cm.is_sticker,
     cm.deleted_at, cm.created_at, cm.reply_to_id,
     replied.sender_id AS reply_to_sender_id,
     reply_user.username AS reply_to_username,
@@ -99,7 +102,7 @@ export async function GET(request: Request) {
           SELECT cm.id, cm.sender_id, u.username, u.real_name,
             CASE WHEN cm.profile_rank = 1 THEN u.profile_photo ELSE NULL END AS profile_photo,
             (cm.profile_rank = 1) AS profile_photo_loaded,
-            u.role, u.attendance_role, cm.message, cm.image_path, cm.image_type,
+            u.role, u.attendance_role, cm.message, cm.image_path, cm.image_type, cm.is_sticker,
             cm.has_image,
             cm.deleted_at, cm.created_at, cm.reply_to_id,
             replied.sender_id AS reply_to_sender_id,
@@ -112,7 +115,7 @@ export async function GET(request: Request) {
             SELECT recent_messages.*,
               ROW_NUMBER() OVER (PARTITION BY sender_id ORDER BY id DESC) AS profile_rank
             FROM (
-              SELECT id, sender_id, message, image_path, image_type,
+              SELECT id, sender_id, message, image_path, image_type, is_sticker,
                 (image_data IS NOT NULL) AS has_image, deleted_at, created_at, reply_to_id
               FROM staff_admin_chat_messages
               ORDER BY id DESC
@@ -158,6 +161,7 @@ export async function GET(request: Request) {
       success: true,
       data: messages.map((message) => ({
         ...message,
+        is_sticker: Boolean(message.is_sticker),
         media_url: message.has_image || message.image_path ? `/api/chat/messages/${message.id}/media` : null,
         media_type: message.image_type,
         photo_url: message.image_type?.startsWith('image/')
@@ -192,6 +196,10 @@ export async function POST(request: Request) {
 
     let message: string;
     let replyToId: number | null;
+    let stickerId: number | null = null;
+    let isSticker = false;
+    let favoriteImageType: ChatMediaType | null = null;
+    let favoriteImageData: Buffer | null = null;
     let attachmentFile: File | null = null;
     const contentType = request.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
@@ -210,10 +218,12 @@ export async function POST(request: Request) {
       const formMessage = form.get('message');
       const formReplyToId = form.get('replyToId');
       const formAttachment = form.get('attachment') ?? form.get('photo');
+      const formIsSticker = form.get('isSticker');
       if (typeof formMessage !== 'string') {
         return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
       }
       message = formMessage.trim();
+      isSticker = formIsSticker === 'true';
       replyToId = formReplyToId === null || formReplyToId === ''
         ? null
         : /^\d+$/.test(formReplyToId.toString()) && Number.isSafeInteger(Number(formReplyToId))
@@ -232,18 +242,44 @@ export async function POST(request: Request) {
       } catch {
         return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
       }
-      if (typeof body !== 'object' || body === null || !('message' in body) || typeof body.message !== 'string') {
+      if (typeof body !== 'object' || body === null) {
         return NextResponse.json({ success: false, error: 'Pesan wajib diisi.' }, { status: 400 });
+      }
+      const bodyMessage = 'message' in body ? body.message : '';
+      if (typeof bodyMessage !== 'string') {
+        return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
       }
       const bodyReplyToId = 'replyToId' in body ? body.replyToId : null;
       replyToId = bodyReplyToId === null ? null : typeof bodyReplyToId === 'number' ? bodyReplyToId : Number.NaN;
-      message = body.message.trim();
+      message = bodyMessage.trim();
+      if ('stickerId' in body) {
+        stickerId = typeof body.stickerId === 'number' && Number.isSafeInteger(body.stickerId)
+          ? body.stickerId
+          : Number.NaN;
+      }
+    }
+
+    if (stickerId !== null) {
+      if (!Number.isSafeInteger(stickerId) || stickerId < 1 || attachmentFile || message) {
+        return NextResponse.json({ success: false, error: 'Stiker yang dikirim tidak valid.' }, { status: 400 });
+      }
+      const favorites = await query<{ image_type: string; image_data: Buffer }[]>(
+        'SELECT image_type, image_data FROM chat_favorite_stickers WHERE id = ? AND user_id = ? LIMIT 1',
+        [stickerId, access.session.id]
+      );
+      const favorite = favorites[0];
+      if (!favorite || !isSupportedChatMediaType(favorite.image_type) || !favorite.image_type.startsWith('image/')) {
+        return NextResponse.json({ success: false, error: 'Stiker favorit tidak ditemukan.' }, { status: 404 });
+      }
+      favoriteImageType = favorite.image_type;
+      favoriteImageData = favorite.image_data;
+      isSticker = true;
     }
 
     if (replyToId !== null && (!Number.isSafeInteger(replyToId) || replyToId < 1)) {
       return NextResponse.json({ success: false, error: 'Pesan yang dibalas tidak valid.' }, { status: 400 });
     }
-    if (!message && !attachmentFile) {
+    if (!message && !attachmentFile && stickerId === null) {
       return NextResponse.json({ success: false, error: 'Pesan atau lampiran wajib diisi.' }, { status: 400 });
     }
     if (message.length > 2000) {
@@ -260,19 +296,31 @@ export async function POST(request: Request) {
       }
     }
 
-    let imageType: ChatMediaType | null = null;
-    let imageData: Buffer | null = null;
+    let imageType: ChatMediaType | null = stickerId === null ? null : favoriteImageType;
+    let imageData: Buffer | null = stickerId === null ? null : favoriteImageData;
     if (attachmentFile) {
       const isVideo = attachmentFile.type.startsWith('video/');
-      const maxSize = isVideo ? MAX_CHAT_VIDEO_SIZE : MAX_CHAT_PHOTO_SIZE;
+      const isAudio = attachmentFile.type.startsWith('audio/');
+      const maxSize = isVideo
+        ? MAX_CHAT_VIDEO_SIZE
+        : isAudio
+          ? MAX_CHAT_AUDIO_SIZE
+          : MAX_CHAT_PHOTO_SIZE;
       if (attachmentFile.size < 1 || attachmentFile.size > maxSize) {
         return NextResponse.json({
           success: false,
-          error: isVideo ? 'Ukuran video maksimal 15 MB.' : 'Ukuran foto maksimal 5 MB.',
+          error: isVideo
+            ? 'Ukuran video maksimal 15 MB.'
+            : isAudio
+              ? 'Ukuran audio maksimal 15 MB.'
+              : 'Ukuran foto maksimal 5 MB.',
         }, { status: 413 });
       }
       if (!isSupportedChatMediaType(attachmentFile.type)) {
-        return NextResponse.json({ success: false, error: 'Format lampiran harus JPEG, PNG, GIF, WebP, MP4, atau WebM.' }, { status: 415 });
+        return NextResponse.json({ success: false, error: 'Format lampiran tidak didukung.' }, { status: 415 });
+      }
+      if (isSticker && !attachmentFile.type.startsWith('image/')) {
+        return NextResponse.json({ success: false, error: 'Stiker harus berupa gambar.' }, { status: 415 });
       }
       imageType = attachmentFile.type;
       imageData = Buffer.from(await attachmentFile.arrayBuffer());
@@ -280,10 +328,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'Isi file tidak sesuai dengan format lampiran.' }, { status: 415 });
       }
     }
+    if (isSticker && (!imageType?.startsWith('image/') || !imageData)) {
+      return NextResponse.json({ success: false, error: 'Stiker harus berupa gambar yang valid.' }, { status: 415 });
+    }
 
     const insert = await query<{ insertId: number }>(
-      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data) VALUES (?, ?, ?, ?, ?, ?)',
-      [access.session.id, replyToId, message, null, imageType, imageData]
+      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data, is_sticker) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [access.session.id, replyToId, message, null, imageType, imageData, isSticker]
     );
     const messageId = insert.insertId;
     if (!messageId) {
@@ -302,6 +353,7 @@ export async function POST(request: Request) {
       success: true,
       data: {
         ...sentMessage,
+        is_sticker: Boolean(sentMessage.is_sticker),
         media_url: sentMessage.has_image || sentMessage.image_path
           ? `/api/chat/messages/${sentMessage.id}/media`
           : null,

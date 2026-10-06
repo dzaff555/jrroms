@@ -1,11 +1,12 @@
 import { resolveUploadStoragePaths } from '@/lib/storage/upload-paths';
-import { MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
+import { MAX_CHAT_AUDIO_SIZE, MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
 
 export type ChatPhotoType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 export type ChatVideoType = 'video/mp4' | 'video/webm';
-export type ChatMediaType = ChatPhotoType | ChatVideoType;
+export type ChatAudioType = 'audio/mp4' | 'audio/webm' | 'audio/ogg' | 'audio/mpeg' | 'audio/wav' | 'audio/aac';
+export type ChatMediaType = ChatPhotoType | ChatVideoType | ChatAudioType;
 
-export { MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE };
+export { MAX_CHAT_AUDIO_SIZE, MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE };
 
 export function getChatPhotoPaths(storageKey: string) {
   if (!/^chat\/\d+\/[0-9a-f-]{36}$/.test(storageKey)) {
@@ -20,10 +21,41 @@ export function isSupportedChatPhotoType(value: string): value is ChatPhotoType 
 }
 
 export function isSupportedChatMediaType(value: string): value is ChatMediaType {
-  return isSupportedChatPhotoType(value) || value === 'video/mp4' || value === 'video/webm';
+  return isSupportedChatPhotoType(value) ||
+    value === 'video/mp4' ||
+    value === 'video/webm' ||
+    value === 'audio/mp4' ||
+    value === 'audio/webm' ||
+    value === 'audio/ogg' ||
+    value === 'audio/mpeg' ||
+    value === 'audio/wav' ||
+    value === 'audio/aac';
 }
 
 export function matchesChatMediaType(bytes: Uint8Array, contentType: ChatMediaType) {
+  if (contentType === 'audio/mp4') {
+    return bytes.length >= 12 && String.fromCharCode(...bytes.subarray(4, 8)) === 'ftyp';
+  }
+  if (contentType === 'audio/webm') {
+    return bytes.length >= 4 &&
+      bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+  }
+  if (contentType === 'audio/ogg') {
+    return bytes.length >= 4 && String.fromCharCode(...bytes.subarray(0, 4)) === 'OggS';
+  }
+  if (contentType === 'audio/mpeg') {
+    return bytes.length >= 3 &&
+      (String.fromCharCode(...bytes.subarray(0, 3)) === 'ID3' ||
+        (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0));
+  }
+  if (contentType === 'audio/wav') {
+    return bytes.length >= 12 &&
+      String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF' &&
+      String.fromCharCode(...bytes.subarray(8, 12)) === 'WAVE';
+  }
+  if (contentType === 'audio/aac') {
+    return bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xf6) === 0xf0;
+  }
   if (contentType === 'video/mp4') {
     return bytes.length >= 12 && String.fromCharCode(...bytes.subarray(4, 8)) === 'ftyp';
   }
