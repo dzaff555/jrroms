@@ -424,6 +424,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
   const [isMessageSelectionMode, setIsMessageSelectionMode] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [swipingMessage, setSwipingMessage] = useState<{ messageId: number; deltaX: number } | null>(null);
   const [openMessageActionsId, setOpenMessageActionsId] = useState<number | null>(null);
   const [messageActionsPosition, setMessageActionsPosition] = useState<{ top: number; left: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -448,6 +449,14 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const photoViewerRef = useRef<HTMLDivElement>(null);
   const photoImageRef = useRef<HTMLImageElement>(null);
   const photoDragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const replySwipeRef = useRef<{
+    pointerId: number;
+    messageId: number;
+    startX: number;
+    startY: number;
+    deltaX: number;
+    isHorizontal: boolean;
+  } | null>(null);
   const shouldScrollRef = useRef(true);
   const isLoadingMessagesRef = useRef(false);
   const initialMessagesLoadedRef = useRef(false);
@@ -999,6 +1008,58 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     composerRef.current?.focus();
   };
 
+  const handleReplySwipeStart = (event: React.PointerEvent<HTMLDivElement>, message: ChatMessage) => {
+    if (event.button !== 0 || event.target instanceof Element && event.target.closest(
+      'button, a, input, textarea, video, audio, [role="slider"]'
+    )) {
+      return;
+    }
+    replySwipeRef.current = {
+      pointerId: event.pointerId,
+      messageId: message.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      deltaX: 0,
+      isHorizontal: false,
+    };
+  };
+
+  const handleReplySwipeMove = (event: React.PointerEvent<HTMLDivElement>, message: ChatMessage) => {
+    const gesture = replySwipeRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.messageId !== message.id) return;
+
+    const deltaX = event.clientX - gesture.startX;
+    const deltaY = event.clientY - gesture.startY;
+    if (!gesture.isHorizontal) {
+      if (Math.abs(deltaX) < 10 || Math.abs(deltaX) < Math.abs(deltaY) * 1.2) return;
+      const swipeDirectionAllowed = isOwnMessage(message) ? deltaX < 0 : deltaX > 0;
+      if (!swipeDirectionAllowed) return;
+      gesture.isHorizontal = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    event.preventDefault();
+    gesture.deltaX = deltaX;
+    setSwipingMessage({
+      messageId: message.id,
+      deltaX: Math.sign(deltaX) * Math.min(Math.abs(deltaX), 76),
+    });
+  };
+
+  const finishReplySwipe = (event: React.PointerEvent<HTMLDivElement>, message: ChatMessage, cancelled = false) => {
+    const gesture = replySwipeRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId || gesture.messageId !== message.id) return;
+
+    replySwipeRef.current = null;
+    setSwipingMessage(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (!cancelled && gesture.isHorizontal && Math.abs(gesture.deltaX) >= 56) {
+      handleReply(message);
+    }
+  };
+
   const handleQuotedMessageClick = (messageId: number) => {
     const target = document.getElementById(`chat-message-${messageId}`);
     if (!target) return;
@@ -1251,9 +1312,13 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               <div
                 key={message.id}
                 id={`chat-message-${message.id}`}
-                className={`relative flex scroll-m-4 rounded-xl transition-colors duration-500 ${
+                className={`relative flex touch-pan-y scroll-m-4 rounded-xl transition-colors duration-500 ${
                   ownMessage ? 'justify-end' : 'justify-start'
                 } ${isMessageSelectionMode ? 'pl-8' : ''} ${isSelected ? 'bg-rose-100/70 dark:bg-rose-950/30' : highlightedMessageId === message.id ? 'bg-blue-100/70 dark:bg-blue-900/30' : ''}`}
+                onPointerDown={(event) => handleReplySwipeStart(event, message)}
+                onPointerMove={(event) => handleReplySwipeMove(event, message)}
+                onPointerUp={(event) => finishReplySwipe(event, message)}
+                onPointerCancel={(event) => finishReplySwipe(event, message, true)}
               >
                 {isMessageSelectionMode && canDelete && (
                   <button
@@ -1271,9 +1336,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     <span className="text-sm font-bold leading-none">✓</span>
                   </button>
                 )}
-                <div className={`flex max-w-[92%] items-end gap-2 sm:max-w-[80%] ${
+                <div
+                  className={`flex max-w-[92%] items-end gap-2 transition-transform duration-150 sm:max-w-[80%] ${
                   message.is_sticker ? (ownMessage ? 'flex-row-reverse' : 'flex-row') : ''
-                }`}>
+                  } ${swipingMessage?.messageId === message.id ? '!transition-none' : ''}`}
+                  style={{
+                    transform: swipingMessage?.messageId === message.id
+                      ? `translateX(${swipingMessage.deltaX}px)`
+                      : undefined,
+                  }}
+                >
                   {(!message.is_sticker || message.media_url) && (
                     <Link
                       href={profileHref}
