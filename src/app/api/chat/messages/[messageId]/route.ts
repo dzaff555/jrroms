@@ -1,6 +1,8 @@
+import { rm } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
 import { getActiveSession } from '@/lib/auth/active-session';
 import { query } from '@/lib/database/db';
+import { getChatPhotoPaths } from '@/lib/storage/chat-photos';
 
 export async function DELETE(
   _request: Request,
@@ -21,8 +23,8 @@ export async function DELETE(
     }
     const messageId = Number(messageIdParam);
 
-    const messages = await query<{ sender_id: number; deleted_at: Date | null }[]>(
-      'SELECT sender_id, deleted_at FROM staff_admin_chat_messages WHERE id = ? LIMIT 1',
+    const messages = await query<{ sender_id: number; deleted_at: Date | null; image_path: string | null }[]>(
+      'SELECT sender_id, deleted_at, image_path FROM staff_admin_chat_messages WHERE id = ? LIMIT 1',
       [messageId]
     );
     const message = messages[0];
@@ -38,12 +40,20 @@ export async function DELETE(
 
     const result = await query<{ affectedRows: number }>(
       `UPDATE staff_admin_chat_messages
-       SET message = '', deleted_at = CURRENT_TIMESTAMP(6), deleted_by = ?
+       SET message = '', image_path = NULL, image_type = NULL,
+           deleted_at = CURRENT_TIMESTAMP(6), deleted_by = ?
        WHERE id = ? AND deleted_at IS NULL`,
       [active.session.id, messageId]
     );
     if (result.affectedRows === 0) {
       return NextResponse.json({ success: false, error: 'Pesan sudah dihapus.' }, { status: 404 });
+    }
+
+    if (message.image_path) {
+      const { absolutePath } = getChatPhotoPaths(message.image_path);
+      await rm(absolutePath, { force: true }).catch((cleanupError: unknown) => {
+        console.error('[Chat Photo Delete Cleanup Error]:', cleanupError);
+      });
     }
 
     return NextResponse.json({ success: true, message: 'Pesan berhasil dihapus untuk semua pengguna.' });

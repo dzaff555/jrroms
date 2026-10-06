@@ -272,6 +272,8 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         sender_id INT NOT NULL,
         message VARCHAR(2000) NOT NULL,
+        image_path VARCHAR(255) NULL,
+        image_type VARCHAR(50) NULL,
         deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
         deleted_by INT NULL,
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -346,6 +348,8 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       { table: 'staff_warnings', column: 'read_at', definition: 'TIMESTAMP NULL DEFAULT NULL AFTER reason' },
       { table: 'staff_admin_chat_messages', column: 'deleted_at', definition: 'TIMESTAMP(6) NULL DEFAULT NULL AFTER message' },
       { table: 'staff_admin_chat_messages', column: 'deleted_by', definition: 'INT NULL AFTER deleted_at' },
+      { table: 'staff_admin_chat_messages', column: 'image_path', definition: 'VARCHAR(255) NULL AFTER message' },
+      { table: 'staff_admin_chat_messages', column: 'image_type', definition: 'VARCHAR(50) NULL AFTER image_path' },
     ]);
     await ensureChatDeletedAtIndex(dbPool);
     await ensureChatReplySchema(dbPool);

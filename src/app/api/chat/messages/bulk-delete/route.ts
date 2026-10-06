@@ -1,11 +1,14 @@
+import { rm } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
 import { getActiveSession } from '@/lib/auth/active-session';
 import { query } from '@/lib/database/db';
+import { getChatPhotoPaths } from '@/lib/storage/chat-photos';
 
 interface ChatMessageOwner {
   id: number;
   sender_id: number;
   deleted_at: Date | null;
+  image_path: string | null;
 }
 
 export async function POST(request: Request) {
@@ -43,7 +46,7 @@ export async function POST(request: Request) {
 
     const placeholders = messageIds.map(() => '?').join(', ');
     const messages = await query<ChatMessageOwner[]>(
-      `SELECT id, sender_id, deleted_at
+      `SELECT id, sender_id, deleted_at, image_path
        FROM staff_admin_chat_messages
        WHERE id IN (${placeholders})`,
       messageIds
@@ -67,7 +70,8 @@ export async function POST(request: Request) {
       : [active.session.id, ...messageIds, active.session.id];
     const result = await query<{ affectedRows: number }>(
       `UPDATE staff_admin_chat_messages
-       SET message = '', deleted_at = CURRENT_TIMESTAMP(6), deleted_by = ?
+       SET message = '', image_path = NULL, image_type = NULL,
+           deleted_at = CURRENT_TIMESTAMP(6), deleted_by = ?
        WHERE id IN (${placeholders}) AND deleted_at IS NULL${ownershipCondition}`,
       parameters
     );
@@ -78,6 +82,14 @@ export async function POST(request: Request) {
         { status: 409 }
       );
     }
+
+    await Promise.all(messages.flatMap((message) => {
+      if (!message.image_path) return [];
+      const { absolutePath } = getChatPhotoPaths(message.image_path);
+      return [rm(absolutePath, { force: true }).catch((cleanupError: unknown) => {
+        console.error('[Chat Bulk Photo Delete Cleanup Error]:', cleanupError);
+      })];
+    }));
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,18 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
+import {
+  getChatPhotoPaths,
+  isSupportedChatPhotoType,
+  matchesChatPhotoType,
+  MAX_CHAT_PHOTO_SIZE,
+  type ChatPhotoType,
+} from '@/lib/storage/chat-photos';
+
+export const runtime = 'nodejs';
 
 interface ChatAccessUser {
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
@@ -25,6 +37,8 @@ interface ChatMessage {
   reply_to_attendance_role: string | null;
   reply_to_message: string | null;
   reply_to_deleted_at: Date | null;
+  image_path: string | null;
+  image_type: string | null;
   profile_photo_loaded?: number;
 }
 
@@ -51,7 +65,7 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
 
 const chatMessageSelect = `
   SELECT cm.id, cm.sender_id, u.username, u.real_name, u.profile_photo, u.role, u.attendance_role,
-    cm.message, cm.deleted_at, cm.created_at, cm.reply_to_id,
+    cm.message, cm.image_path, cm.image_type, cm.deleted_at, cm.created_at, cm.reply_to_id,
     replied.sender_id AS reply_to_sender_id,
     reply_user.username AS reply_to_username,
     reply_user.role AS reply_to_role,
@@ -83,7 +97,8 @@ export async function GET(request: Request) {
           SELECT cm.id, cm.sender_id, u.username, u.real_name,
             CASE WHEN cm.profile_rank = 1 THEN u.profile_photo ELSE NULL END AS profile_photo,
             (cm.profile_rank = 1) AS profile_photo_loaded,
-            u.role, u.attendance_role, cm.message, cm.deleted_at, cm.created_at, cm.reply_to_id,
+            u.role, u.attendance_role, cm.message, cm.image_path, cm.image_type,
+            cm.deleted_at, cm.created_at, cm.reply_to_id,
             replied.sender_id AS reply_to_sender_id,
             reply_user.username AS reply_to_username,
             reply_user.role AS reply_to_role,
@@ -94,7 +109,7 @@ export async function GET(request: Request) {
             SELECT recent_messages.*,
               ROW_NUMBER() OVER (PARTITION BY sender_id ORDER BY id DESC) AS profile_rank
             FROM (
-              SELECT id, sender_id, message, deleted_at, created_at, reply_to_id
+              SELECT id, sender_id, message, image_path, image_type, deleted_at, created_at, reply_to_id
               FROM staff_admin_chat_messages
               ORDER BY id DESC
               LIMIT 100
@@ -139,6 +154,9 @@ export async function GET(request: Request) {
       success: true,
       data: messages.map((message) => ({
         ...message,
+        photo_url: message.image_path ? `/api/chat/messages/${message.id}/photo` : null,
+        image_path: undefined,
+        image_type: undefined,
         reply_to: message.reply_to_id && message.reply_to_sender_id
           ? {
               id: message.reply_to_id,
@@ -160,30 +178,66 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  let uploadedPhotoPath: string | null = null;
   try {
     const access = await getChatUser({ allowDeveloper: true });
     if ('response' in access) return access.response;
 
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
+    let message: string;
+    let replyToId: number | null;
+    let photoFile: File | null = null;
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      const contentLength = Number(request.headers.get('content-length') || 0);
+      if (contentLength > MAX_CHAT_PHOTO_SIZE + 65_536) {
+        return NextResponse.json({ success: false, error: 'Ukuran foto maksimal 5 MB.' }, { status: 413 });
+      }
+
+      let form: FormData;
+      try {
+        form = await request.formData();
+      } catch {
+        return NextResponse.json({ success: false, error: 'Format pesan atau foto tidak valid.' }, { status: 400 });
+      }
+
+      const formMessage = form.get('message');
+      const formReplyToId = form.get('replyToId');
+      const formPhoto = form.get('photo');
+      if (typeof formMessage !== 'string') {
+        return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
+      }
+      message = formMessage.trim();
+      replyToId = formReplyToId === null || formReplyToId === ''
+        ? null
+        : /^\d+$/.test(formReplyToId.toString()) && Number.isSafeInteger(Number(formReplyToId))
+          ? Number(formReplyToId)
+          : Number.NaN;
+      if (formPhoto !== null) {
+        if (typeof formPhoto === 'string') {
+          return NextResponse.json({ success: false, error: 'Format foto tidak valid.' }, { status: 400 });
+        }
+        photoFile = formPhoto;
+      }
+    } else {
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
+      }
+      if (typeof body !== 'object' || body === null || !('message' in body) || typeof body.message !== 'string') {
+        return NextResponse.json({ success: false, error: 'Pesan wajib diisi.' }, { status: 400 });
+      }
+      const bodyReplyToId = 'replyToId' in body ? body.replyToId : null;
+      replyToId = bodyReplyToId === null ? null : typeof bodyReplyToId === 'number' ? bodyReplyToId : Number.NaN;
+      message = body.message.trim();
     }
 
-    if (typeof body !== 'object' || body === null || !('message' in body) || typeof body.message !== 'string') {
-      return NextResponse.json({ success: false, error: 'Pesan wajib diisi.' }, { status: 400 });
-    }
-    const replyToId = 'replyToId' in body ? body.replyToId : null;
-    if (replyToId !== null && (
-      typeof replyToId !== 'number' || !Number.isSafeInteger(replyToId) || replyToId < 1
-    )) {
+    if (replyToId !== null && (!Number.isSafeInteger(replyToId) || replyToId < 1)) {
       return NextResponse.json({ success: false, error: 'Pesan yang dibalas tidak valid.' }, { status: 400 });
     }
-
-    const message = body.message.trim();
-    if (!message) {
-      return NextResponse.json({ success: false, error: 'Pesan tidak boleh kosong.' }, { status: 400 });
+    if (!message && !photoFile) {
+      return NextResponse.json({ success: false, error: 'Pesan atau foto wajib diisi.' }, { status: 400 });
     }
     if (message.length > 2000) {
       return NextResponse.json({ success: false, error: 'Pesan maksimal 2000 karakter.' }, { status: 400 });
@@ -199,14 +253,36 @@ export async function POST(request: Request) {
       }
     }
 
+    let imagePath: string | null = null;
+    let imageType: ChatPhotoType | null = null;
+    if (photoFile) {
+      if (photoFile.size < 1 || photoFile.size > MAX_CHAT_PHOTO_SIZE) {
+        return NextResponse.json({ success: false, error: 'Ukuran foto maksimal 5 MB.' }, { status: 413 });
+      }
+      if (!isSupportedChatPhotoType(photoFile.type)) {
+        return NextResponse.json({ success: false, error: 'Format foto harus JPEG, PNG, GIF, atau WebP.' }, { status: 415 });
+      }
+      imageType = photoFile.type;
+      const photoBytes = Buffer.from(await photoFile.arrayBuffer());
+      if (!matchesChatPhotoType(photoBytes, imageType)) {
+        return NextResponse.json({ success: false, error: 'Isi file tidak sesuai dengan format foto.' }, { status: 415 });
+      }
+      imagePath = `chat/${access.session.id}/${randomUUID()}`;
+      const paths = getChatPhotoPaths(imagePath);
+      await mkdir(path.dirname(paths.absolutePath), { recursive: true });
+      uploadedPhotoPath = paths.absolutePath;
+      await writeFile(paths.absolutePath, photoBytes, { flag: 'wx' });
+    }
+
     const insert = await query<{ insertId: number }>(
-      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message) VALUES (?, ?, ?)',
-      [access.session.id, replyToId, message]
+      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type) VALUES (?, ?, ?, ?, ?)',
+      [access.session.id, replyToId, message, imagePath, imageType]
     );
     const messageId = insert.insertId;
     if (!messageId) {
       throw new Error('Chat message insert did not return an id.');
     }
+    uploadedPhotoPath = null;
 
     const messages = await query<ChatMessage[]>(
       `${chatMessageSelect} WHERE cm.id = ? LIMIT 1`,
@@ -221,6 +297,9 @@ export async function POST(request: Request) {
       success: true,
       data: {
         ...sentMessage,
+        photo_url: sentMessage.image_path ? `/api/chat/messages/${sentMessage.id}/photo` : null,
+        image_path: undefined,
+        image_type: undefined,
         reply_to: sentMessage.reply_to_id && sentMessage.reply_to_sender_id
           ? {
               id: sentMessage.reply_to_id,
@@ -235,6 +314,11 @@ export async function POST(request: Request) {
       },
     }, { status: 201 });
   } catch (error: unknown) {
+    if (uploadedPhotoPath) {
+      await rm(uploadedPhotoPath, { force: true }).catch((cleanupError: unknown) => {
+        console.error('[Chat Photo Upload Cleanup Error]:', cleanupError);
+      });
+    }
     console.error('[Chat messages POST Error]:', error);
     return NextResponse.json({ success: false, error: 'Gagal mengirim pesan.' }, { status: 500 });
   }

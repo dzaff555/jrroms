@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-const UPLOAD_DIRECTORY = path.resolve(process.env.UPLOAD_DIR || '/app/uploads');
+const UPLOAD_DIRECTORY = path.resolve(/*turbopackIgnore: true*/ process.env.UPLOAD_DIR || '/app/uploads');
 
 export function resolveUploadStoragePaths(storageKey: string) {
   const absolutePath = path.resolve(UPLOAD_DIRECTORY, ...storageKey.split('/'));

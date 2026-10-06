@@ -1,9 +1,11 @@
 'use client';
 
 import React, { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
-import { ListChecks, Loader2, MessageCircle, MoreVertical, Reply, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { Download, ImagePlus, ListChecks, Loader2, MessageCircle, MoreVertical, Reply, RotateCcw, Send, ShieldCheck, Trash2, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
+import { MAX_CHAT_PHOTO_SIZE } from '@/lib/chat/constants';
 
 interface RepliedMessage {
   id: number;
@@ -29,6 +31,7 @@ interface ChatMessage {
   profile_photo_loaded?: boolean | number;
   reply_to_id?: number | null;
   reply_to?: RepliedMessage | null;
+  photo_url?: string | null;
 }
 
 interface ChatApiResponse {
@@ -65,7 +68,13 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const isDeveloper = currentUserRole === 'DEVELOPER';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
+  const [photoViewer, setPhotoViewer] = useState<{ url: string; senderName: string } | null>(null);
+  const [photoZoom, setPhotoZoom] = useState(1);
+  const [photoOffset, setPhotoOffset] = useState({ x: 0, y: 0 });
+  const [isDraggingPhoto, setIsDraggingPhoto] = useState(false);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
@@ -81,12 +90,29 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const deletionCursorRef = useRef<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoPreviewUrlRef = useRef<string | null>(null);
+  const photoViewerRef = useRef<HTMLDivElement>(null);
+  const photoImageRef = useRef<HTMLImageElement>(null);
+  const photoDragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const shouldScrollRef = useRef(true);
   const isLoadingMessagesRef = useRef(false);
   const initialMessagesLoadedRef = useRef(false);
   const initialScrollPositionedRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
   const messageActionsRef = useRef<HTMLDivElement>(null);
+
+  const updatePhoto = useCallback((file: File | null) => {
+    if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
+    const previewUrl = file ? URL.createObjectURL(file) : null;
+    photoPreviewUrlRef.current = previewUrl;
+    setPhotoPreviewUrl(previewUrl);
+    setPhotoFile(file);
+  }, []);
+
+  useEffect(() => () => {
+    if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
+  }, []);
 
   useEffect(() => {
     if (openMessageActionsId === null) return;
@@ -107,6 +133,17 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [openMessageActionsId]);
+
+  useEffect(() => {
+    if (!photoViewer) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPhotoViewer(null);
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [photoViewer]);
 
   const mergeMessages = useCallback((incoming: ChatMessage[], replace = false) => {
     if (replace) profilePhotosRef.current.clear();
@@ -212,18 +249,32 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const message = draft.trim();
-    if (!message || isSending) return;
+    const photo = photoFile;
+    if ((!message && !photo) || isSending) return;
 
     setIsSending(true);
     setError(null);
     setDraft('');
+    updatePhoto(null);
     const replyToId = replyTarget?.id ?? null;
     setReplyTarget(null);
     try {
+      let body: BodyInit;
+      let headers: HeadersInit | undefined;
+      if (photo) {
+        const form = new FormData();
+        form.set('message', message);
+        if (replyToId !== null) form.set('replyToId', String(replyToId));
+        form.set('photo', photo);
+        body = form;
+      } else {
+        headers = { 'Content-Type': 'application/json' };
+        body = JSON.stringify({ message, replyToId });
+      }
       const response = await fetch('/api/chat/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, replyToId }),
+        headers,
+        body,
       });
       const result = await response.json() as ChatApiResponse;
 
@@ -234,8 +285,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       shouldScrollRef.current = true;
       mergeMessages([result.data]);
       messageCursorRef.current = Math.max(messageCursorRef.current ?? 0, result.data.id);
+      if (photoInputRef.current) photoInputRef.current.value = '';
     } catch (sendError: unknown) {
       setDraft((currentDraft) => currentDraft || draft);
+      if (photo) updatePhoto(photo);
       setReplyTarget((currentTarget) => currentTarget || replyTarget);
       setError(sendError instanceof Error ? sendError.message : 'Gagal mengirim pesan.');
     } finally {
@@ -335,6 +388,88 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       event.currentTarget.form?.requestSubmit();
+    }
+  };
+
+  const handleDownloadPhoto = async () => {
+    if (!photoViewer) return;
+
+    try {
+      const response = await fetch(photoViewer.url, { cache: 'no-store' });
+      if (!response.ok) throw new Error('Gagal mengunduh foto.');
+
+      const image = await response.blob();
+      const extensionByType: Record<string, string> = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/gif': 'gif',
+        'image/webp': 'webp',
+      };
+      const extension = extensionByType[image.type];
+      if (!extension) throw new Error('Format foto tidak didukung untuk diunduh.');
+
+      const downloadUrl = URL.createObjectURL(image);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `foto-chat.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (downloadError: unknown) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Gagal mengunduh foto.');
+    }
+  };
+
+  const changePhotoZoom = (amount: number) => {
+    setPhotoZoom((zoom) => {
+      const nextZoom = Math.min(4, Math.max(1, Math.round((zoom + amount) * 10) / 10));
+      if (nextZoom === 1) setPhotoOffset({ x: 0, y: 0 });
+      return nextZoom;
+    });
+  };
+
+  const handlePhotoPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (photoZoom <= 1 || event.button !== 0) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    photoDragRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      offsetX: photoOffset.x,
+      offsetY: photoOffset.y,
+    };
+    setIsDraggingPhoto(true);
+  };
+
+  const handlePhotoPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = photoDragRef.current;
+    const container = photoViewerRef.current;
+    const image = photoImageRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !container || !image) return;
+
+    const fitScale = Math.min(
+      container.clientWidth / image.naturalWidth,
+      container.clientHeight / image.naturalHeight
+    );
+    const maxX = Math.max(0, (image.naturalWidth * fitScale * photoZoom - container.clientWidth) / 2);
+    const maxY = Math.max(0, (image.naturalHeight * fitScale * photoZoom - container.clientHeight) / 2);
+    const x = drag.offsetX + event.clientX - drag.x;
+    const y = drag.offsetY + event.clientY - drag.y;
+    setPhotoOffset({
+      x: Math.min(maxX, Math.max(-maxX, x)),
+      y: Math.min(maxY, Math.max(-maxY, y)),
+    });
+  };
+
+  const handlePhotoPointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (photoDragRef.current?.pointerId !== event.pointerId) return;
+    photoDragRef.current = null;
+    setIsDraggingPhoto(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
 
@@ -491,7 +626,30 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                         {senderName}
                       </Link>
                     </div>
-                    <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.message}</p>
+                    {message.photo_url && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPhotoZoom(1);
+                          setPhotoOffset({ x: 0, y: 0 });
+                          setPhotoViewer({ url: message.photo_url!, senderName });
+                        }}
+                        className="mb-2 block overflow-hidden rounded-lg"
+                        aria-label={`Perbesar foto dari ${senderName}`}
+                      >
+                        <Image
+                          src={message.photo_url}
+                          alt={`Foto yang dikirim ${senderName}`}
+                          width={640}
+                          height={480}
+                          unoptimized
+                          className="h-auto max-h-80 w-auto max-w-full object-contain"
+                        />
+                      </button>
+                    )}
+                    {message.message && (
+                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.message}</p>
+                    )}
                     <div className="mt-1 flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-1.5">
                         <span className={`truncate text-[10px] ${ownMessage ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'}`}>
@@ -607,6 +765,110 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         </div>
       )}
 
+      {photoViewer && (
+        <div
+          className="fixed inset-0 z-[110] flex flex-col bg-black/95"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Foto yang dikirim ${photoViewer.senderName}`}
+          onClick={() => setPhotoViewer(null)}
+        >
+          <div className="flex h-14 shrink-0 items-center justify-end gap-2 px-4">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                changePhotoZoom(-0.25);
+              }}
+              disabled={photoZoom <= 1}
+              aria-label="Perkecil foto"
+              title="Perkecil"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ZoomOut className="h-5 w-5" />
+            </button>
+            <span className="min-w-12 text-center text-xs font-medium text-white/80">
+              {Math.round(photoZoom * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                changePhotoZoom(0.25);
+              }}
+              disabled={photoZoom >= 4}
+              aria-label="Perbesar foto"
+              title="Perbesar"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ZoomIn className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setPhotoZoom(1);
+                setPhotoOffset({ x: 0, y: 0 });
+              }}
+              disabled={photoZoom === 1}
+              aria-label="Ukuran asli foto"
+              title="Ukuran asli"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RotateCcw className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleDownloadPhoto();
+              }}
+              aria-label="Unduh foto"
+              title="Unduh foto"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/15"
+            >
+              <Download className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setPhotoViewer(null)}
+              aria-label="Tutup foto"
+              title="Tutup"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/15"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div
+            ref={photoViewerRef}
+            className={`relative min-h-0 flex-1 overflow-hidden p-3 ${
+              photoZoom > 1 ? (isDraggingPhoto ? 'cursor-grabbing' : 'cursor-grab') : ''
+            }`}
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={handlePhotoPointerDown}
+            onPointerMove={handlePhotoPointerMove}
+            onPointerUp={handlePhotoPointerEnd}
+            onPointerCancel={handlePhotoPointerEnd}
+            onWheel={(event) => {
+              event.preventDefault();
+              changePhotoZoom(event.deltaY < 0 ? 0.1 : -0.1);
+            }}
+          >
+            <Image
+              src={photoViewer.url}
+              alt={`Foto yang dikirim ${photoViewer.senderName}`}
+              ref={photoImageRef}
+              fill
+              unoptimized
+              sizes="100vw"
+              className="object-contain transition-transform duration-150"
+              draggable={false}
+              style={{ transform: `translate(${photoOffset.x}px, ${photoOffset.y}px) scale(${photoZoom})` }}
+            />
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="border-t border-slate-200 bg-white p-3 sm:px-5 sm:py-4 dark:border-slate-700 dark:bg-[#161b22]">
         {replyTarget && (
           <div className="mb-3 flex items-center gap-2 rounded-xl border-l-4 border-blue-500 bg-blue-50 px-3 py-2 dark:bg-blue-950/30">
@@ -626,7 +888,65 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             </button>
           </div>
         )}
+        {photoPreviewUrl && (
+          <div className="mb-3 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-700 dark:bg-[#0d1117]">
+            <Image
+              src={photoPreviewUrl}
+              alt="Pratinjau foto yang akan dikirim"
+              width={96}
+              height={96}
+              unoptimized
+              className="h-20 w-20 rounded-lg object-cover"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{photoFile?.name}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Foto siap dikirim · Maksimal 5 MB
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                updatePhoto(null);
+                if (photoInputRef.current) photoInputRef.current.value = '';
+              }}
+              disabled={isSending}
+              aria-label="Hapus foto dari pesan"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200 hover:text-slate-800 disabled:opacity-50 dark:hover:bg-slate-700 dark:hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2 sm:gap-3">
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="sr-only"
+            aria-label="Pilih foto untuk dikirim"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              event.currentTarget.value = '';
+              if (!file) return;
+              if (file.size > MAX_CHAT_PHOTO_SIZE) {
+                setError('Ukuran foto maksimal 5 MB.');
+                return;
+              }
+              setError(null);
+              updatePhoto(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => photoInputRef.current?.click()}
+            disabled={isSending}
+            aria-label="Kirim foto"
+            title="Kirim foto"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+          >
+            <ImagePlus className="h-5 w-5" />
+          </button>
           <textarea
             ref={composerRef}
             value={draft}
@@ -640,7 +960,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           />
           <button
             type="submit"
-            disabled={!draft.trim() || isSending}
+            disabled={(!draft.trim() && !photoFile) || isSending}
             aria-label="Kirim pesan"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-[#161b22]"
           >
