@@ -35,10 +35,17 @@ interface ChatMessage {
   reply_to_attendance_role: string | null;
   reply_to_message: string | null;
   reply_to_deleted_at: Date | null;
+  reply_to_image_type: string | null;
+  reply_to_has_media: number | boolean;
+  reply_to_is_sticker: number | boolean;
+  reply_to_is_voice_note: number | boolean;
+  reply_to_audio_duration_seconds: number;
   image_path: string | null;
   image_type: string | null;
   has_image: number | boolean;
   is_sticker: number | boolean;
+  is_voice_note: number | boolean;
+  audio_duration_seconds: number;
   media_url?: string | null;
   media_type?: string | null;
   photo_url?: string | null;
@@ -69,14 +76,19 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
 const chatMessageSelect = `
   SELECT cm.id, cm.sender_id, u.username, u.real_name, u.profile_photo, u.role, u.attendance_role,
     cm.message, cm.image_path, cm.image_type, (cm.image_data IS NOT NULL) AS has_image,
-    cm.is_sticker,
+    cm.is_sticker, cm.is_voice_note, cm.audio_duration_seconds,
     cm.deleted_at, cm.created_at, cm.reply_to_id,
     replied.sender_id AS reply_to_sender_id,
     reply_user.username AS reply_to_username,
     reply_user.role AS reply_to_role,
     reply_user.attendance_role AS reply_to_attendance_role,
     replied.message AS reply_to_message,
-    replied.deleted_at AS reply_to_deleted_at
+    replied.deleted_at AS reply_to_deleted_at,
+    replied.image_type AS reply_to_image_type,
+    (replied.image_data IS NOT NULL OR replied.image_path IS NOT NULL) AS reply_to_has_media,
+    replied.is_sticker AS reply_to_is_sticker,
+    replied.is_voice_note AS reply_to_is_voice_note,
+    replied.audio_duration_seconds AS reply_to_audio_duration_seconds
   FROM staff_admin_chat_messages cm
   INNER JOIN users u ON u.id = cm.sender_id
   LEFT JOIN staff_admin_chat_messages replied ON replied.id = cm.reply_to_id
@@ -103,6 +115,7 @@ export async function GET(request: Request) {
             CASE WHEN cm.profile_rank = 1 THEN u.profile_photo ELSE NULL END AS profile_photo,
             (cm.profile_rank = 1) AS profile_photo_loaded,
             u.role, u.attendance_role, cm.message, cm.image_path, cm.image_type, cm.is_sticker,
+            cm.is_voice_note, cm.audio_duration_seconds,
             cm.has_image,
             cm.deleted_at, cm.created_at, cm.reply_to_id,
             replied.sender_id AS reply_to_sender_id,
@@ -110,12 +123,18 @@ export async function GET(request: Request) {
             reply_user.role AS reply_to_role,
             reply_user.attendance_role AS reply_to_attendance_role,
             replied.message AS reply_to_message,
-            replied.deleted_at AS reply_to_deleted_at
+            replied.deleted_at AS reply_to_deleted_at,
+            replied.image_type AS reply_to_image_type,
+            (replied.image_data IS NOT NULL OR replied.image_path IS NOT NULL) AS reply_to_has_media,
+            replied.is_sticker AS reply_to_is_sticker,
+            replied.is_voice_note AS reply_to_is_voice_note,
+            replied.audio_duration_seconds AS reply_to_audio_duration_seconds
           FROM (
             SELECT recent_messages.*,
               ROW_NUMBER() OVER (PARTITION BY sender_id ORDER BY id DESC) AS profile_rank
             FROM (
               SELECT id, sender_id, message, image_path, image_type, is_sticker,
+                is_voice_note, audio_duration_seconds,
                 (image_data IS NOT NULL) AS has_image, deleted_at, created_at, reply_to_id
               FROM staff_admin_chat_messages
               ORDER BY id DESC
@@ -178,6 +197,13 @@ export async function GET(request: Request) {
               attendance_role: message.reply_to_attendance_role,
               message: message.reply_to_message,
               deleted_at: message.reply_to_deleted_at,
+              media_url: message.reply_to_has_media
+                ? `/api/chat/messages/${message.reply_to_id}/media`
+                : null,
+              media_type: message.reply_to_image_type,
+              is_sticker: Boolean(message.reply_to_is_sticker),
+              is_voice_note: Boolean(message.reply_to_is_voice_note),
+              audio_duration_seconds: message.reply_to_audio_duration_seconds,
             }
           : null,
       })),
@@ -198,6 +224,8 @@ export async function POST(request: Request) {
     let replyToId: number | null;
     let stickerId: number | null = null;
     let isSticker = false;
+    let isVoiceNote = false;
+    let audioDurationSeconds = 0;
     let favoriteImageType: ChatMediaType | null = null;
     let favoriteImageData: Buffer | null = null;
     let attachmentFile: File | null = null;
@@ -219,11 +247,19 @@ export async function POST(request: Request) {
       const formReplyToId = form.get('replyToId');
       const formAttachment = form.get('attachment') ?? form.get('photo');
       const formIsSticker = form.get('isSticker');
+      const formIsVoiceNote = form.get('isVoiceNote');
+      const formAudioDuration = form.get('audioDurationSeconds');
       if (typeof formMessage !== 'string') {
         return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
       }
       message = formMessage.trim();
       isSticker = formIsSticker === 'true';
+      isVoiceNote = formIsVoiceNote === 'true';
+      audioDurationSeconds = formAudioDuration === null || formAudioDuration === ''
+        ? 0
+        : /^\d+$/.test(formAudioDuration.toString()) && Number.isSafeInteger(Number(formAudioDuration))
+          ? Number(formAudioDuration)
+          : Number.NaN;
       replyToId = formReplyToId === null || formReplyToId === ''
         ? null
         : /^\d+$/.test(formReplyToId.toString()) && Number.isSafeInteger(Number(formReplyToId))
@@ -251,6 +287,12 @@ export async function POST(request: Request) {
       }
       const bodyReplyToId = 'replyToId' in body ? body.replyToId : null;
       replyToId = bodyReplyToId === null ? null : typeof bodyReplyToId === 'number' ? bodyReplyToId : Number.NaN;
+      const bodyIsVoiceNote = 'isVoiceNote' in body ? body.isVoiceNote : false;
+      isVoiceNote = typeof bodyIsVoiceNote === 'boolean' ? bodyIsVoiceNote : false;
+      const bodyAudioDuration = 'audioDurationSeconds' in body ? body.audioDurationSeconds : 0;
+      audioDurationSeconds = typeof bodyAudioDuration === 'number' && Number.isSafeInteger(bodyAudioDuration)
+        ? bodyAudioDuration
+        : Number.NaN;
       message = bodyMessage.trim();
       if ('stickerId' in body) {
         stickerId = typeof body.stickerId === 'number' && Number.isSafeInteger(body.stickerId)
@@ -281,6 +323,15 @@ export async function POST(request: Request) {
     }
     if (!message && !attachmentFile && stickerId === null) {
       return NextResponse.json({ success: false, error: 'Pesan atau lampiran wajib diisi.' }, { status: 400 });
+    }
+    const isAudioAttachment = attachmentFile?.type.startsWith('audio/') ?? false;
+    if (
+      !Number.isSafeInteger(audioDurationSeconds) ||
+      audioDurationSeconds < 0 ||
+      audioDurationSeconds > 86_400 ||
+      ((isVoiceNote || audioDurationSeconds > 0) && !isAudioAttachment)
+    ) {
+      return NextResponse.json({ success: false, error: 'Informasi durasi audio tidak valid.' }, { status: 400 });
     }
     if (message.length > 2000) {
       return NextResponse.json({ success: false, error: 'Pesan maksimal 2000 karakter.' }, { status: 400 });
@@ -333,8 +384,8 @@ export async function POST(request: Request) {
     }
 
     const insert = await query<{ insertId: number }>(
-      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data, is_sticker) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [access.session.id, replyToId, message, null, imageType, imageData, isSticker]
+      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data, is_sticker, is_voice_note, audio_duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [access.session.id, replyToId, message, null, imageType, imageData, isSticker, isVoiceNote, isAudioAttachment ? audioDurationSeconds : 0]
     );
     const messageId = insert.insertId;
     if (!messageId) {
@@ -372,6 +423,13 @@ export async function POST(request: Request) {
               attendance_role: sentMessage.reply_to_attendance_role,
               message: sentMessage.reply_to_message,
               deleted_at: sentMessage.reply_to_deleted_at,
+              media_url: sentMessage.reply_to_has_media
+                ? `/api/chat/messages/${sentMessage.reply_to_id}/media`
+                : null,
+              media_type: sentMessage.reply_to_image_type,
+              is_sticker: Boolean(sentMessage.reply_to_is_sticker),
+              is_voice_note: Boolean(sentMessage.reply_to_is_voice_note),
+              audio_duration_seconds: sentMessage.reply_to_audio_duration_seconds,
             }
           : null,
       },

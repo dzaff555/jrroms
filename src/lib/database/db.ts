@@ -367,6 +367,8 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       { table: 'staff_admin_chat_messages', column: 'image_type', definition: 'VARCHAR(50) NULL AFTER image_path' },
       { table: 'staff_admin_chat_messages', column: 'image_data', definition: 'MEDIUMBLOB NULL AFTER image_type' },
       { table: 'staff_admin_chat_messages', column: 'is_sticker', definition: 'BOOLEAN NOT NULL DEFAULT FALSE AFTER image_data' },
+      { table: 'staff_admin_chat_messages', column: 'is_voice_note', definition: 'BOOLEAN NOT NULL DEFAULT FALSE AFTER is_sticker' },
+      { table: 'staff_admin_chat_messages', column: 'audio_duration_seconds', definition: 'INT UNSIGNED NOT NULL DEFAULT 0 AFTER is_voice_note' },
     ]);
     await ensureChatDeletedAtIndex(dbPool);
     await ensureChatReplySchema(dbPool);

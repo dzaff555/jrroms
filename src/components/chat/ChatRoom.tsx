@@ -1,6 +1,7 @@
 'use client';
 
 import React, { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Download, Headphones, Loader2, MessageCircle, Mic, MoreVertical, Paperclip, Pause, Play, Reply, RotateCcw, Send, ShieldCheck, Smile, Star, Trash2, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
@@ -15,6 +16,11 @@ interface RepliedMessage {
   attendance_role: string | null;
   message: string | null;
   deleted_at: string | null;
+  media_url?: string | null;
+  media_type?: string | null;
+  is_sticker?: boolean | number;
+  is_voice_note?: boolean | number;
+  audio_duration_seconds?: number;
 }
 
 interface ChatMessage {
@@ -34,6 +40,8 @@ interface ChatMessage {
   media_url?: string | null;
   media_type?: string | null;
   is_sticker?: boolean | number;
+  is_voice_note?: boolean | number;
+  audio_duration_seconds?: number;
 }
 
 interface FavoriteSticker {
@@ -79,11 +87,59 @@ function formatAccountRole(message: Pick<ChatMessage, 'role' | 'attendance_role'
   return message.attendance_role || 'Staff';
 }
 
+function getChatMessageType(message: Pick<
+  RepliedMessage,
+  'message' | 'media_type' | 'is_sticker' | 'is_voice_note' | 'audio_duration_seconds'
+>) {
+  if (message.is_sticker) return 'Stiker';
+  if (message.media_type?.startsWith('image/')) return 'Foto';
+  if (message.media_type?.startsWith('video/')) return 'Video';
+  if (message.media_type?.startsWith('audio/')) {
+    const duration = formatAudioTime(message.audio_duration_seconds || 0);
+    return message.is_voice_note ? `Pesan Suara (${duration})` : `audio (${duration})`;
+  }
+  return message.message ? 'Pesan teks' : 'Pesan';
+}
+
 function formatAudioTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = Math.floor(seconds % 60);
   return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function readAudioDuration(file: File) {
+  return new Promise<number>((resolve, reject) => {
+    const audio = document.createElement('audio');
+    const sourceUrl = URL.createObjectURL(file);
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Durasi audio tidak dapat dibaca.'));
+    }, 10_000);
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      audio.onloadedmetadata = null;
+      audio.onerror = null;
+      audio.removeAttribute('src');
+      audio.load();
+      URL.revokeObjectURL(sourceUrl);
+    };
+    audio.preload = 'metadata';
+    audio.onloadedmetadata = () => {
+      const duration = audio.duration;
+      cleanup();
+      if (!Number.isFinite(duration) || duration <= 0) {
+        reject(new Error('Durasi audio tidak valid.'));
+        return;
+      }
+      resolve(Math.round(duration));
+    };
+    audio.onerror = () => {
+      cleanup();
+      reject(new Error('Durasi audio tidak dapat dibaca oleh browser ini.'));
+    };
+    audio.src = sourceUrl;
+  });
 }
 
 function ChatAudioPlayer({
@@ -348,6 +404,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [draft, setDraft] = useState('');
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
+  const [attachmentAudioDuration, setAttachmentAudioDuration] = useState(0);
+  const [isVoiceNoteAttachment, setIsVoiceNoteAttachment] = useState(false);
+  const [isReadingAudioDuration, setIsReadingAudioDuration] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [isVoiceRecordingPaused, setIsVoiceRecordingPaused] = useState(false);
   const [voiceRecordingDuration, setVoiceRecordingDuration] = useState(0);
@@ -366,6 +425,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [isMessageSelectionMode, setIsMessageSelectionMode] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [openMessageActionsId, setOpenMessageActionsId] = useState<number | null>(null);
+  const [messageActionsPosition, setMessageActionsPosition] = useState<{ top: number; left: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
@@ -384,6 +444,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const voiceElapsedMsRef = useRef(0);
   const voiceSegmentStartedAtRef = useRef<number | null>(null);
   const attachmentPreviewUrlRef = useRef<string | null>(null);
+  const audioDurationRequestRef = useRef(0);
   const photoViewerRef = useRef<HTMLDivElement>(null);
   const photoImageRef = useRef<HTMLImageElement>(null);
   const photoDragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
@@ -393,13 +454,18 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const initialScrollPositionedRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
   const messageActionsRef = useRef<HTMLDivElement>(null);
+  const messageActionsMenuRef = useRef<HTMLDivElement>(null);
 
   const updateAttachment = useCallback((file: File | null) => {
+    audioDurationRequestRef.current += 1;
     if (attachmentPreviewUrlRef.current) URL.revokeObjectURL(attachmentPreviewUrlRef.current);
     const previewUrl = file ? URL.createObjectURL(file) : null;
     attachmentPreviewUrlRef.current = previewUrl;
     setAttachmentPreviewUrl(previewUrl);
     setAttachmentFile(file);
+    setAttachmentAudioDuration(0);
+    setIsVoiceNoteAttachment(false);
+    setIsReadingAudioDuration(false);
   }, []);
 
   const loadFavoriteStickers = useCallback(async () => {
@@ -433,21 +499,57 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     return () => window.clearInterval(timer);
   }, [isRecordingVoice, isVoiceRecordingPaused]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (openMessageActionsId === null) return;
+    const messagesContainer = messagesContainerRef.current;
+
+    const updatePosition = () => {
+      const trigger = messageActionsRef.current?.querySelector('button');
+      const menu = messageActionsMenuRef.current;
+      if (!trigger || !menu) return;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const margin = 8;
+      const messageRow = trigger.closest('[id^="chat-message-"]');
+      const isOutgoing = messageRow?.classList.contains('justify-end') ?? false;
+      const spaceBelow = window.innerHeight - triggerRect.bottom;
+      const desiredTop = spaceBelow >= menuRect.height + margin
+        ? triggerRect.bottom + 4
+        : Math.max(margin, triggerRect.top - menuRect.height - 4);
+      const top = Math.min(window.innerHeight - menuRect.height - margin, desiredTop);
+      const preferredLeft = isOutgoing
+        ? triggerRect.left - menuRect.width - 4
+        : triggerRect.right + 4;
+      const fallbackLeft = isOutgoing
+        ? triggerRect.right + 4
+        : triggerRect.left - menuRect.width - 4;
+      const left = preferredLeft >= margin && preferredLeft + menuRect.width <= window.innerWidth - margin
+        ? preferredLeft
+        : Math.min(window.innerWidth - menuRect.width - margin, Math.max(margin, fallbackLeft));
+      setMessageActionsPosition({ top, left });
+    };
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!messageActionsRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        !messageActionsRef.current?.contains(target) &&
+        !messageActionsMenuRef.current?.contains(target)
+      ) {
         setOpenMessageActionsId(null);
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpenMessageActionsId(null);
     };
-
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    messagesContainer?.addEventListener('scroll', updatePosition);
     document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      window.removeEventListener('resize', updatePosition);
+      messagesContainer?.removeEventListener('scroll', updatePosition);
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
@@ -580,7 +682,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     event.preventDefault();
     const message = draft.trim();
     const attachment = attachmentFile;
-    if ((!message && !attachment) || isSending) return;
+    const audioDuration = attachment?.type.startsWith('audio/') ? attachmentAudioDuration : 0;
+    const isVoiceNote = attachment?.type.startsWith('audio/') && isVoiceNoteAttachment;
+    if ((!message && !attachment) || isSending || isReadingAudioDuration) return;
 
     setIsSending(true);
     setError(null);
@@ -596,6 +700,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         form.set('message', message);
         if (replyToId !== null) form.set('replyToId', String(replyToId));
         form.set('attachment', attachment);
+        if (attachment.type.startsWith('audio/')) {
+          form.set('audioDurationSeconds', String(audioDuration));
+          form.set('isVoiceNote', String(isVoiceNote));
+        }
         body = form;
       } else {
         headers = { 'Content-Type': 'application/json' };
@@ -619,7 +727,11 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       setRecordedVoiceDuration(0);
     } catch (sendError: unknown) {
       setDraft((currentDraft) => currentDraft || draft);
-      if (attachment) updateAttachment(attachment);
+      if (attachment) {
+        updateAttachment(attachment);
+        setAttachmentAudioDuration(audioDuration);
+        setIsVoiceNoteAttachment(Boolean(isVoiceNote));
+      }
       setReplyTarget((currentTarget) => currentTarget || replyTarget);
       setError(sendError instanceof Error ? sendError.message : 'Gagal mengirim pesan.');
     } finally {
@@ -691,6 +803,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           return;
         }
         updateAttachment(new File([blob], `voice-note.${extension}`, { type: recordedMimeType }));
+        setAttachmentAudioDuration(durationSeconds);
+        setIsVoiceNoteAttachment(true);
       };
 
       voiceRecorderRef.current = recorder;
@@ -1045,8 +1159,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   };
 
   return (
-    <section className="flex h-[calc(100dvh-9rem)] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-[#161b22]">
-      <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 dark:border-slate-700">
+    <section className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-[#161b22]">
+      <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-slate-700 dark:bg-[#161b22]">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
           <Users className="h-5 w-5" />
         </div>
@@ -1061,7 +1175,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       </header>
 
       {isMessageSelectionMode && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-900 dark:bg-blue-950/30">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-900 dark:bg-blue-950/30">
           <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
             {selectedMessages.length} pesan dipilih
           </span>
@@ -1100,7 +1214,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
 
       <div
         ref={messagesContainerRef}
-        className="flex-1 space-y-3 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6 dark:bg-[#0d1117]"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-slate-50 px-3 py-4 sm:px-6 dark:bg-[#0d1117]"
         onScroll={(event) => {
           const element = event.currentTarget;
           shouldScrollRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
@@ -1157,13 +1271,17 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     <span className="text-sm font-bold leading-none">✓</span>
                   </button>
                 )}
-                <div className="flex max-w-[92%] items-end gap-2 sm:max-w-[80%]">
-                  {!message.is_sticker && (
+                <div className={`flex max-w-[92%] items-end gap-2 sm:max-w-[80%] ${
+                  message.is_sticker ? (ownMessage ? 'flex-row-reverse' : 'flex-row') : ''
+                }`}>
+                  {(!message.is_sticker || message.media_url) && (
                     <Link
                       href={profileHref}
                       aria-label={`Lihat profil ${senderName}`}
                       title={`Lihat profil ${senderName}`}
-                      className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200 text-xs font-bold uppercase text-slate-600 ring-1 ring-slate-300 transition hover:ring-blue-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600"
+                      className={`h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200 text-xs font-bold uppercase text-slate-600 ring-1 ring-slate-300 transition hover:ring-blue-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600 ${
+                        message.is_sticker ? 'mb-1' : ''
+                      }`}
                     >
                       {message.profile_photo ? (
                         <ProtectedProfilePhoto
@@ -1201,12 +1319,23 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                                 attendance_role: message.reply_to.attendance_role,
                               })}`}
                         </span>
-                        <span className={`block truncate text-xs ${
-                          ownMessage ? 'text-blue-50' : 'text-slate-600 dark:text-slate-300'
-                        }`}>
-                          {message.reply_to.deleted_at
-                            ? 'Pesan ini sudah tidak tersedia'
-                            : message.reply_to.message}
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 flex-1">
+                            <span className={`block truncate text-[10px] font-semibold ${
+                              ownMessage ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'
+                            }`}>
+                              {message.reply_to.deleted_at
+                                ? 'Pesan tidak tersedia'
+                                : getChatMessageType(message.reply_to)}
+                            </span>
+                            {!message.reply_to.deleted_at && message.reply_to.message && (
+                              <span className={`block truncate text-xs ${
+                                ownMessage ? 'text-blue-50' : 'text-slate-600 dark:text-slate-300'
+                              }`}>
+                                {message.reply_to.message}
+                              </span>
+                            )}
+                          </span>
                         </span>
                       </button>
                     )}
@@ -1322,7 +1451,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                   >
                     <button
                       type="button"
-                      onClick={() => setOpenMessageActionsId((openId) => openId === message.id ? null : message.id)}
+                      onClick={() => {
+                        setMessageActionsPosition(null);
+                        setOpenMessageActionsId((openId) => openId === message.id ? null : message.id);
+                      }}
                       aria-label={`Aksi pesan dari ${senderName}`}
                       aria-haspopup="true"
                       aria-expanded={openMessageActionsId === message.id}
@@ -1335,8 +1467,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     >
                       <MoreVertical className="h-4 w-4" />
                     </button>
-                    {openMessageActionsId === message.id && (
-                      <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-[#161b22]">
+                    {openMessageActionsId === message.id && createPortal(
+                      <div
+                        ref={messageActionsMenuRef}
+                        className="fixed z-[130] max-h-[min(75dvh,32rem)] w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-[#161b22]"
+                        style={{
+                          top: messageActionsPosition?.top ?? 0,
+                          left: messageActionsPosition?.left ?? 0,
+                          visibility: messageActionsPosition ? 'visible' : 'hidden',
+                        }}
+                      >
                         {message.is_sticker && (
                           <button
                             type="button"
@@ -1392,7 +1532,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                             </button>
                           </>
                         )}
-                      </div>
+                      </div>,
+                      document.body
                     )}
                   </div>
                 </div>
@@ -1562,14 +1703,19 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="border-t border-slate-200 bg-white p-3 sm:px-5 sm:py-4 dark:border-slate-700 dark:bg-[#161b22]">
+      <form onSubmit={handleSubmit} className="z-10 shrink-0 bg-transparent px-2 pb-2 pt-2 sm:px-4 sm:pb-3">
         {replyTarget && (
           <div className="mb-3 flex items-center gap-2 rounded-xl border-l-4 border-blue-500 bg-blue-50 px-3 py-2 dark:bg-blue-950/30">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-bold text-blue-700 dark:text-blue-300">
                 Membalas {replyTarget.username} - {formatAccountRole(replyTarget)}
               </p>
-              <p className="truncate text-xs text-slate-600 dark:text-slate-300">{replyTarget.message}</p>
+              <p className="truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                {getChatMessageType(replyTarget)}
+              </p>
+              {replyTarget.message && (
+                <p className="truncate text-xs text-slate-600 dark:text-slate-300">{replyTarget.message}</p>
+              )}
             </div>
             <button
               type="button"
@@ -1692,7 +1838,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             </button>
           </div>
         )}
-        <div className="flex items-end gap-2 sm:gap-3">
+        <div className="flex items-end gap-1 rounded-full border border-slate-200 bg-white/95 p-1.5 shadow-lg shadow-slate-900/10 backdrop-blur-md dark:border-slate-700 dark:bg-[#1c222b]/95 sm:gap-2">
           <input
             ref={stickerInputRef}
             type="file"
@@ -1752,7 +1898,26 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 return;
               }
               setError(null);
-              updateAttachment(file);
+              if (isAudio) {
+                const requestId = ++audioDurationRequestRef.current;
+                setIsReadingAudioDuration(true);
+                void readAudioDuration(file)
+                  .then((duration) => {
+                    if (requestId !== audioDurationRequestRef.current) return;
+                    updateAttachment(file);
+                    setAttachmentAudioDuration(duration);
+                  })
+                  .catch((audioError: unknown) => {
+                    if (requestId === audioDurationRequestRef.current) {
+                      setError(audioError instanceof Error ? audioError.message : 'Durasi audio tidak dapat dibaca.');
+                    }
+                  })
+                  .finally(() => {
+                    if (requestId === audioDurationRequestRef.current) setIsReadingAudioDuration(false);
+                  });
+              } else {
+                updateAttachment(file);
+              }
             }}
           />
           <button
@@ -1765,7 +1930,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             aria-label="Buka stiker favorit"
             aria-expanded={isStickerPickerOpen}
             title="Stiker"
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:opacity-50 ${
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:opacity-50 ${
               isStickerPickerOpen
                 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
                 : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'
@@ -1779,7 +1944,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             disabled={isSending}
             aria-label="Kirim foto, video, atau audio"
             title="Kirim foto, video, atau audio"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
           >
             <Paperclip className="h-5 w-5" />
           </button>
@@ -1793,7 +1958,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             rows={1}
             placeholder="Tulis pesan..."
             aria-label="Tulis pesan"
-            className="max-h-32 min-h-11 flex-1 resize-y rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-[#0d1117] dark:text-white"
+            className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:outline-none dark:text-white dark:placeholder:text-slate-400"
           />
           {isRecordingVoice && (
             <>
@@ -1805,7 +1970,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 onClick={toggleVoiceRecordingPause}
                 aria-label={isVoiceRecordingPaused ? 'Lanjutkan rekaman' : 'Jeda rekaman'}
                 title={isVoiceRecordingPaused ? 'Lanjutkan rekaman' : 'Jeda rekaman'}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 transition hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 transition hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/60"
               >
                 {isVoiceRecordingPaused
                   ? <Play className="h-5 w-5 fill-current" />
@@ -1822,7 +1987,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             disabled={!isRecordingVoice && (isSending || Boolean(attachmentFile))}
             aria-label={isRecordingVoice ? 'Selesai merekam voice note' : 'Rekam voice note'}
             title={isRecordingVoice ? 'Selesai merekam' : 'Rekam voice note'}
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
               isRecordingVoice
                 ? 'bg-rose-600 text-white hover:bg-rose-700'
                 : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'
@@ -1832,9 +1997,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           </button>
           <button
             type="submit"
-            disabled={(!draft.trim() && !attachmentFile) || isSending || isRecordingVoice}
+            disabled={(!draft.trim() && !attachmentFile) || isSending || isRecordingVoice || isReadingAudioDuration}
             aria-label="Kirim pesan"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-[#161b22]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-[#161b22]"
           >
             {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
           </button>

@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { AuthSession } from '@/types';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useToast } from '../ui/Toast';
 import { AutoRefresh } from '@/components/profile/AutoRefresh';
 
@@ -34,9 +34,11 @@ function AccessDeniedAlert() {
 export function AppLayout({ children, user, showSidebar = true, showUserMenu = true }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+  const isChatPage = pathname === '/chat' || pathname === '/admin/chat' || pathname === '/developer/chat';
 
   return (
-    <div className="min-h-screen bg-[#F5F8FC] flex flex-col antialiased">
+    <div className={`${isChatPage ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex flex-col bg-[#F5F8FC] antialiased`}>
       <AutoRefresh />
       <Suspense fallback={null}>
         <AccessDeniedAlert />
@@ -55,7 +57,9 @@ export function AppLayout({ children, user, showSidebar = true, showUserMenu = t
 
       {/* Main Content Area */}
       <div
-        className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${
+        className={`flex flex-1 flex-col transition-all duration-300 ease-in-out ${
+          isChatPage ? 'min-h-0' : ''
+        } ${
           showSidebar ? (collapsed ? 'lg:pl-20' : 'lg:pl-64') : ''
         }`}
       >
@@ -69,7 +73,11 @@ export function AppLayout({ children, user, showSidebar = true, showUserMenu = t
         />
 
         {/* Dynamic Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto animate-fade-in">
+        <main className={`w-full flex-1 ${
+          isChatPage
+            ? 'min-h-0 max-w-none overflow-hidden p-0'
+            : 'mx-auto max-w-7xl p-4 sm:p-6 lg:p-8'
+        } animate-fade-in`}>
           {children}
         </main>
       </div>

@@ -89,6 +89,8 @@ CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
   image_type VARCHAR(50) NULL,
   image_data MEDIUMBLOB NULL,
   is_sticker BOOLEAN NOT NULL DEFAULT FALSE,
+  is_voice_note BOOLEAN NOT NULL DEFAULT FALSE,
+  audio_duration_seconds INT UNSIGNED NOT NULL DEFAULT 0,
   deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
   deleted_by INT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
