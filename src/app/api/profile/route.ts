@@ -93,7 +93,6 @@ export async function POST(request: Request) {
 
     const roblox_username = typeof body.roblox_username === 'string' ? body.roblox_username.trim() : '';
     const discord_username = typeof body.discord_username === 'string' ? body.discord_username.trim() : '';
-    const real_name = typeof body.real_name === 'string' ? body.real_name.trim() : '';
 
     if (!roblox_username) {
       return NextResponse.json(
@@ -119,27 +118,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
     }
 
-    if (!real_name) {
-      return NextResponse.json(
-        { success: false, error: 'Nama asli wajib diisi.' },
-        { status: 400 }
-      );
-    }
-    if (real_name.length > 100) {
-      return NextResponse.json(
-        { success: false, error: 'Nama asli maksimal 100 karakter.' },
-        { status: 400 }
-      );
-    }
-
     const attendanceRole = isAttendanceRole(currentUser.attendance_role)
       ? currentUser.attendance_role
       : 'CSOT';
 
     await query(
       `UPDATE users SET profile_photo = ?, attendance_role = ?, roblox_username = ?,
-       discord_username = ?, real_name = ?, profile_completed = TRUE WHERE id = ?`,
-      [profile_photo || null, attendanceRole, roblox_username, discord_username, real_name, session.id]
+       discord_username = ?, profile_completed = TRUE WHERE id = ?`,
+      [profile_photo || null, attendanceRole, roblox_username, discord_username, session.id]
     );
 
     return NextResponse.json({

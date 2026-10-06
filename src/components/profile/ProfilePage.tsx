@@ -168,17 +168,27 @@ export default function ProfilePage() {
             <p className="text-xs font-medium sm:text-sm">
               {user?.role === 'ADMIN'
                 ? 'Di halaman ini Anda hanya dapat mengubah foto profil akun administrator.'
-                : 'Nama asli, foto profil, nama pengguna Roblox, dan nama pengguna Discord dapat diubah. NIP ditetapkan oleh administrator dan tidak dapat diubah dari halaman ini.'}
+                : 'Foto profil, nama pengguna Roblox, dan nama pengguna Discord dapat diubah. Nama asli dan NIP tidak dapat diubah dari halaman ini.'}
             </p>
           </div>
 
-          <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">NIP</p>
-            <p className="mt-1 break-words text-sm font-bold text-slate-800">
-              {nip || 'Belum ditetapkan administrator'}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">NIP bersifat tetap dan hanya dapat diubah oleh administrator melalui Kelola Pengguna.</p>
-          </div>
+          {user?.role !== 'ADMIN' && (
+            <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nama Asli</p>
+                <p className="mt-1 break-words text-sm font-bold text-slate-800">
+                  {realName || 'Belum ditetapkan administrator'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">NIP</p>
+                <p className="mt-1 break-words text-sm font-bold text-slate-800">
+                  {nip || 'Belum ditetapkan administrator'}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">NIP hanya dapat diubah oleh administrator.</p>
+              </div>
+            </div>
+          )}
 
           <ProfileForm
             initialValues={{
@@ -186,14 +196,12 @@ export default function ProfilePage() {
               attendance_role: user?.attendance_role || 'CSOT',
               roblox_username: user?.roblox_username || '',
               discord_username: user?.discord_username || '',
-              real_name: realName,
             }}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             submitLabel="Simpan Perubahan"
             showRole={user?.role !== 'ADMIN'}
             photoOnly={user?.role === 'ADMIN'}
-            showRealName={user?.role !== 'ADMIN'}
           />
         </div>
 
