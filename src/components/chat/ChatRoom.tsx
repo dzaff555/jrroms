@@ -458,6 +458,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const messageSearchInputRef = useRef<HTMLInputElement>(null);
   const wallpaperInputRef = useRef<HTMLInputElement>(null);
+  const pendingSearchJumpMessageIdRef = useRef<number | null>(null);
+  const preserveSearchJumpPositionRef = useRef(false);
+  const ignoreProgrammaticChatScrollRef = useRef(false);
   const stickerInputRef = useRef<HTMLInputElement>(null);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
@@ -607,7 +610,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [videoViewer]);
 
-  const mergeMessages = useCallback((incoming: ChatMessage[], replace = false) => {
+  const mergeMessages = useCallback((incoming: ChatMessage[], replace = false, maxMessages = 100) => {
     if (replace) profilePhotosRef.current.clear();
     const byId = new Map((replace ? [] : messagesRef.current).map((message) => [message.id, message]));
     for (const message of incoming) {
@@ -637,7 +640,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         profile_photo: message.profile_photo ?? profilePhotosRef.current.get(message.sender_id) ?? null,
       }))
       .sort((left, right) => left.id - right.id);
-    const latest = unique.slice(-100);
+    const latest = unique.slice(-maxMessages);
     messagesRef.current = latest;
     setMessages(latest);
   }, []);
@@ -716,23 +719,15 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       if (!contextMessages.some((message) => message.id === messageId)) {
         throw new Error('Pesan yang ditemukan sudah tidak tersedia.');
       }
-      messagesRef.current = contextMessages;
-      setMessages(contextMessages);
+      mergeMessages([...contextMessages, ...messagesRef.current], false, 200);
+      pendingSearchJumpMessageIdRef.current = messageId;
+      preserveSearchJumpPositionRef.current = true;
       shouldScrollRef.current = false;
       setIsSearchOpen(false);
       setSearchQuery('');
       setSearchResults([]);
       setSearchTotal(0);
       setIsSearchingMessages(false);
-      window.requestAnimationFrame(() => {
-        document.getElementById(`chat-message-${messageId}`)?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        });
-        setHighlightedMessageId(messageId);
-        if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current);
-        highlightTimeoutRef.current = window.setTimeout(() => setHighlightedMessageId(null), 1800);
-      });
     } catch (jumpError: unknown) {
       setError(jumpError instanceof Error ? jumpError.message : 'Gagal membuka pesan yang ditemukan.');
     } finally {
@@ -826,6 +821,31 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     const container = messagesContainerRef.current;
     if (isLoading || isWallpaperSettingsOpen || isSearchOpen || !initialMessagesLoadedRef.current || !container) return;
 
+    const pendingJumpMessageId = pendingSearchJumpMessageIdRef.current;
+    if (pendingJumpMessageId !== null) {
+      const target = document.getElementById(`chat-message-${pendingJumpMessageId}`);
+      if (!target) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const targetTop = container.scrollTop + targetRect.top - containerRect.top;
+      ignoreProgrammaticChatScrollRef.current = true;
+      container.scrollTop = Math.max(0, targetTop - (container.clientHeight - target.clientHeight) / 2);
+      window.setTimeout(() => {
+        ignoreProgrammaticChatScrollRef.current = false;
+      }, 300);
+      pendingSearchJumpMessageIdRef.current = null;
+      window.setTimeout(() => {
+        setHighlightedMessageId(pendingJumpMessageId);
+        if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = window.setTimeout(() => setHighlightedMessageId(null), 1800);
+      }, 0);
+      return;
+    }
+
+    if (preserveSearchJumpPositionRef.current && !shouldScrollRef.current) return;
+    preserveSearchJumpPositionRef.current = false;
+
     if (!initialScrollPositionedRef.current) {
       container.scrollTop = container.scrollHeight;
       initialScrollPositionedRef.current = true;
@@ -836,9 +856,15 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
 
   useLayoutEffect(() => {
     if (!isSearchOpen || searchResults.length === 0) return;
+    const container = messagesContainerRef.current;
     const match = searchResults[searchMatchIndex];
     const target = document.getElementById(`chat-message-${match.id}`);
-    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!container || !target) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetTop = container.scrollTop + targetRect.top - containerRect.top;
+    container.scrollTop = Math.max(0, targetTop - (container.clientHeight - target.clientHeight) / 2);
   }, [isSearchOpen, searchMatchIndex, searchResults]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1716,6 +1742,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           backgroundAttachment: 'fixed',
         } : undefined}
         onScroll={(event) => {
+          if (ignoreProgrammaticChatScrollRef.current) return;
+          preserveSearchJumpPositionRef.current = false;
           const element = event.currentTarget;
           shouldScrollRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
         }}

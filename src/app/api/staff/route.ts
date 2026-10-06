@@ -28,7 +28,7 @@ export async function GET(request: Request) {
       is_online: number | boolean;
     }[]>(
       `SELECT users.id, users.username, users.role, users.attendance_role, users.profile_photo,
-         CASE WHEN presence.last_seen_at >= CURRENT_TIMESTAMP - INTERVAL 60 SECOND THEN TRUE ELSE FALSE END AS is_online
+         CASE WHEN presence.last_seen_at >= CURRENT_TIMESTAMP - INTERVAL 30 SECOND THEN TRUE ELSE FALSE END AS is_online
        FROM users
        LEFT JOIN user_presence AS presence ON presence.user_id = users.id
        WHERE users.status = 'ACTIVE'

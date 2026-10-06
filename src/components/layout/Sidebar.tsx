@@ -33,6 +33,9 @@ interface SidebarStaff {
   is_online: boolean | number;
 }
 
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 10_000;
+const SIDEBAR_REFRESH_INTERVAL_MS = 5_000;
+
 export interface SidebarProps {
   user: AuthSession | null;
   collapsed: boolean;
@@ -108,18 +111,24 @@ export function Sidebar({
       });
     };
     const refreshSidebarData = () => {
+      if (document.visibilityState !== 'visible') return;
       void refreshStaff();
       void refreshChatUnread();
     };
     sendPresenceHeartbeat();
     refreshSidebarData();
-    const presenceTimer = window.setInterval(sendPresenceHeartbeat, 20_000);
-    const refreshTimer = window.setInterval(refreshSidebarData, 15_000);
-    document.addEventListener('visibilitychange', refreshSidebarData);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      sendPresenceHeartbeat();
+      refreshSidebarData();
+    };
+    const presenceTimer = window.setInterval(sendPresenceHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
+    const refreshTimer = window.setInterval(refreshSidebarData, SIDEBAR_REFRESH_INTERVAL_MS);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.clearInterval(presenceTimer);
       window.clearInterval(refreshTimer);
-      document.removeEventListener('visibilitychange', refreshSidebarData);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [refreshChatUnread, refreshStaff, userId]);
 
