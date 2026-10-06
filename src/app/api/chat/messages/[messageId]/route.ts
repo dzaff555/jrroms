@@ -51,7 +51,7 @@ export async function DELETE(
 
     if (message.image_path) {
       const { absolutePath } = getChatPhotoPaths(message.image_path);
-      await rm(absolutePath, { force: true }).catch((cleanupError: unknown) => {
+      void rm(absolutePath, { force: true }).catch((cleanupError: unknown) => {
         console.error('[Chat Photo Delete Cleanup Error]:', cleanupError);
       });
     }

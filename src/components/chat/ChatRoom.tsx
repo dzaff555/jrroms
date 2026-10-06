@@ -1127,6 +1127,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const handleDeleteMessage = async (message: ChatMessage) => {
     if (isDeveloper || deletingMessageId !== null) return;
 
+    mergeMessages([{ ...message, message: '', deleted_at: new Date().toISOString() }]);
+    setPendingDeleteMessage(null);
     setDeletingMessageId(message.id);
     setError(null);
     try {
@@ -1136,10 +1138,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         throw new Error(result.error || 'Gagal menghapus pesan.');
       }
 
-      mergeMessages([{ ...message, message: '', deleted_at: new Date().toISOString() }]);
-      setPendingDeleteMessage(null);
     } catch (deleteError: unknown) {
+      mergeMessages([message]);
       setError(deleteError instanceof Error ? deleteError.message : 'Gagal menghapus pesan.');
+      void loadMessages();
     } finally {
       setDeletingMessageId(null);
     }
@@ -1161,25 +1163,36 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const handleBulkDeleteMessages = async () => {
     if (isDeveloper || selectedMessages.length === 0 || deletingMessageId !== null) return;
 
+    const messagesToDelete = selectedMessages;
+    const previousSelectedMessageIds = selectedMessageIds;
+    const wasSelectionMode = isMessageSelectionMode;
+    mergeMessages(messagesToDelete.map((message) => ({
+      ...message,
+      message: '',
+      deleted_at: new Date().toISOString(),
+    })));
+    setSelectedMessageIds([]);
+    setIsMessageSelectionMode(false);
+    setPendingBulkDelete(false);
     setDeletingMessageId(-1);
     setError(null);
     try {
       const response = await fetch('/api/chat/messages/bulk-delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: selectedMessages.map((message) => message.id) }),
+        body: JSON.stringify({ ids: messagesToDelete.map((message) => message.id) }),
       });
       const result = await response.json() as ChatApiResponse;
       if (!response.ok || !result.success || typeof result.deletedCount !== 'number') {
         throw new Error(result.error || 'Gagal menghapus pesan.');
       }
 
-      const deletedAt = new Date().toISOString();
-      mergeMessages(selectedMessages.map((message) => ({ ...message, message: '', deleted_at: deletedAt })));
-      setSelectedMessageIds([]);
-      setPendingBulkDelete(false);
     } catch (deleteError: unknown) {
+      mergeMessages(messagesToDelete);
+      setSelectedMessageIds(previousSelectedMessageIds);
+      setIsMessageSelectionMode(wasSelectionMode);
       setError(deleteError instanceof Error ? deleteError.message : 'Gagal menghapus pesan.');
+      void loadMessages();
     } finally {
       setDeletingMessageId(null);
     }
@@ -1285,7 +1298,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   };
 
   const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) return;
       event.preventDefault();
       event.currentTarget.form?.requestSubmit();
     }

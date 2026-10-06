@@ -83,7 +83,7 @@ export async function POST(request: Request) {
       );
     }
 
-    await Promise.all(messages.flatMap((message) => {
+    void Promise.all(messages.flatMap((message) => {
       if (!message.image_path) return [];
       const { absolutePath } = getChatPhotoPaths(message.image_path);
       return [rm(absolutePath, { force: true }).catch((cleanupError: unknown) => {
