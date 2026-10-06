@@ -27,6 +27,7 @@ export async function GET(
       id: number;
       username: string;
       real_name: string | null;
+      nip: string | null;
       role: 'USER' | 'ADMIN' | 'DEVELOPER';
       status: 'ACTIVE' | 'DISABLED';
       created_at: string;
@@ -37,7 +38,7 @@ export async function GET(
       last_attendance: string | null;
       last_attendance_status: string | null;
     }[]>(
-      `SELECT id, username, real_name, role, status,
+      `SELECT id, username, real_name, nip, role, status,
         DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS created_at,
         attendance_role, profile_photo, roblox_username, discord_username,
         (SELECT DATE_FORMAT(attendance_date, '%Y-%m-%d') FROM attendance
@@ -84,7 +85,14 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { role, status, attendance_role: attendanceRole } = body;
+    const { role, status, attendance_role: attendanceRole, nip } = body;
+
+    if (nip !== undefined && nip !== null && typeof nip !== 'string') {
+      return NextResponse.json({ success: false, error: 'NIP tidak valid.' }, { status: 400 });
+    }
+    if (typeof nip === 'string' && nip.trim().length > 50) {
+      return NextResponse.json({ success: false, error: 'NIP maksimal 50 karakter.' }, { status: 400 });
+    }
 
     if (
       attendanceRole !== undefined &&
@@ -125,6 +133,11 @@ export async function PATCH(
     if (attendanceRole !== undefined) {
       updates.push('attendance_role = ?');
       values.push(attendanceRole);
+    }
+
+    if (nip !== undefined) {
+      updates.push('nip = ?');
+      values.push(typeof nip === 'string' && nip.trim() ? nip.trim() : null);
     }
 
     if (updates.length === 0) {

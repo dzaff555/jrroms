@@ -15,6 +15,7 @@ export default function ProfilePage() {
   const toast = useToast();
   const [user, setUser] = useState<AuthSession | null>(null);
   const [realName, setRealName] = useState('');
+  const [nip, setNip] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
@@ -35,6 +36,7 @@ export default function ProfilePage() {
           const profileData = await profileResponse.json();
           if (profileResponse.ok && profileData.success) {
             setRealName(profileData.data.real_name || '');
+            setNip(profileData.data.nip || null);
           }
         }
       } catch (error: unknown) {
@@ -61,6 +63,7 @@ export default function ProfilePage() {
             throw new Error(profileData.error || 'Nama asli tidak dapat dimuat.');
           }
           setRealName(profileData.data.real_name || '');
+          setNip(profileData.data.nip || null);
         }
       } catch (error: unknown) {
         console.error('Failed to load profile:', error);
@@ -165,9 +168,19 @@ export default function ProfilePage() {
             <p className="text-xs font-medium sm:text-sm">
               {user?.role === 'ADMIN'
                 ? 'Di halaman ini Anda hanya dapat mengubah foto profil akun administrator.'
-                : 'Nama asli, foto profil, nama pengguna Roblox, dan nama pengguna Discord dapat diubah. Nama asli hanya terlihat oleh Anda dan administrator; peran tetap otomatis.'}
+                : 'Nama asli, foto profil, nama pengguna Roblox, dan nama pengguna Discord dapat diubah. NIP ditetapkan oleh administrator dan tidak dapat diubah dari halaman ini.'}
             </p>
           </div>
+
+          {user?.role !== 'ADMIN' && (
+            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">NIP</p>
+              <p className="mt-1 break-words text-sm font-bold text-slate-800">
+                {nip || 'Belum ditetapkan administrator'}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">NIP bersifat tetap dan hanya dapat diubah oleh administrator melalui Kelola Pengguna.</p>
+            </div>
+          )}
 
           <ProfileForm
             initialValues={{

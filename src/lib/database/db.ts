@@ -197,6 +197,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         id INT AUTO_INCREMENT PRIMARY KEY,
         username VARCHAR(50) NOT NULL UNIQUE,
         real_name VARCHAR(100) NULL,
+        nip VARCHAR(50) NULL,
         email VARCHAR(100) NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
         role ENUM('USER', 'ADMIN', 'DEVELOPER') NOT NULL DEFAULT 'USER',
@@ -385,6 +386,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
     await ensureColumns(dbPool, [
       { table: 'users', column: 'attendance_role', definition: "ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'" },
       { table: 'users', column: 'real_name', definition: 'VARCHAR(100) NULL AFTER username' },
+      { table: 'users', column: 'nip', definition: 'VARCHAR(50) NULL AFTER real_name' },
       { table: 'users', column: 'profile_photo', definition: 'LONGTEXT NULL' },
       { table: 'users', column: 'roblox_username', definition: 'VARCHAR(100) NULL' },
       { table: 'users', column: 'discord_username', definition: 'VARCHAR(100) NULL' },

@@ -18,13 +18,14 @@ export async function GET() {
       username: string;
       role: 'USER' | 'ADMIN' | 'DEVELOPER';
       real_name: string | null;
+      nip: string | null;
       attendance_role: string | null;
       profile_photo: string | null;
       roblox_username: string | null;
       discord_username: string | null;
       profile_completed: boolean;
     }[]>(
-      'SELECT id, username, role, real_name, attendance_role, profile_photo, roblox_username, discord_username, profile_completed FROM users WHERE id = ? LIMIT 1',
+      'SELECT id, username, role, real_name, nip, attendance_role, profile_photo, roblox_username, discord_username, profile_completed FROM users WHERE id = ? LIMIT 1',
       [session.id]
     );
 
@@ -40,6 +41,7 @@ export async function GET() {
         username: user.username,
         role: user.role,
         real_name: user.real_name || '',
+        nip: user.nip || null,
         attendance_role: user.attendance_role || 'CSOT',
         profile_photo: user.profile_photo || '',
         roblox_username: user.roblox_username || '',

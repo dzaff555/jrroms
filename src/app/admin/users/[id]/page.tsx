@@ -21,6 +21,7 @@ interface StaffProfile {
   id: number;
   username: string;
   real_name: string | null;
+  nip: string | null;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   status: 'ACTIVE' | 'DISABLED';
   attendance_role: string | null;
@@ -59,7 +60,7 @@ export default async function AdminStaffProfilePage({
 
   const attendanceThroughDate = getLastCompletedAttendanceDate();
   const users = await query<StaffProfile[]>(
-    `SELECT u.id, u.username, u.real_name, u.role, u.status, u.attendance_role, u.profile_photo,
+    `SELECT u.id, u.username, u.real_name, u.nip, u.role, u.status, u.attendance_role, u.profile_photo,
       u.roblox_username, u.discord_username, u.profile_completed,
       DATE_FORMAT(u.created_at, '%Y-%m-%d %H:%i') AS created_at,
       DATE_FORMAT(
@@ -148,6 +149,12 @@ export default async function AdminStaffProfilePage({
                   <UserRound className="h-4 w-4" /> Nama Asli
                 </div>
                 <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.real_name || 'Belum diisi'}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <UserRound className="h-4 w-4" /> NIP
+                </div>
+                <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.nip || 'Belum ditetapkan admin'}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">

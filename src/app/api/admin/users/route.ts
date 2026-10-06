@@ -60,6 +60,7 @@ export async function GET(request: Request) {
       SELECT 
         u.id, 
         u.username, 
+        u.nip,
         u.role, 
         u.status, 
         u.attendance_role,
@@ -81,6 +82,7 @@ export async function GET(request: Request) {
     const records = await query<{
       id: number;
       username: string;
+      nip: string | null;
       role: 'USER' | 'ADMIN' | 'DEVELOPER';
       status: 'ACTIVE' | 'DISABLED';
       attendance_role: string;

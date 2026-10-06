@@ -57,6 +57,7 @@ async function setup() {
         id INT AUTO_INCREMENT PRIMARY KEY,
         username VARCHAR(50) NOT NULL UNIQUE,
         real_name VARCHAR(100) NULL,
+        nip VARCHAR(50) NULL,
         email VARCHAR(100) NULL UNIQUE,
         password VARCHAR(255) NOT NULL,
         role ENUM('USER', 'ADMIN') NOT NULL DEFAULT 'USER',
@@ -71,6 +72,10 @@ async function setup() {
     const [realNameColumn] = await db.query("SHOW COLUMNS FROM users LIKE 'real_name'");
     if (realNameColumn.length === 0) {
       await db.query('ALTER TABLE users ADD COLUMN real_name VARCHAR(100) NULL AFTER username');
+    }
+    const [nipColumn] = await db.query("SHOW COLUMNS FROM users LIKE 'nip'");
+    if (nipColumn.length === 0) {
+      await db.query('ALTER TABLE users ADD COLUMN nip VARCHAR(50) NULL AFTER real_name');
     }
 
     const [userAttendanceRoleColumn] = await db.query("SHOW COLUMNS FROM users LIKE 'attendance_role'");

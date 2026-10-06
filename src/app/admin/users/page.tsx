@@ -10,6 +10,7 @@ import {
   KeyRound,
   Trash2,
   Copy,
+  IdCard,
   UserPlus,
   BriefcaseBusiness,
 } from 'lucide-react';
@@ -32,6 +33,7 @@ interface AdminUser {
   id: number;
   username: string;
   real_name?: string | null;
+  nip?: string | null;
   role: UserRole;
   status: UserStatus;
   created_at?: string;
@@ -65,6 +67,8 @@ export default function AdminUsersPage() {
   const [editRole, setEditRole] = useState<UserRole>('USER');
   const [editAttendanceUser, setEditAttendanceUser] = useState<AdminUser | null>(null);
   const [editAttendanceRole, setEditAttendanceRole] = useState<AttendanceRole>('CSOT');
+  const [editNipUser, setEditNipUser] = useState<AdminUser | null>(null);
+  const [editNip, setEditNip] = useState('');
   const [confirmToggleUser, setConfirmToggleUser] = useState<AdminUser | null>(null);
   const [deleteUser, setDeleteUser] = useState<AdminUser | null>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<AdminUser | null>(null);
@@ -290,6 +294,36 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleUpdateNip = async () => {
+    if (!editNipUser) return;
+    setIsUpdating(true);
+
+    try {
+      const response = await fetch(`/api/admin/users/${editNipUser.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nip: editNip.trim() }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        toast.error('Gagal Memperbarui NIP', data.error || 'NIP pengguna tidak dapat diperbarui.');
+        return;
+      }
+
+      toast.success('NIP Diperbarui', `NIP @${editNipUser.username} berhasil diperbarui.`);
+      setEditNipUser(null);
+      await fetchUsers(false);
+      if (viewUser?.id === editNipUser.id) {
+        setViewUser((current) => current ? { ...current, nip: editNip.trim() || null } : null);
+      }
+    } catch (error: unknown) {
+      toast.error('Gagal Memperbarui NIP', error instanceof Error ? error.message : 'Terjadi kesalahan.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleDeleteUser = async () => {
     if (!deleteUser) return;
     setIsUpdating(true);
@@ -447,6 +481,7 @@ export default function AdminUsersPage() {
                       <th className="py-3.5 px-4">Pengguna</th>
                       <th className="py-3.5 px-4 text-center">Peran Sistem</th>
                       <th className="py-3.5 px-4 text-center">Peran Absensi</th>
+                      <th className="py-3.5 px-4 text-center">NIP</th>
                       <th className="py-3.5 px-4 text-center">Status</th>
                       <th className="py-3.5 px-4">Absen Terakhir</th>
                       <th className="py-3.5 px-4 text-center">Aksi</th>
@@ -488,6 +523,9 @@ export default function AdminUsersPage() {
                           </td>
                           <td className="py-3.5 px-4 text-center font-semibold text-slate-700">
                             {u.role === 'USER' ? u.attendance_role || '-' : '-'}
+                          </td>
+                          <td className="py-3.5 px-4 text-center font-mono text-slate-700">
+                            {u.nip || '-'}
                           </td>
                           <td className="py-3.5 px-4 text-center">
                             <Badge
@@ -540,6 +578,18 @@ export default function AdminUsersPage() {
                                 title={u.role === 'USER' ? 'Ubah Peran Absensi' : 'Peran absensi hanya berlaku untuk pengguna'}
                               >
                                 <BriefcaseBusiness className="w-4 h-4" />
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  setEditNipUser(u);
+                                  setEditNip(u.nip || '');
+                                }}
+                                disabled={isUpdating}
+                                className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                                title="Ubah NIP"
+                              >
+                                <IdCard className="w-4 h-4" />
                               </button>
 
                               {/* Disable / Enable toggle */}
@@ -721,6 +771,12 @@ export default function AdminUsersPage() {
                     {viewUser.real_name || 'Belum diisi'}
                   </span>
                 </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 col-span-2">
+                  <span className="text-slate-400 block font-medium">NIP</span>
+                  <span className="font-bold text-slate-800 mt-0.5 block">
+                    {viewUser.nip || 'Belum ditetapkan administrator'}
+                  </span>
+                </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-400 block font-medium">Peran Sistem</span>
                   <span className="font-bold text-slate-800 mt-0.5 block">
@@ -755,6 +811,40 @@ export default function AdminUsersPage() {
               <div className="pt-2 flex justify-end">
                 <Button variant="secondary" onClick={() => setViewUser(null)}>
                   Tutup
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        <Modal
+          isOpen={!!editNipUser}
+          onClose={() => setEditNipUser(null)}
+          title="Ubah NIP"
+          description={`Tetapkan atau perbarui NIP untuk akun @${editNipUser?.username}.`}
+          maxWidth="sm"
+        >
+          {editNipUser && (
+            <div className="space-y-4">
+              <Input
+                label="Nomor Induk Pegawai (NIP)"
+                value={editNip}
+                onChange={(event) => setEditNip(event.target.value)}
+                maxLength={50}
+                autoComplete="off"
+                helperText="NIP akan tampil di biodata pengguna dan tidak dapat diubah oleh pengguna."
+              />
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setEditNipUser(null)} disabled={isUpdating}>
+                  Batal
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleUpdateNip}
+                  isLoading={isUpdating}
+                  loadingText="Menyimpan..."
+                >
+                  Simpan NIP
                 </Button>
               </div>
             </div>

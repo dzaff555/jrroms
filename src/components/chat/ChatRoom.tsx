@@ -861,7 +861,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       container.scrollTop = container.scrollHeight;
       initialScrollPositionedRef.current = true;
     } else if (shouldScrollRef.current) {
-      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      container.scrollTop = container.scrollHeight;
     }
   }, [isLoading, isWallpaperSettingsOpen, isSearchOpen, messages]);
 
