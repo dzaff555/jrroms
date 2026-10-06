@@ -92,19 +92,78 @@ function ChatAudioPlayer({
   profilePhoto,
   onDownload,
   ownMessage,
+  knownDuration,
 }: {
   src: string;
   senderName: string;
   profilePhoto: string | null;
   onDownload: () => void;
   ownMessage: boolean;
+  knownDuration?: number;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasPlaybackError, setHasPlaybackError] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(knownDuration || 0);
+  const [waveformHeights, setWaveformHeights] = useState<number[]>([]);
   const progress = duration > 0 ? currentTime / duration : 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    let audioContext: AudioContext | null = null;
+
+    const loadWaveform = async () => {
+      try {
+        const response = await fetch(src, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Gagal memuat audio untuk waveform (${response.status}).`);
+
+        const audioData = await response.arrayBuffer();
+        if (cancelled) return;
+        audioContext = new AudioContext();
+        const decodedAudio = await audioContext.decodeAudioData(audioData);
+        if (cancelled) return;
+
+        const sampleCount = decodedAudio.length;
+        const channelData = Array.from(
+          { length: decodedAudio.numberOfChannels },
+          (_, channel) => decodedAudio.getChannelData(channel)
+        );
+        const bars = Array.from({ length: 36 }, (_, index) => {
+          const start = Math.floor(index * sampleCount / 36);
+          const end = Math.max(start + 1, Math.floor((index + 1) * sampleCount / 36));
+          let peak = 0;
+          for (const channel of channelData) {
+            for (let sampleIndex = start; sampleIndex < Math.min(end, sampleCount); sampleIndex += 1) {
+              peak = Math.max(peak, Math.abs(channel[sampleIndex]));
+            }
+          }
+          return peak;
+        });
+        const maximumPeak = Math.max(...bars);
+        setWaveformHeights(bars.map((peak) =>
+          maximumPeak > 0 ? Math.round(4 + (peak / maximumPeak) * 20) : 4
+        ));
+        setDuration((currentDuration) => currentDuration || decodedAudio.duration);
+      } catch (waveformError: unknown) {
+        if (!cancelled) {
+          console.error('[Chat audio waveform Error]:', waveformError);
+        }
+      } finally {
+        if (audioContext && audioContext.state !== 'closed') {
+          await audioContext.close();
+        }
+      }
+    };
+
+    void loadWaveform();
+    return () => {
+      cancelled = true;
+      if (audioContext && audioContext.state !== 'closed') {
+        void audioContext.close();
+      }
+    };
+  }, [src]);
 
   const togglePlayback = () => {
     const audio = audioRef.current;
@@ -134,7 +193,10 @@ function ChatAudioPlayer({
         className={hasPlaybackError ? 'mt-1 h-8 w-full' : 'hidden'}
         onError={() => setHasPlaybackError(true)}
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+        onLoadedMetadata={(event) => {
+          const mediaDuration = event.currentTarget.duration;
+          if (Number.isFinite(mediaDuration) && mediaDuration > 0) setDuration(mediaDuration);
+        }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
@@ -169,7 +231,7 @@ function ChatAudioPlayer({
           </button>
           <div className="relative flex h-8 min-w-0 flex-1 items-center gap-[2px]">
             {Array.from({ length: 36 }, (_, index) => {
-              const height = 4 + ((index * 17 + index * index * 7) % 21);
+              const height = waveformHeights[index] ?? 4;
               return (
                 <span
                   key={index}
@@ -289,6 +351,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [isVoiceRecordingPaused, setIsVoiceRecordingPaused] = useState(false);
   const [voiceRecordingDuration, setVoiceRecordingDuration] = useState(0);
+  const [recordedVoiceDuration, setRecordedVoiceDuration] = useState(0);
   const [favoriteStickers, setFavoriteStickers] = useState<FavoriteSticker[]>([]);
   const [isStickerPickerOpen, setIsStickerPickerOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
@@ -318,6 +381,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceElapsedMsRef = useRef(0);
+  const voiceSegmentStartedAtRef = useRef<number | null>(null);
   const attachmentPreviewUrlRef = useRef<string | null>(null);
   const photoViewerRef = useRef<HTMLDivElement>(null);
   const photoImageRef = useRef<HTMLImageElement>(null);
@@ -360,8 +425,11 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   useEffect(() => {
     if (!isRecordingVoice || isVoiceRecordingPaused) return;
     const timer = window.setInterval(() => {
-      setVoiceRecordingDuration((duration) => duration + 1);
-    }, 1000);
+      const segmentStartedAt = voiceSegmentStartedAtRef.current;
+      const elapsed = voiceElapsedMsRef.current +
+        (segmentStartedAt === null ? 0 : performance.now() - segmentStartedAt);
+      setVoiceRecordingDuration(Math.floor(elapsed / 1000));
+    }, 200);
     return () => window.clearInterval(timer);
   }, [isRecordingVoice, isVoiceRecordingPaused]);
 
@@ -548,6 +616,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       mergeMessages([result.data]);
       messageCursorRef.current = Math.max(messageCursorRef.current ?? 0, result.data.id);
       if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+      setRecordedVoiceDuration(0);
     } catch (sendError: unknown) {
       setDraft((currentDraft) => currentDraft || draft);
       if (attachment) updateAttachment(attachment);
@@ -585,6 +654,14 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         if (event.data.size > 0) voiceChunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
+        const segmentStartedAt = voiceSegmentStartedAtRef.current;
+        const elapsedMs = voiceElapsedMsRef.current +
+          (segmentStartedAt === null ? 0 : performance.now() - segmentStartedAt);
+        const durationSeconds = Math.max(1, Math.round(elapsedMs / 1000));
+        voiceElapsedMsRef.current = 0;
+        voiceSegmentStartedAtRef.current = null;
+        setVoiceRecordingDuration(durationSeconds);
+        setRecordedVoiceDuration(durationSeconds);
         const recordedMimeType = recorder.mimeType.split(';')[0] || voiceChunksRef.current[0]?.type.split(';')[0] || 'audio/webm';
         const blob = new Blob(voiceChunksRef.current, { type: recordedMimeType });
         voiceChunksRef.current = [];
@@ -617,7 +694,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       };
 
       voiceRecorderRef.current = recorder;
+      voiceElapsedMsRef.current = 0;
+      voiceSegmentStartedAtRef.current = performance.now();
       setVoiceRecordingDuration(0);
+      setRecordedVoiceDuration(0);
       setIsVoiceRecordingPaused(false);
       recorder.start(250);
       setIsRecordingVoice(true);
@@ -644,9 +724,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     const recorder = voiceRecorderRef.current;
     if (!recorder) return;
     if (recorder.state === 'recording') {
+      const segmentStartedAt = voiceSegmentStartedAtRef.current;
+      if (segmentStartedAt !== null) {
+        voiceElapsedMsRef.current += performance.now() - segmentStartedAt;
+      }
+      voiceSegmentStartedAtRef.current = null;
       recorder.pause();
+      setVoiceRecordingDuration(Math.floor(voiceElapsedMsRef.current / 1000));
       setIsVoiceRecordingPaused(true);
     } else if (recorder.state === 'paused') {
+      voiceSegmentStartedAtRef.current = performance.now();
       recorder.resume();
       setIsVoiceRecordingPaused(false);
     }
@@ -1553,6 +1640,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 senderName="Pratinjau voice note"
                 profilePhoto={null}
                 ownMessage
+                knownDuration={recordedVoiceDuration}
                 onDownload={() => {
                   const link = document.createElement('a');
                   link.href = attachmentPreviewUrl;
@@ -1593,6 +1681,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               type="button"
               onClick={() => {
                 updateAttachment(null);
+                setRecordedVoiceDuration(0);
                 if (attachmentInputRef.current) attachmentInputRef.current.value = '';
               }}
               disabled={isSending}
