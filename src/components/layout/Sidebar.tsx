@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ShieldCheck,
   MessageCircle,
+  BookOpenText,
 } from 'lucide-react';
 import { AuthSession } from '@/types';
 import { useToast } from '../ui/Toast';
@@ -137,6 +138,7 @@ export function Sidebar({
     { label: 'Absensi Hari Ini', href: '/attendance', icon: UserCheck },
     { label: 'Riwayat Absensi', href: '/attendance/history', icon: History },
     { label: 'Chat Staf', href: '/chat', icon: MessageCircle },
+    { label: 'Informasi dan Peraturan', href: '/information', icon: BookOpenText },
   ];
 
   const adminNavItems = [
@@ -147,12 +149,14 @@ export function Sidebar({
     { label: 'Statistik Absensi', href: '/admin/attendance-statistics', icon: ChartNoAxesColumn },
     { label: 'Kelola Pengguna', href: '/admin/users', icon: Users },
     { label: 'Pengaturan Sistem', href: '/admin/settings', icon: Settings },
+    { label: 'Informasi dan Peraturan', href: '/admin/information', icon: BookOpenText },
   ];
 
   const developerNavItems = [
     { label: 'Tugas', href: '/developer/tasks', icon: ClipboardList },
     { label: 'Unggah Tugas', href: '/developer/upload', icon: Upload },
     { label: 'Chat Staf', href: '/developer/chat', icon: MessageCircle },
+    { label: 'Informasi dan Peraturan', href: '/developer/information', icon: BookOpenText },
   ];
 
   const navItems = isAdmin ? adminNavItems : isDeveloper ? developerNavItems : userNavItems;
