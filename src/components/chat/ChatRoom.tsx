@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Download, ImagePlus, ListChecks, Loader2, MessageCircle, MoreVertical, Reply, RotateCcw, Send, ShieldCheck, Trash2, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
-import { MAX_CHAT_PHOTO_SIZE } from '@/lib/chat/constants';
+import { MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
 
 interface RepliedMessage {
   id: number;
@@ -31,7 +31,8 @@ interface ChatMessage {
   profile_photo_loaded?: boolean | number;
   reply_to_id?: number | null;
   reply_to?: RepliedMessage | null;
-  photo_url?: string | null;
+  media_url?: string | null;
+  media_type?: string | null;
 }
 
 interface ChatApiResponse {
@@ -68,8 +69,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const isDeveloper = currentUserRole === 'DEVELOPER';
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ url: string; senderName: string } | null>(null);
   const [photoZoom, setPhotoZoom] = useState(1);
@@ -90,8 +91,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const deletionCursorRef = useRef<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const photoInputRef = useRef<HTMLInputElement>(null);
-  const photoPreviewUrlRef = useRef<string | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const attachmentPreviewUrlRef = useRef<string | null>(null);
   const photoViewerRef = useRef<HTMLDivElement>(null);
   const photoImageRef = useRef<HTMLImageElement>(null);
   const photoDragRef = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number } | null>(null);
@@ -102,16 +103,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const highlightTimeoutRef = useRef<number | null>(null);
   const messageActionsRef = useRef<HTMLDivElement>(null);
 
-  const updatePhoto = useCallback((file: File | null) => {
-    if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
+  const updateAttachment = useCallback((file: File | null) => {
+    if (attachmentPreviewUrlRef.current) URL.revokeObjectURL(attachmentPreviewUrlRef.current);
     const previewUrl = file ? URL.createObjectURL(file) : null;
-    photoPreviewUrlRef.current = previewUrl;
-    setPhotoPreviewUrl(previewUrl);
-    setPhotoFile(file);
+    attachmentPreviewUrlRef.current = previewUrl;
+    setAttachmentPreviewUrl(previewUrl);
+    setAttachmentFile(file);
   }, []);
 
   useEffect(() => () => {
-    if (photoPreviewUrlRef.current) URL.revokeObjectURL(photoPreviewUrlRef.current);
+    if (attachmentPreviewUrlRef.current) URL.revokeObjectURL(attachmentPreviewUrlRef.current);
   }, []);
 
   useEffect(() => {
@@ -249,23 +250,23 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const message = draft.trim();
-    const photo = photoFile;
-    if ((!message && !photo) || isSending) return;
+    const attachment = attachmentFile;
+    if ((!message && !attachment) || isSending) return;
 
     setIsSending(true);
     setError(null);
     setDraft('');
-    updatePhoto(null);
+    updateAttachment(null);
     const replyToId = replyTarget?.id ?? null;
     setReplyTarget(null);
     try {
       let body: BodyInit;
       let headers: HeadersInit | undefined;
-      if (photo) {
+      if (attachment) {
         const form = new FormData();
         form.set('message', message);
         if (replyToId !== null) form.set('replyToId', String(replyToId));
-        form.set('photo', photo);
+        form.set('attachment', attachment);
         body = form;
       } else {
         headers = { 'Content-Type': 'application/json' };
@@ -285,10 +286,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       shouldScrollRef.current = true;
       mergeMessages([result.data]);
       messageCursorRef.current = Math.max(messageCursorRef.current ?? 0, result.data.id);
-      if (photoInputRef.current) photoInputRef.current.value = '';
+      if (attachmentInputRef.current) attachmentInputRef.current.value = '';
     } catch (sendError: unknown) {
       setDraft((currentDraft) => currentDraft || draft);
-      if (photo) updatePhoto(photo);
+      if (attachment) updateAttachment(attachment);
       setReplyTarget((currentTarget) => currentTarget || replyTarget);
       setError(sendError instanceof Error ? sendError.message : 'Gagal mengirim pesan.');
     } finally {
@@ -626,19 +627,29 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                         {senderName}
                       </Link>
                     </div>
-                    {message.photo_url && (
+                    {message.media_url && message.media_type?.startsWith('video/') && (
+                      <video
+                        src={message.media_url}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="mb-2 max-h-80 max-w-full rounded-lg bg-black"
+                        aria-label={`Video dari ${senderName}`}
+                      />
+                    )}
+                    {message.media_url && message.media_type?.startsWith('image/') && (
                       <button
                         type="button"
                         onClick={() => {
                           setPhotoZoom(1);
                           setPhotoOffset({ x: 0, y: 0 });
-                          setPhotoViewer({ url: message.photo_url!, senderName });
+                          setPhotoViewer({ url: message.media_url!, senderName });
                         }}
                         className="mb-2 block overflow-hidden rounded-lg"
                         aria-label={`Perbesar foto dari ${senderName}`}
                       >
                         <Image
-                          src={message.photo_url}
+                          src={message.media_url}
                           alt={`Foto yang dikirim ${senderName}`}
                           width={640}
                           height={480}
@@ -888,30 +899,43 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             </button>
           </div>
         )}
-        {photoPreviewUrl && (
+        {attachmentPreviewUrl && attachmentFile && (
           <div className="mb-3 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-700 dark:bg-[#0d1117]">
-            <Image
-              src={photoPreviewUrl}
-              alt="Pratinjau foto yang akan dikirim"
-              width={96}
-              height={96}
-              unoptimized
-              className="h-20 w-20 rounded-lg object-cover"
-            />
+            {attachmentFile.type.startsWith('video/') ? (
+              <video
+                src={attachmentPreviewUrl}
+                controls
+                playsInline
+                preload="metadata"
+                className="h-20 w-28 rounded-lg bg-black object-cover"
+                aria-label="Pratinjau video yang akan dikirim"
+              />
+            ) : (
+              <Image
+                src={attachmentPreviewUrl}
+                alt="Pratinjau foto yang akan dikirim"
+                width={96}
+                height={96}
+                unoptimized
+                className="h-20 w-20 rounded-lg object-cover"
+              />
+            )}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{photoFile?.name}</p>
+              <p className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{attachmentFile.name}</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Foto siap dikirim · Maksimal 5 MB
+                {attachmentFile.type.startsWith('video/')
+                  ? 'Video siap dikirim · Maksimal 15 MB'
+                  : 'Foto siap dikirim · Maksimal 5 MB'}
               </p>
             </div>
             <button
               type="button"
               onClick={() => {
-                updatePhoto(null);
-                if (photoInputRef.current) photoInputRef.current.value = '';
+                updateAttachment(null);
+                if (attachmentInputRef.current) attachmentInputRef.current.value = '';
               }}
               disabled={isSending}
-              aria-label="Hapus foto dari pesan"
+              aria-label="Hapus lampiran dari pesan"
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200 hover:text-slate-800 disabled:opacity-50 dark:hover:bg-slate-700 dark:hover:text-white"
             >
               <X className="h-4 w-4" />
@@ -920,29 +944,38 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         )}
         <div className="flex items-end gap-2 sm:gap-3">
           <input
-            ref={photoInputRef}
+            ref={attachmentInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
+            accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm"
             className="sr-only"
-            aria-label="Pilih foto untuk dikirim"
+            aria-label="Pilih foto atau video untuk dikirim"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0] ?? null;
               event.currentTarget.value = '';
               if (!file) return;
-              if (file.size > MAX_CHAT_PHOTO_SIZE) {
-                setError('Ukuran foto maksimal 5 MB.');
+              const isVideo = file.type.startsWith('video/');
+              const maxSize = isVideo ? MAX_CHAT_VIDEO_SIZE : MAX_CHAT_PHOTO_SIZE;
+              if (file.size > maxSize) {
+                setError(isVideo ? 'Ukuran video maksimal 15 MB.' : 'Ukuran foto maksimal 5 MB.');
+                return;
+              }
+              if (
+                !['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/webm']
+                  .includes(file.type)
+              ) {
+                setError('Format lampiran harus JPEG, PNG, GIF, WebP, MP4, atau WebM.');
                 return;
               }
               setError(null);
-              updatePhoto(file);
+              updateAttachment(file);
             }}
           />
           <button
             type="button"
-            onClick={() => photoInputRef.current?.click()}
+            onClick={() => attachmentInputRef.current?.click()}
             disabled={isSending}
-            aria-label="Kirim foto"
-            title="Kirim foto"
+            aria-label="Kirim foto atau video"
+            title="Kirim foto atau video"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
           >
             <ImagePlus className="h-5 w-5" />
@@ -960,7 +993,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           />
           <button
             type="submit"
-            disabled={(!draft.trim() && !photoFile) || isSending}
+            disabled={(!draft.trim() && !attachmentFile) || isSending}
             aria-label="Kirim pesan"
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-[#161b22]"
           >

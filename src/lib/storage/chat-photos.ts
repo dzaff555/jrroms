@@ -1,9 +1,11 @@
 import { resolveUploadStoragePaths } from '@/lib/storage/upload-paths';
-import { MAX_CHAT_PHOTO_SIZE } from '@/lib/chat/constants';
+import { MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
 
 export type ChatPhotoType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+export type ChatVideoType = 'video/mp4' | 'video/webm';
+export type ChatMediaType = ChatPhotoType | ChatVideoType;
 
-export { MAX_CHAT_PHOTO_SIZE };
+export { MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE };
 
 export function getChatPhotoPaths(storageKey: string) {
   if (!/^chat\/\d+\/[0-9a-f-]{36}$/.test(storageKey)) {
@@ -17,7 +19,18 @@ export function isSupportedChatPhotoType(value: string): value is ChatPhotoType 
   return value === 'image/jpeg' || value === 'image/png' || value === 'image/gif' || value === 'image/webp';
 }
 
-export function matchesChatPhotoType(bytes: Uint8Array, contentType: ChatPhotoType) {
+export function isSupportedChatMediaType(value: string): value is ChatMediaType {
+  return isSupportedChatPhotoType(value) || value === 'video/mp4' || value === 'video/webm';
+}
+
+export function matchesChatMediaType(bytes: Uint8Array, contentType: ChatMediaType) {
+  if (contentType === 'video/mp4') {
+    return bytes.length >= 12 && String.fromCharCode(...bytes.subarray(4, 8)) === 'ftyp';
+  }
+  if (contentType === 'video/webm') {
+    return bytes.length >= 4 &&
+      bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
+  }
   if (contentType === 'image/jpeg') {
     return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   }
@@ -33,4 +46,8 @@ export function matchesChatPhotoType(bytes: Uint8Array, contentType: ChatPhotoTy
   return bytes.length >= 12 &&
     String.fromCharCode(...bytes.subarray(0, 4)) === 'RIFF' &&
     String.fromCharCode(...bytes.subarray(8, 12)) === 'WEBP';
+}
+
+export function matchesChatPhotoType(bytes: Uint8Array, contentType: ChatPhotoType) {
+  return matchesChatMediaType(bytes, contentType);
 }

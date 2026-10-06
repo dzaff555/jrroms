@@ -2,10 +2,11 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 import {
-  isSupportedChatPhotoType,
-  matchesChatPhotoType,
+  isSupportedChatMediaType,
+  matchesChatMediaType,
   MAX_CHAT_PHOTO_SIZE,
-  type ChatPhotoType,
+  MAX_CHAT_VIDEO_SIZE,
+  type ChatMediaType,
 } from '@/lib/storage/chat-photos';
 
 export const runtime = 'nodejs';
@@ -36,6 +37,9 @@ interface ChatMessage {
   image_path: string | null;
   image_type: string | null;
   has_image: number | boolean;
+  media_url?: string | null;
+  media_type?: string | null;
+  photo_url?: string | null;
   profile_photo_loaded?: number;
 }
 
@@ -154,7 +158,11 @@ export async function GET(request: Request) {
       success: true,
       data: messages.map((message) => ({
         ...message,
-        photo_url: message.has_image || message.image_path ? `/api/chat/messages/${message.id}/photo` : null,
+        media_url: message.has_image || message.image_path ? `/api/chat/messages/${message.id}/media` : null,
+        media_type: message.image_type,
+        photo_url: message.image_type?.startsWith('image/')
+          ? `/api/chat/messages/${message.id}/media`
+          : null,
         image_path: undefined,
         image_type: undefined,
         reply_to: message.reply_to_id && message.reply_to_sender_id
@@ -184,24 +192,24 @@ export async function POST(request: Request) {
 
     let message: string;
     let replyToId: number | null;
-    let photoFile: File | null = null;
+    let attachmentFile: File | null = null;
     const contentType = request.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
       const contentLength = Number(request.headers.get('content-length') || 0);
-      if (contentLength > MAX_CHAT_PHOTO_SIZE + 65_536) {
-        return NextResponse.json({ success: false, error: 'Ukuran foto maksimal 5 MB.' }, { status: 413 });
+      if (contentLength > MAX_CHAT_VIDEO_SIZE + 65_536) {
+        return NextResponse.json({ success: false, error: 'Ukuran lampiran melebihi batas maksimum.' }, { status: 413 });
       }
 
       let form: FormData;
       try {
         form = await request.formData();
       } catch {
-        return NextResponse.json({ success: false, error: 'Format pesan atau foto tidak valid.' }, { status: 400 });
+        return NextResponse.json({ success: false, error: 'Format pesan atau lampiran tidak valid.' }, { status: 400 });
       }
 
       const formMessage = form.get('message');
       const formReplyToId = form.get('replyToId');
-      const formPhoto = form.get('photo');
+      const formAttachment = form.get('attachment') ?? form.get('photo');
       if (typeof formMessage !== 'string') {
         return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
       }
@@ -211,11 +219,11 @@ export async function POST(request: Request) {
         : /^\d+$/.test(formReplyToId.toString()) && Number.isSafeInteger(Number(formReplyToId))
           ? Number(formReplyToId)
           : Number.NaN;
-      if (formPhoto !== null) {
-        if (typeof formPhoto === 'string') {
-          return NextResponse.json({ success: false, error: 'Format foto tidak valid.' }, { status: 400 });
+      if (formAttachment !== null) {
+        if (typeof formAttachment === 'string') {
+          return NextResponse.json({ success: false, error: 'Format lampiran tidak valid.' }, { status: 400 });
         }
-        photoFile = formPhoto;
+        attachmentFile = formAttachment;
       }
     } else {
       let body: unknown;
@@ -235,8 +243,8 @@ export async function POST(request: Request) {
     if (replyToId !== null && (!Number.isSafeInteger(replyToId) || replyToId < 1)) {
       return NextResponse.json({ success: false, error: 'Pesan yang dibalas tidak valid.' }, { status: 400 });
     }
-    if (!message && !photoFile) {
-      return NextResponse.json({ success: false, error: 'Pesan atau foto wajib diisi.' }, { status: 400 });
+    if (!message && !attachmentFile) {
+      return NextResponse.json({ success: false, error: 'Pesan atau lampiran wajib diisi.' }, { status: 400 });
     }
     if (message.length > 2000) {
       return NextResponse.json({ success: false, error: 'Pesan maksimal 2000 karakter.' }, { status: 400 });
@@ -252,19 +260,24 @@ export async function POST(request: Request) {
       }
     }
 
-    let imageType: ChatPhotoType | null = null;
+    let imageType: ChatMediaType | null = null;
     let imageData: Buffer | null = null;
-    if (photoFile) {
-      if (photoFile.size < 1 || photoFile.size > MAX_CHAT_PHOTO_SIZE) {
-        return NextResponse.json({ success: false, error: 'Ukuran foto maksimal 5 MB.' }, { status: 413 });
+    if (attachmentFile) {
+      const isVideo = attachmentFile.type.startsWith('video/');
+      const maxSize = isVideo ? MAX_CHAT_VIDEO_SIZE : MAX_CHAT_PHOTO_SIZE;
+      if (attachmentFile.size < 1 || attachmentFile.size > maxSize) {
+        return NextResponse.json({
+          success: false,
+          error: isVideo ? 'Ukuran video maksimal 15 MB.' : 'Ukuran foto maksimal 5 MB.',
+        }, { status: 413 });
       }
-      if (!isSupportedChatPhotoType(photoFile.type)) {
-        return NextResponse.json({ success: false, error: 'Format foto harus JPEG, PNG, GIF, atau WebP.' }, { status: 415 });
+      if (!isSupportedChatMediaType(attachmentFile.type)) {
+        return NextResponse.json({ success: false, error: 'Format lampiran harus JPEG, PNG, GIF, WebP, MP4, atau WebM.' }, { status: 415 });
       }
-      imageType = photoFile.type;
-      imageData = Buffer.from(await photoFile.arrayBuffer());
-      if (!matchesChatPhotoType(imageData, imageType)) {
-        return NextResponse.json({ success: false, error: 'Isi file tidak sesuai dengan format foto.' }, { status: 415 });
+      imageType = attachmentFile.type;
+      imageData = Buffer.from(await attachmentFile.arrayBuffer());
+      if (!matchesChatMediaType(imageData, imageType)) {
+        return NextResponse.json({ success: false, error: 'Isi file tidak sesuai dengan format lampiran.' }, { status: 415 });
       }
     }
 
@@ -289,8 +302,12 @@ export async function POST(request: Request) {
       success: true,
       data: {
         ...sentMessage,
-        photo_url: sentMessage.has_image || sentMessage.image_path
-          ? `/api/chat/messages/${sentMessage.id}/photo`
+        media_url: sentMessage.has_image || sentMessage.image_path
+          ? `/api/chat/messages/${sentMessage.id}/media`
+          : null,
+        media_type: sentMessage.image_type,
+        photo_url: sentMessage.image_type?.startsWith('image/')
+          ? `/api/chat/messages/${sentMessage.id}/media`
           : null,
         image_path: undefined,
         image_type: undefined,
