@@ -11,10 +11,10 @@ export async function DELETE(
   try {
     const active = await getActiveSession();
     if (!active) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'USER' && active.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Akses chat hanya untuk staff dan admin.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses chat hanya untuk staf dan administrator.' }, { status: 403 });
     }
 
     const { messageId: messageIdParam } = await params;

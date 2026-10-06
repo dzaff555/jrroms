@@ -28,7 +28,7 @@ export async function GET() {
   try {
     const userId = await getActiveChatUserId();
     if (userId === null) {
-      return NextResponse.json({ success: false, error: 'Silakan login dengan akun chat aktif.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk dengan akun chat aktif.' }, { status: 401 });
     }
 
     const wallpapers = await query<{ user_id: number }[]>(
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
   try {
     const userId = await getActiveChatUserId();
     if (userId === null) {
-      return NextResponse.json({ success: false, error: 'Silakan login dengan akun chat aktif.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk dengan akun chat aktif.' }, { status: 401 });
     }
 
     const contentLength = Number(request.headers.get('content-length') || 0);
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     try {
       form = await request.formData();
     } catch {
-      return NextResponse.json({ success: false, error: 'Format file wallpaper tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Format berkas wallpaper tidak valid.' }, { status: 400 });
     }
 
     const attachment = form.get('wallpaper');
@@ -106,7 +106,7 @@ export async function DELETE() {
   try {
     const userId = await getActiveChatUserId();
     if (userId === null) {
-      return NextResponse.json({ success: false, error: 'Silakan login dengan akun chat aktif.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk dengan akun chat aktif.' }, { status: 401 });
     }
 
     await query('DELETE FROM chat_user_wallpapers WHERE user_id = ?', [userId]);

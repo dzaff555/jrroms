@@ -7,7 +7,7 @@ export async function POST(_request: Request) {
   return NextResponse.json(
     {
       success: false,
-      error: 'Pendaftaran akun telah ditutup. Hubungi admin untuk membuat akun baru.',
+      error: 'Pendaftaran akun telah ditutup. Hubungi administrator untuk membuat akun baru.',
     },
     { status: 403 }
   );

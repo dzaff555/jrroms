@@ -67,7 +67,7 @@ export default async function StaffProfilePage({
       <div className="mx-auto max-w-3xl space-y-6">
         <Link href="/staff" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600">
           <ArrowLeft className="h-4 w-4" />
-          Kembali ke List Staff
+          Kembali ke Daftar Staf
         </Link>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -84,15 +84,15 @@ export default async function StaffProfilePage({
               </div>
             )}
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Profil Staff</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Profil Staf</p>
               <h1 className="mt-1 text-2xl font-extrabold">{staff.username}</h1>
               <p className="mt-1 flex items-center gap-1.5 text-sm text-blue-100">
                 {staff.role === 'ADMIN' && <ShieldCheck className="h-4 w-4" />}
                 {staff.role === 'ADMIN'
-                  ? 'Admin'
+                  ? 'Administrator'
                   : staff.role === 'DEVELOPER'
-                    ? 'Developer'
-                    : staff.attendance_role || 'Role belum ditentukan'}
+                    ? 'Pengembang'
+                    : staff.attendance_role || 'Peran belum ditentukan'}
               </p>
             </div>
           </div>
@@ -100,13 +100,13 @@ export default async function StaffProfilePage({
           <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 sm:p-6">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <UserRound className="h-4 w-4" /> Username Roblox
+                <UserRound className="h-4 w-4" /> Nama pengguna Roblox
               </div>
               <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.roblox_username || '-'}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <UserRound className="h-4 w-4" /> Username Discord
+                <UserRound className="h-4 w-4" /> Nama pengguna Discord
               </div>
               <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.discord_username || '-'}</p>
             </div>

@@ -18,7 +18,7 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, Omit<InputProps,
             type="button"
             onClick={() => setShowPassword((prev) => !prev)}
             className="text-slate-400 hover:text-slate-600 focus:outline-none transition-colors cursor-pointer p-1"
-            aria-label={showPassword ? 'Sembunyikan password' : 'Lihat password'}
+            aria-label={showPassword ? 'Sembunyikan kata sandi' : 'Lihat kata sandi'}
           >
             {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>

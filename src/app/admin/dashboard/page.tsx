@@ -132,7 +132,7 @@ export default function AdminDashboardPage() {
                 Selamat datang kembali, Admin!
               </h1>
               <p className="text-xs sm:text-sm text-slate-200 leading-relaxed">
-                Berikut adalah ringkasan aktivitas dan monitoring kehadiran seluruh pengguna hari ini.
+                Berikut adalah ringkasan aktivitas dan pemantauan kehadiran seluruh pengguna hari ini.
               </p>
             </div>
 
@@ -183,7 +183,7 @@ export default function AdminDashboardPage() {
                   <span className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
                     {stats?.totalUsers ?? 0}
                   </span>
-                  <span className="text-xs text-slate-500 font-medium">User Terdaftar</span>
+                  <span className="text-xs text-slate-500 font-medium">Pengguna Terdaftar</span>
                 </div>
                 <div className="mt-3 flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
                   <TrendingUp className="w-3.5 h-3.5" />
@@ -372,7 +372,7 @@ export default function AdminDashboardPage() {
           <Card className="p-4">
             <form onSubmit={handleSearchSubmit} className="flex gap-2">
               <Input
-                placeholder="Cari user berdasarkan nama, username, Discord, atau Roblox..."
+                placeholder="Cari pengguna berdasarkan nama, nama pengguna, Discord, atau Roblox..."
                 leftIcon={<Search className="w-4 h-4" />}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -400,12 +400,12 @@ export default function AdminDashboardPage() {
                       <tr>
                         <th className="py-3.5 px-4 w-12 text-center">No</th>
                         <th className="py-3.5 px-4">Nama</th>
-                        <th className="py-3.5 px-4">Username</th>
+                        <th className="py-3.5 px-4">Nama pengguna</th>
                         <th className="py-3.5 px-4">Discord</th>
                         <th className="py-3.5 px-4">Roblox</th>
                         <th className="py-3.5 px-4">Jam Absen</th>
                         <th className="py-3.5 px-4 text-center">Status</th>
-                        <th className="py-3.5 px-4 text-center">Action</th>
+                        <th className="py-3.5 px-4 text-center">Aksi</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -501,21 +501,21 @@ export default function AdminDashboardPage() {
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-slate-400 block font-medium">Username</span>
+                  <span className="text-slate-400 block font-medium">Nama pengguna</span>
                   <span className="font-semibold text-slate-800 mt-0.5 block">
                     @{selectedRecord.username}
                   </span>
                 </div>
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-slate-400 block font-medium">Username Discord</span>
+                  <span className="text-slate-400 block font-medium">Nama pengguna Discord</span>
                   <span className="font-mono font-semibold text-indigo-600 mt-0.5 block">
                     {selectedRecord.discord_username}
                   </span>
                 </div>
 
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-slate-400 block font-medium">Username Roblox</span>
+                  <span className="text-slate-400 block font-medium">Nama pengguna Roblox</span>
                   <span className="font-mono font-semibold text-slate-800 mt-0.5 block">
                     {selectedRecord.roblox_username}
                   </span>

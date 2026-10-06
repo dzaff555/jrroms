@@ -30,10 +30,10 @@ export async function GET() {
   try {
     const active = await getActiveSession();
     if (!active) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Akses hanya untuk Admin.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses hanya untuk administrator.' }, { status: 403 });
     }
 
     const tasks = await query<TaskRecord[]>(
@@ -66,7 +66,7 @@ export async function GET() {
     });
   } catch (error: unknown) {
     console.error('[Admin Tasks GET Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal memuat tugas developer.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal memuat tugas pengembang.' }, { status: 500 });
   }
 }
 
@@ -74,10 +74,10 @@ export async function POST(request: Request) {
   try {
     const active = await getActiveSession();
     if (!active) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Akses hanya untuk Admin.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses hanya untuk administrator.' }, { status: 403 });
     }
 
     let body: unknown;
@@ -116,7 +116,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Rentang tanggal tugas tidak valid.' }, { status: 400 });
     }
     if (typeof fileRequired !== 'boolean') {
-      return NextResponse.json({ success: false, error: 'Status kewajiban upload file tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Status kewajiban unggah berkas tidak valid.' }, { status: 400 });
     }
 
     const result = await query<{ insertId: number }>(
@@ -132,6 +132,6 @@ export async function POST(request: Request) {
     );
   } catch (error: unknown) {
     console.error('[Admin Tasks POST Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal membuat tugas developer.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal membuat tugas pengembang.' }, { status: 500 });
   }
 }

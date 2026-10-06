@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getSessionUser, hashPassword } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
-import { ATTENDANCE_ROLES, AttendanceRole } from '@/types';
+import { isAttendanceRole } from '@/types';
 
 export async function GET(
   _request: Request,
@@ -20,7 +20,7 @@ export async function GET(
     const { id } = await params;
     const userId = Number.parseInt(id, 10);
     if (!Number.isInteger(userId)) {
-      return NextResponse.json({ success: false, error: 'ID user tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'ID pengguna tidak valid.' }, { status: 400 });
     }
 
     const users = await query<{
@@ -49,12 +49,12 @@ export async function GET(
     );
 
     if (!users[0]) {
-      return NextResponse.json({ success: false, error: 'User tidak ditemukan.' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, data: users[0] });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Gagal memuat detail user.';
+    const message = error instanceof Error ? error.message : 'Gagal memuat detail pengguna.';
     console.error('[Admin User Detail Error]:', error);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
@@ -78,7 +78,7 @@ export async function PATCH(
 
     if (isNaN(targetUserId)) {
       return NextResponse.json(
-        { success: false, error: 'ID user tidak valid.' },
+        { success: false, error: 'ID pengguna tidak valid.' },
         { status: 400 }
       );
     }
@@ -88,10 +88,9 @@ export async function PATCH(
 
     if (
       attendanceRole !== undefined &&
-      (typeof attendanceRole !== 'string' ||
-        !ATTENDANCE_ROLES.includes(attendanceRole as AttendanceRole))
+      !isAttendanceRole(attendanceRole)
     ) {
-      return NextResponse.json({ success: false, error: 'Role absensi tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Peran absensi tidak valid.' }, { status: 400 });
     }
 
     // Prevent admin from disabling or demoting their own logged-in account
@@ -104,7 +103,7 @@ export async function PATCH(
       }
       if (role !== undefined && role !== 'ADMIN') {
         return NextResponse.json(
-          { success: false, error: 'Anda tidak dapat mencabut hak akses admin akun Anda sendiri.' },
+          { success: false, error: 'Anda tidak dapat mencabut hak akses administrator akun Anda sendiri.' },
           { status: 400 }
         );
       }
@@ -141,10 +140,10 @@ export async function PATCH(
 
     return NextResponse.json({
       success: true,
-      message: 'Data user berhasil diperbarui.',
+      message: 'Data pengguna berhasil diperbarui.',
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Gagal memperbarui data user.';
+    const message = error instanceof Error ? error.message : 'Gagal memperbarui data pengguna.';
     console.error('[Update User Error]:', error);
     return NextResponse.json(
       { success: false, error: message },
@@ -169,7 +168,7 @@ export async function POST(
     const { id } = await params;
     const userId = Number.parseInt(id, 10);
     if (!Number.isInteger(userId)) {
-      return NextResponse.json({ success: false, error: 'ID user tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'ID pengguna tidak valid.' }, { status: 400 });
     }
 
     const temporaryPassword = randomBytes(18).toString('base64url');
@@ -179,7 +178,7 @@ export async function POST(
     );
 
     if (result.affectedRows === 0) {
-      return NextResponse.json({ success: false, error: 'User tidak ditemukan.' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
     }
 
     return NextResponse.json(
@@ -187,7 +186,7 @@ export async function POST(
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Gagal membuat password baru.';
+    const message = error instanceof Error ? error.message : 'Gagal membuat kata sandi baru.';
     console.error('[Admin Password Reset Error]:', error);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
@@ -209,7 +208,7 @@ export async function DELETE(
     const { id } = await params;
     const userId = Number.parseInt(id, 10);
     if (!Number.isInteger(userId)) {
-      return NextResponse.json({ success: false, error: 'ID user tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'ID pengguna tidak valid.' }, { status: 400 });
     }
     if (session.id === userId) {
       return NextResponse.json(
@@ -223,7 +222,7 @@ export async function DELETE(
       [userId]
     );
     if (result.affectedRows === 0) {
-      return NextResponse.json({ success: false, error: 'User tidak ditemukan.' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, message: 'Akun dan riwayat absensinya berhasil dihapus.' });

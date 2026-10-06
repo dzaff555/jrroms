@@ -15,16 +15,16 @@ export async function GET(
   try {
     const active = await getActiveSession();
     if (!active) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Akses hanya untuk Admin.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses hanya untuk administrator.' }, { status: 403 });
     }
 
     const { fileId: fileIdParam } = await params;
     const fileId = Number(fileIdParam);
     if (!Number.isSafeInteger(fileId) || fileId < 1) {
-      return NextResponse.json({ success: false, error: 'ID file tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'ID berkas tidak valid.' }, { status: 400 });
     }
     const files = await query<{
       blob_name: string;
@@ -37,7 +37,7 @@ export async function GET(
     );
     const file = files[0];
     if (!file) {
-      return NextResponse.json({ success: false, error: 'File tidak ditemukan.' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Berkas tidak ditemukan.' }, { status: 404 });
     }
 
     const { absolutePath } = getTaskFilePaths(file.blob_name);
@@ -61,12 +61,12 @@ export async function GET(
     console.error('[Admin Task File Download Error]:', error);
     if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
       return NextResponse.json(
-        { success: false, error: 'File tidak ditemukan di penyimpanan. Pastikan Railway Volume terpasang pada UPLOAD_DIR yang sama dengan saat upload.' },
+        { success: false, error: 'Berkas tidak ditemukan di penyimpanan. Pastikan Railway Volume terpasang pada UPLOAD_DIR yang sama dengan saat proses unggah.' },
         { status: 404 }
       );
     }
     return NextResponse.json(
-      { success: false, error: 'Gagal menyiapkan tautan unduhan file.' },
+      { success: false, error: 'Gagal menyiapkan tautan unduhan berkas.' },
       { status: 500 }
     );
   }

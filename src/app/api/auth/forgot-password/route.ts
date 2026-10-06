@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     const body: unknown = await request.json();
     if (!body || typeof body !== 'object') {
       return NextResponse.json(
-        { success: false, error: 'Data perubahan password tidak valid.' },
+        { success: false, error: 'Data perubahan kata sandi tidak valid.' },
         { status: 400 }
       );
     }
@@ -24,21 +24,21 @@ export async function POST(request: Request) {
       !confirmNewPassword
     ) {
       return NextResponse.json(
-        { success: false, error: 'Username dan semua kolom password wajib diisi.' },
+        { success: false, error: 'Nama pengguna dan semua kolom kata sandi wajib diisi.' },
         { status: 400 }
       );
     }
 
     if (newPassword.length < 8) {
       return NextResponse.json(
-        { success: false, error: 'Password baru minimal harus memiliki 8 karakter.' },
+        { success: false, error: 'Kata sandi baru harus terdiri dari minimal 8 karakter.' },
         { status: 400 }
       );
     }
 
     if (newPassword !== confirmNewPassword) {
       return NextResponse.json(
-        { success: false, error: 'Password baru dan konfirmasinya tidak sama.' },
+        { success: false, error: 'Kata sandi baru dan konfirmasinya tidak sama.' },
         { status: 400 }
       );
     }
@@ -51,14 +51,14 @@ export async function POST(request: Request) {
 
     if (!user || user.status !== 'ACTIVE' || !(await comparePassword(currentPassword, user.password))) {
       return NextResponse.json(
-        { success: false, error: 'Username atau password saat ini salah.' },
+        { success: false, error: 'Nama pengguna atau kata sandi saat ini salah.' },
         { status: 400 }
       );
     }
 
     if (await comparePassword(newPassword, user.password)) {
       return NextResponse.json(
-        { success: false, error: 'Password baru harus berbeda dari password saat ini.' },
+        { success: false, error: 'Kata sandi baru harus berbeda dari kata sandi saat ini.' },
         { status: 400 }
       );
     }
@@ -91,12 +91,12 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Password berhasil diubah. Silakan login dengan password baru.',
+      message: 'Kata sandi berhasil diubah. Silakan masuk dengan kata sandi baru.',
     });
   } catch (error: unknown) {
     console.error('[Forgot Password API Error]:', error);
     return NextResponse.json(
-      { success: false, error: 'Terjadi kesalahan saat mengubah password.' },
+      { success: false, error: 'Terjadi kesalahan saat mengubah kata sandi.' },
       { status: 500 }
     );
   }

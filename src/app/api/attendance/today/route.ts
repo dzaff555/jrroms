@@ -9,7 +9,7 @@ export async function GET() {
     const session = await getSessionUser();
     if (!session) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized. Silakan login terlebih dahulu.' },
+        { success: false, error: 'Silakan masuk terlebih dahulu.' },
         { status: 401 }
       );
     }

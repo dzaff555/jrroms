@@ -87,7 +87,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
       const response = await fetch('/api/inbox', { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Gagal memuat inbox.');
+        throw new Error(result.error || 'Gagal memuat kotak masuk.');
       }
 
       if (isStaff) {
@@ -100,7 +100,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
       }
       setInboxError('');
     } catch (error: unknown) {
-      setInboxError(error instanceof Error ? error.message : 'Gagal memuat inbox.');
+      setInboxError(error instanceof Error ? error.message : 'Gagal memuat kotak masuk.');
     }
   }, [isStaff, user]);
 
@@ -113,7 +113,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
       const response = await fetch('/api/inbox', { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Gagal memuat inbox.');
+        throw new Error(result.error || 'Gagal memuat kotak masuk.');
       }
 
       if (isStaff) {
@@ -125,7 +125,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
         setUnreadAdminInboxCount(Number(result.data.unreadCount || 0));
       }
     } catch (error: unknown) {
-      setInboxError(error instanceof Error ? error.message : 'Gagal memuat inbox.');
+      setInboxError(error instanceof Error ? error.message : 'Gagal memuat kotak masuk.');
     } finally {
       setIsInboxLoading(false);
     }
@@ -240,7 +240,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-      toast.info('Berhasil Logout', 'Sampai jumpa kembali!');
+      toast.info('Berhasil Keluar', 'Sampai jumpa kembali!');
       router.push('/login');
       router.refresh();
     } catch {
@@ -251,14 +251,14 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
   // Compute breadcrumb title
   const getPageTitle = () => {
     if (pathname.startsWith('/admin/profile')) return 'Profil / Biodata';
-    if (pathname.startsWith('/admin/attendance-statistics')) return 'Attendance Statistics';
+    if (pathname.startsWith('/admin/attendance-statistics')) return 'Statistik Absensi';
     if (pathname.startsWith('/admin/reports')) return 'Laporan Absensi';
-    if (pathname.startsWith('/admin/users')) return 'Manajemen User';
+    if (pathname.startsWith('/admin/users')) return 'Manajemen Pengguna';
     if (pathname.startsWith('/admin/settings')) return 'Pengaturan Sistem';
-    if (pathname.startsWith('/admin/dashboard')) return 'Dashboard Admin';
+    if (pathname.startsWith('/admin/dashboard')) return 'Dasbor Admin';
     if (pathname.startsWith('/attendance/history')) return 'Riwayat Absensi';
     if (pathname.startsWith('/attendance')) return 'Form Absensi Hari Ini';
-    if (pathname.startsWith('/dashboard')) return 'Dashboard Staff';
+    if (pathname.startsWith('/dashboard')) return 'Dasbor Staf';
     return 'Operation Managing System - JRR';
   };
 
@@ -318,9 +318,9 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
             onClick={toggleInbox}
             className="relative p-2.5 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             aria-label={isStaff
-              ? `Buka inbox, ${unreadWarningCount} pesan belum dibaca`
+              ? `Buka kotak masuk, ${unreadWarningCount} pesan belum dibaca`
               : user?.role === 'ADMIN'
-                ? `Buka inbox, ${unreadAdminInboxCount} notifikasi belum dibaca`
+                ? `Buka kotak masuk, ${unreadAdminInboxCount} notifikasi belum dibaca`
                 : 'Lihat notifikasi'}
             aria-expanded={notificationsOpen}
           >
@@ -338,7 +338,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
             <div className="absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-slate-100 bg-white py-3 shadow-xl animate-scale-in">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2">
                 <span className="text-sm font-bold text-slate-800">
-                  {isStaff ? 'Inbox Peringatan' : user?.role === 'ADMIN' ? 'Inbox Notifikasi' : 'Notifikasi'}
+                  {isStaff ? 'Kotak Masuk Peringatan' : user?.role === 'ADMIN' ? 'Kotak Masuk Notifikasi' : 'Notifikasi'}
                 </span>
                 {(isStaff ? unreadWarningCount : user?.role === 'ADMIN' ? unreadAdminInboxCount : 0) > 0 && (
                   <button
@@ -369,7 +369,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
                   ) : isStaff && inboxWarnings.length === 0 ? (
                     <div className="p-5 text-center">
                       <MailOpen className="mx-auto h-6 w-6 text-slate-300" />
-                      <p className="mt-2 text-xs text-slate-500">Inbox belum memiliki pesan peringatan.</p>
+                      <p className="mt-2 text-xs text-slate-500">Belum ada pesan peringatan di kotak masuk.</p>
                     </div>
                   ) : isStaff ? (
                     <div className="space-y-1">
@@ -399,7 +399,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
                               {warning.reason}
                             </span>
                             <span className="mt-1.5 block text-[10px] text-slate-400">
-                              Oleh {warning.issued_by_username || 'Admin'} · {formatIndonesianDateTime(warning.warning_date, warning.warning_time)}
+                              Oleh {warning.issued_by_username || 'Administrator'} · {formatIndonesianDateTime(warning.warning_date, warning.warning_time)}
                             </span>
                           </span>
                         </button>
@@ -514,8 +514,8 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
                   {user?.role === 'ADMIN'
                     ? 'Administrator'
                     : user?.role === 'DEVELOPER'
-                      ? 'Developer'
-                      : user?.attendance_role || 'User'}
+                      ? 'Pengembang'
+                      : user?.attendance_role || 'Pengguna'}
                 </span>
               </div>
               <ChevronDown className="w-4 h-4 text-slate-400" />
@@ -557,7 +557,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
                 className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer text-left"
               >
                 <LogOut className="w-4 h-4 text-rose-500" />
-                <span>Logout</span>
+                <span>Keluar</span>
               </button>
             </div>
           )}

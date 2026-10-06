@@ -24,7 +24,7 @@ export async function GET() {
   try {
     const userId = await getChatUserId();
     if (userId === null) {
-      return NextResponse.json({ success: false, error: 'Silakan login dengan akun chat aktif.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk dengan akun chat aktif.' }, { status: 401 });
     }
 
     const stickers = await query<{
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   try {
     const userId = await getChatUserId();
     if (userId === null) {
-      return NextResponse.json({ success: false, error: 'Silakan login dengan akun chat aktif.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk dengan akun chat aktif.' }, { status: 401 });
     }
 
     let body: unknown;

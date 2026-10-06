@@ -23,12 +23,12 @@ export default function ForgotPasswordPage() {
     setErrorMessage(null);
 
     if (newPassword.length < 8) {
-      setErrorMessage('Password baru minimal harus memiliki 8 karakter.');
+      setErrorMessage('Kata sandi baru minimal harus memiliki 8 karakter.');
       return;
     }
 
     if (newPassword !== confirmNewPassword) {
-      setErrorMessage('Password baru dan konfirmasinya tidak sama.');
+      setErrorMessage('Kata sandi baru dan konfirmasinya tidak sama.');
       return;
     }
 
@@ -42,14 +42,14 @@ export default function ForgotPasswordPage() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        const message = data.error || 'Gagal mengubah password.';
+        const message = data.error || 'Gagal mengubah kata sandi.';
         setErrorMessage(message);
-        toast.error('Gagal Mengubah Password', message);
+        toast.error('Gagal Mengubah Kata Sandi', message);
         return;
       }
 
       setIsSuccess(true);
-      toast.success('Password Berhasil Diubah', 'Silakan login menggunakan password baru.');
+      toast.success('Kata Sandi Berhasil Diubah', 'Silakan masuk menggunakan kata sandi baru.');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Gagal terhubung ke server.';
       setErrorMessage(message);
@@ -67,7 +67,7 @@ export default function ForgotPasswordPage() {
           className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Kembali ke Login</span>
+          <span>Kembali ke Halaman Masuk</span>
         </Link>
 
         {isSuccess ? (
@@ -76,14 +76,14 @@ export default function ForgotPasswordPage() {
               <CheckCircle2 className="w-8 h-8" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Password Berhasil Diubah</h1>
+              <h1 className="text-xl font-bold text-slate-900">Kata Sandi Berhasil Diubah</h1>
               <p className="text-sm text-slate-600 mt-2">
-                Silakan login kembali menggunakan password baru.
+                Silakan masuk kembali menggunakan kata sandi baru.
               </p>
             </div>
             <Link href="/login" className="block">
               <Button className="w-full" icon={<ArrowRight className="w-4 h-4" />}>
-                Kembali ke Login
+                Kembali ke Halaman Masuk
               </Button>
             </Link>
           </div>
@@ -93,9 +93,9 @@ export default function ForgotPasswordPage() {
               <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4 border border-blue-100">
                 <KeyRound className="w-6 h-6" />
               </div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Lupa Password?</h1>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Lupa Kata Sandi?</h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
-                Verifikasi akun dengan username dan password saat ini.
+                Verifikasi akun dengan nama pengguna dan kata sandi saat ini.
               </p>
             </div>
 
@@ -107,8 +107,8 @@ export default function ForgotPasswordPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
-                label="Username"
-                placeholder="Masukkan username"
+                label="Nama pengguna"
+                placeholder="Masukkan nama pengguna"
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
                 autoComplete="username"
@@ -116,15 +116,15 @@ export default function ForgotPasswordPage() {
                 autoFocus
               />
               <PasswordInput
-                label="Password Saat Ini"
-                placeholder="Masukkan password saat ini"
+                label="Kata Sandi Saat Ini"
+                placeholder="Masukkan kata sandi saat ini"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 autoComplete="current-password"
                 required
               />
               <PasswordInput
-                label="Password Baru"
+                label="Kata Sandi Baru"
                 placeholder="Minimal 8 karakter"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
@@ -133,8 +133,8 @@ export default function ForgotPasswordPage() {
                 required
               />
               <PasswordInput
-                label="Konfirmasi Password Baru"
-                placeholder="Ulangi password baru"
+                label="Konfirmasi Kata Sandi Baru"
+                placeholder="Ulangi kata sandi baru"
                 value={confirmNewPassword}
                 onChange={(event) => setConfirmNewPassword(event.target.value)}
                 autoComplete="new-password"
@@ -146,10 +146,10 @@ export default function ForgotPasswordPage() {
                 size="lg"
                 className="w-full"
                 isLoading={isLoading}
-                loadingText="Mengubah Password..."
+                loadingText="Mengubah Kata Sandi..."
                 icon={<ArrowRight className="w-4 h-4" />}
               >
-                Simpan Password Baru
+                Simpan Kata Sandi Baru
               </Button>
             </form>
           </>

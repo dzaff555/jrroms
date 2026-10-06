@@ -16,14 +16,14 @@ export default function AccessDeniedPage() {
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900">Akses Ditolak (403)</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-2 leading-relaxed">
-            Maaf, Anda tidak memiliki izin Administrator untuk mengakses halaman yang dituju. Silakan kembali ke dashboard akun Anda.
+            Maaf, Anda tidak memiliki izin administrator untuk mengakses halaman yang dituju. Silakan kembali ke dasbor akun Anda.
           </p>
         </div>
 
         <div className="pt-2">
           <Link href="/dashboard">
             <Button variant="primary" className="w-full" icon={<ArrowLeft className="w-4 h-4" />}>
-              Kembali ke Dashboard Karyawan
+              Kembali ke Dasbor Karyawan
             </Button>
           </Link>
         </div>

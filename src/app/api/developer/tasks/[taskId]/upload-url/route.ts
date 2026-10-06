@@ -14,10 +14,10 @@ export async function POST(
   try {
     const active = await getActiveSession();
     if (!active) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'DEVELOPER') {
-      return NextResponse.json({ success: false, error: 'Akses hanya untuk Developer.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses hanya untuk pengembang.' }, { status: 403 });
     }
 
     const { taskId: taskIdParam } = await params;
@@ -30,10 +30,10 @@ export async function POST(
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json({ success: false, error: 'Data file tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Data berkas tidak valid.' }, { status: 400 });
     }
     if (typeof body !== 'object' || body === null) {
-      return NextResponse.json({ success: false, error: 'Data file tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Data berkas tidak valid.' }, { status: 400 });
     }
 
     const data = body as Record<string, unknown>;
@@ -48,7 +48,7 @@ export async function POST(
         : 'application/octet-stream';
 
     if (!originalName || originalName.length > 255) {
-      return NextResponse.json({ success: false, error: 'Nama file tidak valid atau melebihi 255 karakter.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Nama berkas tidak valid atau melebihi 255 karakter.' }, { status: 400 });
     }
     if (
       typeof byteSize !== 'number' ||
@@ -56,7 +56,7 @@ export async function POST(
       byteSize < 1 ||
       byteSize > MAX_TASK_FILE_SIZE
     ) {
-      return NextResponse.json({ success: false, error: 'Ukuran maksimal setiap file adalah 1 GB.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Ukuran maksimal setiap berkas adalah 1 GB.' }, { status: 400 });
     }
 
     const today = getJakartaDateString();
@@ -79,7 +79,7 @@ export async function POST(
     }
     if (Boolean(tasks[0].is_completed)) {
       return NextResponse.json(
-        { success: false, error: 'Tugas ini sudah selesai. Anda tidak dapat mengunggah file lagi.' },
+        { success: false, error: 'Tugas ini sudah selesai. Anda tidak dapat mengunggah berkas lagi.' },
         { status: 409 }
       );
     }
@@ -112,7 +112,7 @@ export async function POST(
   } catch (error: unknown) {
     console.error('[Developer Task Upload URL Error]:', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Gagal menyiapkan upload file.' },
+      { success: false, error: error instanceof Error ? error.message : 'Gagal menyiapkan unggahan berkas.' },
       { status: 500 }
     );
   }

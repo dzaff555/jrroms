@@ -9,10 +9,10 @@ export async function POST(
   try {
     const active = await getActiveSession();
     if (!active) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'DEVELOPER') {
-      return NextResponse.json({ success: false, error: 'Akses hanya untuk Developer.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses hanya untuk pengembang.' }, { status: 403 });
     }
 
     const { taskId: taskIdParam } = await params;
@@ -49,13 +49,13 @@ export async function POST(
     ]);
     if (Number(completedFiles[0]?.total ?? 0) === 0) {
       return NextResponse.json(
-        { success: false, error: 'Kirim minimal satu file sebelum menyelesaikan tugas.' },
+        { success: false, error: 'Kirim minimal satu berkas sebelum menyelesaikan tugas.' },
         { status: 400 }
       );
     }
     if (Number(unfinishedFiles[0]?.total ?? 0) > 0) {
       return NextResponse.json(
-        { success: false, error: 'Tunggu semua proses upload selesai sebelum menandai tugas selesai.' },
+        { success: false, error: 'Tunggu semua proses unggah selesai sebelum menandai tugas selesai.' },
         { status: 409 }
       );
     }
@@ -66,7 +66,7 @@ export async function POST(
       [taskId, active.session.id]
     );
 
-    return NextResponse.json({ success: true, message: 'Tugas ditandai selesai. Upload berikutnya telah dikunci.' });
+    return NextResponse.json({ success: true, message: 'Tugas ditandai selesai. Unggahan berikutnya telah dikunci.' });
   } catch (error: unknown) {
     console.error('[Developer Task Completion Error]:', error);
     return NextResponse.json({ success: false, error: 'Gagal menyelesaikan tugas.' }, { status: 500 });

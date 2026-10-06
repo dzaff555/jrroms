@@ -201,7 +201,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         password VARCHAR(255) NOT NULL,
         role ENUM('USER', 'ADMIN', 'DEVELOPER') NOT NULL DEFAULT 'USER',
         status ENUM('ACTIVE', 'DISABLED') NOT NULL DEFAULT 'ACTIVE',
-        attendance_role ENUM('CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL') NOT NULL DEFAULT 'CSOT',
+        attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT',
         profile_photo LONGTEXT NULL,
         roblox_username VARCHAR(100) NULL,
         discord_username VARCHAR(100) NULL,
@@ -218,7 +218,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
         name VARCHAR(100) NOT NULL,
-        attendance_role ENUM('CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL') NOT NULL DEFAULT 'CSOT',
+        attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT',
         discord_username VARCHAR(100) NOT NULL,
         roblox_username VARCHAR(100) NOT NULL,
         attendance_date DATE NOT NULL,
@@ -383,13 +383,13 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
     `);
 
     await ensureColumns(dbPool, [
-      { table: 'users', column: 'attendance_role', definition: "ENUM('CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL') NOT NULL DEFAULT 'CSOT'" },
+      { table: 'users', column: 'attendance_role', definition: "ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'" },
       { table: 'users', column: 'real_name', definition: 'VARCHAR(100) NULL AFTER username' },
       { table: 'users', column: 'profile_photo', definition: 'LONGTEXT NULL' },
       { table: 'users', column: 'roblox_username', definition: 'VARCHAR(100) NULL' },
       { table: 'users', column: 'discord_username', definition: 'VARCHAR(100) NULL' },
       { table: 'users', column: 'profile_completed', definition: 'BOOLEAN NOT NULL DEFAULT FALSE' },
-      { table: 'attendance', column: 'attendance_role', definition: "ENUM('CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL') NOT NULL DEFAULT 'CSOT'" },
+      { table: 'attendance', column: 'attendance_role', definition: "ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'" },
       { table: 'staff_warnings', column: 'read_at', definition: 'TIMESTAMP NULL DEFAULT NULL AFTER reason' },
       { table: 'staff_admin_chat_messages', column: 'deleted_at', definition: 'TIMESTAMP(6) NULL DEFAULT NULL AFTER message' },
       { table: 'staff_admin_chat_messages', column: 'deleted_by', definition: 'INT NULL AFTER deleted_at' },
@@ -400,6 +400,12 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       { table: 'staff_admin_chat_messages', column: 'is_voice_note', definition: 'BOOLEAN NOT NULL DEFAULT FALSE AFTER is_sticker' },
       { table: 'staff_admin_chat_messages', column: 'audio_duration_seconds', definition: 'INT UNSIGNED NOT NULL DEFAULT 0 AFTER is_voice_note' },
     ]);
+    await dbPool.query(
+      "ALTER TABLE users MODIFY COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'"
+    );
+    await dbPool.query(
+      "ALTER TABLE attendance MODIFY COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'"
+    );
     await ensureChatDeletedAtIndex(dbPool);
     await ensureChatReplySchema(dbPool);
     await ensureProfilePhotoCapacity(dbPool);

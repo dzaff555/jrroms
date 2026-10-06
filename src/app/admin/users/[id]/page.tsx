@@ -113,7 +113,7 @@ export default async function AdminStaffProfilePage({
           className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600"
         >
           <ArrowLeft className="h-4 w-4" />
-          Kembali ke Kelola User
+          Kembali ke Kelola Pengguna
         </Link>
 
         <ProfileContentProtection>
@@ -131,10 +131,10 @@ export default async function AdminStaffProfilePage({
                 </div>
               )}
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Profil Staff</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Profil Staf</p>
                 <h1 className="mt-1 text-2xl font-extrabold">{staff.username}</h1>
                 {staff.role === 'USER' && (
-                  <p className="mt-1 text-sm text-blue-100">{staff.attendance_role || 'Role belum ditentukan'}</p>
+                  <p className="mt-1 text-sm text-blue-100">{staff.attendance_role || 'Peran belum ditentukan'}</p>
                 )}
               </div>
               <span className={`sm:ml-auto rounded-full px-3 py-1 text-xs font-bold ${staff.status === 'ACTIVE' ? 'bg-emerald-400/20 text-emerald-100' : 'bg-rose-400/20 text-rose-100'}`}>
@@ -151,19 +151,21 @@ export default async function AdminStaffProfilePage({
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                  <ShieldCheck className="h-4 w-4" /> Role Sistem
+                  <ShieldCheck className="h-4 w-4" /> Peran Sistem
                 </div>
-                <p className="mt-2 text-sm font-bold text-slate-800">{staff.role}</p>
+                <p className="mt-2 text-sm font-bold text-slate-800">
+                  {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Pengembang' : 'Pengguna'}
+                </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                  <UserRound className="h-4 w-4" /> Username Roblox
+                  <UserRound className="h-4 w-4" /> Nama pengguna Roblox
                 </div>
                 <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.roblox_username || '-'}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                  <UserRound className="h-4 w-4" /> Username Discord
+                  <UserRound className="h-4 w-4" /> Nama pengguna Discord
                 </div>
                 <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.discord_username || '-'}</p>
               </div>
@@ -243,7 +245,7 @@ export default async function AdminStaffProfilePage({
                       <p className="text-sm font-semibold text-slate-800">Peringatan - {warning.warning_number}</p>
                       <p className="mt-1 text-sm text-slate-700">{warning.reason}</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {formatIndonesianDateTime(warning.warning_date, warning.warning_time)} · Oleh {warning.issued_by_username || 'Admin'}
+                        {formatIndonesianDateTime(warning.warning_date, warning.warning_time)} · Oleh {warning.issued_by_username || 'Administrator'}
                       </p>
                     </li>
                   ))}

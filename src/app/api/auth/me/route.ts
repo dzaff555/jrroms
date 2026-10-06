@@ -3,13 +3,13 @@ import jwt from 'jsonwebtoken';
 import { getSessionUser, signToken, TOKEN_COOKIE_NAME } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 import { cookies } from 'next/headers';
-import { ATTENDANCE_ROLES, AttendanceRole, AuthSession } from '@/types';
+import { AttendanceRole, AuthSession, isAttendanceRole } from '@/types';
 
 export async function GET() {
   const session = await getSessionUser();
   if (!session) {
     return NextResponse.json(
-      { success: false, error: 'Belum login atau session telah kedaluwarsa.' },
+      { success: false, error: 'Anda belum masuk atau sesi telah kedaluwarsa.' },
       { status: 401 }
     );
   }
@@ -41,8 +41,8 @@ export async function GET() {
     return response;
   }
 
-  const attendanceRole = ATTENDANCE_ROLES.includes(user.attendance_role as AttendanceRole)
-    ? user.attendance_role as AttendanceRole
+  const attendanceRole = isAttendanceRole(user.attendance_role)
+    ? user.attendance_role
     : 'CSOT';
   const payload: AuthSession = {
     id: session.id,

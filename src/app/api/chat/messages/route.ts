@@ -54,7 +54,7 @@ interface ChatMessage {
 
 async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolean } = {}) {
   const session = await getSessionUser();
-  if (!session) return { response: NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 }) };
+  if (!session) return { response: NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 }) };
 
   const users = await query<ChatAccessUser[]>(
     'SELECT role, status FROM users WHERE id = ? LIMIT 1',
@@ -67,7 +67,7 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
     user.status !== 'ACTIVE' ||
     (user.role !== 'USER' && user.role !== 'ADMIN' && !(allowDeveloper && user.role === 'DEVELOPER'))
   ) {
-    return { response: NextResponse.json({ success: false, error: 'Akses chat hanya untuk staff dan admin.' }, { status: 403 }) };
+    return { response: NextResponse.json({ success: false, error: 'Akses chat hanya untuk staf dan administrator.' }, { status: 403 }) };
   }
 
   return { session };
@@ -428,7 +428,7 @@ export async function POST(request: Request) {
       imageType = attachmentFile.type;
       imageData = Buffer.from(await attachmentFile.arrayBuffer());
       if (!matchesChatMediaType(imageData, imageType)) {
-        return NextResponse.json({ success: false, error: 'Isi file tidak sesuai dengan format lampiran.' }, { status: 415 });
+        return NextResponse.json({ success: false, error: 'Isi berkas tidak sesuai dengan format lampiran.' }, { status: 415 });
       }
     }
     if (isSticker && (!imageType?.startsWith('image/') || !imageData)) {

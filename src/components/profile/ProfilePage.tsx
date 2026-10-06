@@ -115,17 +115,17 @@ export default function ProfilePage() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        toast.error('Gagal Mengubah Password', data.error || 'Tidak dapat mengubah password.');
+        toast.error('Gagal Mengubah Kata Sandi', data.error || 'Tidak dapat mengubah kata sandi.');
         return;
       }
 
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
-      toast.success('Password Berhasil Diubah', 'Gunakan password baru saat login berikutnya.');
+      toast.success('Kata Sandi Berhasil Diubah', 'Gunakan kata sandi baru saat masuk berikutnya.');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Terjadi kesalahan saat mengubah password.';
-      toast.error('Gagal Mengubah Password', message);
+      toast.error('Gagal Mengubah Kata Sandi', message);
     } finally {
       setIsChangingPassword(false);
     }
@@ -165,7 +165,7 @@ export default function ProfilePage() {
             <p className="text-xs font-medium sm:text-sm">
               {user?.role === 'ADMIN'
                 ? 'Di halaman ini Anda hanya dapat mengubah foto profil akun administrator.'
-                : 'Nama asli, foto profil, username Roblox, dan username Discord dapat diubah. Nama asli hanya terlihat oleh Anda dan administrator; role tetap otomatis.'}
+                : 'Nama asli, foto profil, nama pengguna Roblox, dan nama pengguna Discord dapat diubah. Nama asli hanya terlihat oleh Anda dan administrator; peran tetap otomatis.'}
             </p>
           </div>
 
@@ -190,7 +190,7 @@ export default function ProfilePage() {
           <div className="mb-6">
             <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
               <KeyRound className="h-5 w-5 text-blue-600" />
-              Ganti Password
+              Ganti Kata Sandi
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               Masukkan password saat ini, lalu password baru dan konfirmasinya.
@@ -199,7 +199,7 @@ export default function ProfilePage() {
 
           <form onSubmit={handleChangePassword} className="space-y-4">
             <PasswordInput
-              label="Password Saat Ini"
+              label="Kata Sandi Saat Ini"
               autoComplete="current-password"
               value={currentPassword}
               onChange={(event) => setCurrentPassword(event.target.value)}
@@ -207,7 +207,7 @@ export default function ProfilePage() {
             />
             <div className="grid gap-4 sm:grid-cols-2">
               <PasswordInput
-                label="Password Baru"
+                label="Kata Sandi Baru"
                 autoComplete="new-password"
                 minLength={8}
                 value={newPassword}
@@ -215,7 +215,7 @@ export default function ProfilePage() {
                 required
               />
               <PasswordInput
-                label="Konfirmasi Password Baru"
+                label="Konfirmasi Kata Sandi Baru"
                 autoComplete="new-password"
                 minLength={8}
                 value={confirmNewPassword}
@@ -225,7 +225,7 @@ export default function ProfilePage() {
             </div>
             <div className="flex justify-end pt-2">
               <Button type="submit" isLoading={isChangingPassword} loadingText="Menyimpan...">
-                Simpan Password Baru
+                Simpan Kata Sandi Baru
               </Button>
             </div>
           </form>

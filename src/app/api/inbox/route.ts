@@ -34,7 +34,7 @@ export async function GET() {
     const session = await getSessionUser();
     if (!session) {
       return NextResponse.json(
-        { success: false, error: 'Silakan login terlebih dahulu.' },
+        { success: false, error: 'Silakan masuk terlebih dahulu.' },
         { status: 401 }
       );
     }
@@ -157,7 +157,7 @@ export async function PATCH(request: Request) {
     const session = await getSessionUser();
     if (!session) {
       return NextResponse.json(
-        { success: false, error: 'Silakan login terlebih dahulu.' },
+        { success: false, error: 'Silakan masuk terlebih dahulu.' },
         { status: 401 }
       );
     }

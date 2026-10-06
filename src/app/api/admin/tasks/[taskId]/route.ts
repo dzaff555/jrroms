@@ -15,10 +15,10 @@ function isValidDate(value: string) {
 async function authorizeAdmin() {
   const active = await getActiveSession();
   if (!active) {
-    return { response: NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 }) };
+    return { response: NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 }) };
   }
   if (active.role !== 'ADMIN') {
-    return { response: NextResponse.json({ success: false, error: 'Akses hanya untuk Admin.' }, { status: 403 }) };
+    return { response: NextResponse.json({ success: false, error: 'Akses hanya untuk administrator.' }, { status: 403 }) };
   }
   return { response: null };
 }
@@ -68,7 +68,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Rentang tanggal tugas tidak valid.' }, { status: 400 });
     }
     if (typeof fileRequired !== 'boolean') {
-      return NextResponse.json({ success: false, error: 'Status kewajiban upload file tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Status kewajiban unggah berkas tidak valid.' }, { status: 400 });
     }
 
     const result = await query<{ affectedRows: number }>(
@@ -90,7 +90,7 @@ export async function PATCH(
     return NextResponse.json({ success: true, message: 'Tugas berhasil diperbarui.' });
   } catch (error: unknown) {
     console.error('[Admin Task PATCH Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal memperbarui tugas developer.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal memperbarui tugas pengembang.' }, { status: 500 });
   }
 }
 
@@ -138,11 +138,11 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: 'Tugas dan semua kiriman Developer terkait berhasil dihapus.',
+      message: 'Tugas dan semua kiriman pengembang terkait berhasil dihapus.',
       cleanupWarning: cleanupErrors.length > 0,
     });
   } catch (error: unknown) {
     console.error('[Admin Task DELETE Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal menghapus tugas developer.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal menghapus tugas pengembang.' }, { status: 500 });
   }
 }

@@ -22,7 +22,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
-import { ATTENDANCE_ROLES, Attendance, AuthSession } from '@/types';
+import { ATTENDANCE_ROLES, Attendance, AuthSession, isAttendanceRole } from '@/types';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
 export default function AttendancePage() {
@@ -134,11 +134,11 @@ export default function AttendancePage() {
     // Client-side field validations
     const formErrors: { [key: string]: string } = {};
     if (!name.trim()) formErrors.name = 'Nama lengkap wajib diisi.';
-    if (!ATTENDANCE_ROLES.includes(attendanceRole as (typeof ATTENDANCE_ROLES)[number])) {
-      formErrors.attendance_role = 'Silakan pilih role.';
+    if (!isAttendanceRole(attendanceRole)) {
+      formErrors.attendance_role = 'Silakan pilih peran.';
     }
-    if (!discordUsername.trim()) formErrors.discordUsername = 'Username Discord wajib diisi.';
-    if (!robloxUsername.trim()) formErrors.robloxUsername = 'Username Roblox wajib diisi.';
+    if (!discordUsername.trim()) formErrors.discordUsername = 'Nama pengguna Discord wajib diisi.';
+    if (!robloxUsername.trim()) formErrors.robloxUsername = 'Nama pengguna Roblox wajib diisi.';
 
     if (Object.keys(formErrors).length > 0) {
       setErrors(formErrors);
@@ -221,7 +221,7 @@ export default function AttendancePage() {
           className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Kembali ke Dashboard</span>
+          <span>Kembali ke Dasbor</span>
         </Link>
 
         {isLoading ? (
@@ -286,7 +286,7 @@ export default function AttendancePage() {
 
                 <div className="p-4 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
                   <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                    Username Discord
+                    Nama pengguna Discord
                   </span>
                   <span className="text-sm font-bold text-indigo-600 font-mono mt-1 block">
                     {submittedData.discord_username}
@@ -295,7 +295,7 @@ export default function AttendancePage() {
 
                 <div className="p-4 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
                   <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                    Username Roblox
+                    Nama pengguna Roblox
                   </span>
                   <span className="text-sm font-bold text-slate-800 font-mono mt-1 block">
                     {submittedData.roblox_username}
@@ -325,7 +325,7 @@ export default function AttendancePage() {
                   className="w-full shadow-md shadow-blue-600/20"
                   onClick={() => router.push('/dashboard')}
                 >
-                  Kembali ke Dashboard
+                  Kembali ke Dasbor
                 </Button>
               </div>
             </CardContent>
@@ -356,7 +356,7 @@ export default function AttendancePage() {
                   <span className="font-mono font-semibold text-indigo-600">{existingAttendance.discord_username}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
-                  <span className="text-slate-500">Role:</span>
+                  <span className="text-slate-500">Peran:</span>
                   <span className="font-bold text-slate-800">{existingAttendance.attendance_role}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
@@ -378,7 +378,7 @@ export default function AttendancePage() {
                   variant="primary"
                   onClick={() => router.push('/dashboard')}
                 >
-                  Kembali ke Dashboard
+                  Kembali ke Dasbor
                 </Button>
                 <Button
                   variant="outline"
@@ -470,10 +470,13 @@ export default function AttendancePage() {
                     }`}
                     required
                   >
-                    <option value="" disabled>Pilih role</option>
+                    <option value="" disabled>Pilih peran</option>
                     {ATTENDANCE_ROLES.map((role) => (
                       <option key={role} value={role}>{role}</option>
                     ))}
+                    {isAttendanceRole(attendanceRole) && !ATTENDANCE_ROLES.includes(attendanceRole as (typeof ATTENDANCE_ROLES)[number]) && (
+                      <option value={attendanceRole}>{attendanceRole}</option>
+                    )}
                   </select>
                   {errors.attendance_role && (
                     <p id="attendance-role-error" className="text-xs text-red-600">{errors.attendance_role}</p>
@@ -481,8 +484,8 @@ export default function AttendancePage() {
                 </div>
 
                 <Input
-                  label="Username Discord"
-                  placeholder="Masukkan username Discord"
+                  label="Nama pengguna Discord"
+                  placeholder="Masukkan nama pengguna Discord"
                   value={discordUsername}
                   onChange={(e) => {
                     setDiscordUsername(e.target.value);
@@ -495,8 +498,8 @@ export default function AttendancePage() {
                 />
 
                 <Input
-                  label="Username Roblox"
-                  placeholder="Masukkan username Roblox"
+                  label="Nama pengguna Roblox"
+                  placeholder="Masukkan nama pengguna Roblox"
                   value={robloxUsername}
                   onChange={(e) => {
                     setRobloxUsername(e.target.value);
@@ -504,7 +507,7 @@ export default function AttendancePage() {
                       setErrors((prev) => ({ ...prev, robloxUsername: '' }));
                   }}
                   error={errors.robloxUsername}
-                  helperText="Username akun game Roblox Anda"
+                  helperText="Nama pengguna akun game Roblox Anda"
                   required
                 />
 
@@ -518,7 +521,7 @@ export default function AttendancePage() {
                     loadingText="Memverifikasi & Menyimpan..."
                     icon={<CheckCircle2 className="w-5 h-5" />}
                   >
-                    Confirm Attendance
+                    Konfirmasi Kehadiran
                   </Button>
                 </div>
               </form>
@@ -555,15 +558,15 @@ export default function AttendancePage() {
               <p className="mt-1 break-words text-sm font-bold text-slate-800">{name || '-'}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Role</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Peran</p>
               <p className="mt-1 break-words text-sm font-bold text-slate-800">{attendanceRole || '-'}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Username Roblox</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Nama pengguna Roblox</p>
               <p className="mt-1 break-words text-sm font-bold text-slate-800">{robloxUsername || '-'}</p>
             </div>
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Username Discord</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Nama pengguna Discord</p>
               <p className="mt-1 break-words text-sm font-bold text-slate-800">{discordUsername || '-'}</p>
             </div>
           </div>
@@ -573,7 +576,7 @@ export default function AttendancePage() {
               Periksa Lagi
             </Button>
             <Button variant="primary" onClick={handleConfirmAttendance} isLoading={isSubmitting} loadingText="Menyimpan..." icon={<CheckCircle2 className="h-4 w-4" />}>
-              Confirm
+              Konfirmasi
             </Button>
           </div>
         </div>

@@ -1,7 +1,29 @@
 export type UserRole = 'USER' | 'ADMIN' | 'DEVELOPER';
 export type UserStatus = 'ACTIVE' | 'DISABLED';
-export const ATTENDANCE_ROLES = ['CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL'] as const;
-export type AttendanceRole = (typeof ATTENDANCE_ROLES)[number];
+export const ATTENDANCE_ROLES = [
+  'Pusat Kendali',
+  'PPKA',
+  'Masinis Madya',
+  'Masinis Muda',
+  'Masinis Pertama',
+  'CSOT',
+  'Security',
+  'Magang',
+  'PJL',
+  'Masa Pendidikan',
+] as const;
+export type AttendanceRole =
+  | (typeof ATTENDANCE_ROLES)[number]
+  | 'MASINIS'
+  | 'PKD';
+
+export function isAttendanceRole(value: unknown): value is AttendanceRole {
+  return typeof value === 'string' && (
+    (ATTENDANCE_ROLES as readonly string[]).includes(value) ||
+    value === 'MASINIS' ||
+    value === 'PKD'
+  );
+}
 
 export interface User {
   id: number;

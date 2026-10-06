@@ -27,16 +27,16 @@ export async function PUT(
   try {
     const active = await getActiveSession();
     if (!active) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'DEVELOPER') {
-      return NextResponse.json({ success: false, error: 'Akses hanya untuk Developer.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses hanya untuk pengembang.' }, { status: 403 });
     }
 
     const { uploadId: uploadIdParam } = await params;
     const uploadId = Number(uploadIdParam);
     if (!Number.isSafeInteger(uploadId) || uploadId < 1) {
-      return NextResponse.json({ success: false, error: 'ID upload tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'ID unggahan tidak valid.' }, { status: 400 });
     }
     const files = await query<{
       blob_name: string;
@@ -57,10 +57,10 @@ export async function PUT(
     );
     const file = files[0];
     if (!file) {
-      return NextResponse.json({ success: false, error: 'File upload tidak ditemukan.' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Unggahan berkas tidak ditemukan.' }, { status: 404 });
     }
     if (file.status !== 'PENDING') {
-      return NextResponse.json({ success: false, error: 'Upload ini sudah dimulai atau sudah selesai.' }, { status: 409 });
+      return NextResponse.json({ success: false, error: 'Unggahan ini sudah dimulai atau sudah selesai.' }, { status: 409 });
     }
     const completedTasks = await query<{ task_id: number }[]>(
       `SELECT task_id FROM developer_task_completions
@@ -69,7 +69,7 @@ export async function PUT(
     );
     if (completedTasks[0]) {
       return NextResponse.json(
-        { success: false, error: 'Tugas ini sudah selesai. Upload baru tidak dapat diproses.' },
+        { success: false, error: 'Tugas ini sudah selesai. Unggahan baru tidak dapat diproses.' },
         { status: 409 }
       );
     }
@@ -77,17 +77,17 @@ export async function PUT(
     const expectedSize = Number(file.byte_size);
     if (!Number.isSafeInteger(expectedSize) || expectedSize < 1 || expectedSize > MAX_TASK_FILE_SIZE) {
       return NextResponse.json(
-        { success: false, error: 'Ukuran file tidak valid atau melebihi 1 GB.' },
+        { success: false, error: 'Ukuran berkas tidak valid atau melebihi 1 GB.' },
         { status: 400 }
       );
     }
 
     const contentLength = request.headers.get('content-length');
     if (contentLength && Number(contentLength) !== expectedSize) {
-      return NextResponse.json({ success: false, error: 'Ukuran file yang dikirim tidak sesuai.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Ukuran berkas yang dikirim tidak sesuai.' }, { status: 400 });
     }
     if (!request.body) {
-      return NextResponse.json({ success: false, error: 'Isi file tidak ditemukan.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Isi berkas tidak ditemukan.' }, { status: 400 });
     }
 
     const { absolutePath, temporaryPath: tempPath } = getTaskFilePaths(file.blob_name);
@@ -99,7 +99,7 @@ export async function PUT(
       [uploadId, active.session.id]
     );
     if (claim.affectedRows === 0) {
-      return NextResponse.json({ success: false, error: 'Upload ini sudah dimulai atau sudah selesai.' }, { status: 409 });
+      return NextResponse.json({ success: false, error: 'Unggahan ini sudah dimulai atau sudah selesai.' }, { status: 409 });
     }
     claimedUploadId = uploadId;
     developerId = active.session.id;
@@ -110,7 +110,7 @@ export async function PUT(
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
         receivedBytes += buffer.byteLength;
         if (receivedBytes > expectedSize || receivedBytes > MAX_TASK_FILE_SIZE) {
-          callback(new InvalidUploadError('Ukuran file melebihi ukuran yang diizinkan.', 413));
+          callback(new InvalidUploadError('Ukuran berkas melebihi ukuran yang diizinkan.', 413));
           return;
         }
         callback(null, buffer);
@@ -124,7 +124,7 @@ export async function PUT(
     );
 
     if (receivedBytes !== expectedSize) {
-      throw new InvalidUploadError('Upload tidak lengkap. Ukuran file yang diterima tidak sesuai.', 400);
+      throw new InvalidUploadError('Unggahan tidak lengkap. Ukuran berkas yang diterima tidak sesuai.', 400);
     }
 
     await rename(tempPath, absolutePath);
@@ -140,7 +140,7 @@ export async function PUT(
     if (update.affectedRows === 0) {
       await rm(absolutePath, { force: true });
       permanentPath = null;
-      return NextResponse.json({ success: false, error: 'Status upload sudah berubah. Silakan muat ulang.' }, { status: 409 });
+      return NextResponse.json({ success: false, error: 'Status unggahan sudah berubah. Silakan muat ulang.' }, { status: 409 });
     }
     permanentPath = null;
     claimedUploadId = null;
@@ -154,7 +154,7 @@ export async function PUT(
       [`developer-upload:${uploadId}`, file.developer_username, file.task_title, file.original_name]
     );
 
-    return NextResponse.json({ success: true, message: 'File berhasil diunggah ke aplikasi.' });
+    return NextResponse.json({ success: true, message: 'Berkas berhasil diunggah ke aplikasi.' });
   } catch (error: unknown) {
     if (temporaryPath) {
       await rm(temporaryPath, { force: true }).catch((cleanupError: unknown) => {
@@ -177,7 +177,7 @@ export async function PUT(
     }
     console.error('[Developer Task Upload Complete Error]:', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Gagal menyimpan file tugas.' },
+      { success: false, error: error instanceof Error ? error.message : 'Gagal menyimpan berkas tugas.' },
       { status: error instanceof InvalidUploadError ? error.status : 500 }
     );
   }

@@ -1,5 +1,5 @@
 import { query } from '@/lib/database/db';
-import { ATTENDANCE_ROLES } from '@/types';
+import { isAttendanceRole } from '@/types';
 import { getJakartaDateString } from '@/lib/utils/date';
 import { getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 
@@ -85,7 +85,7 @@ function buildAttendanceReportQuery(filters: AttendanceReportFilters): Attendanc
   if (!['ALL', 'Hadir', 'Belum Absen'].includes(status)) {
     throw new RangeError('Filter status tidak valid.');
   }
-  if (attendanceRole !== 'ALL' && !ATTENDANCE_ROLES.includes(attendanceRole as (typeof ATTENDANCE_ROLES)[number])) {
+  if (attendanceRole !== 'ALL' && !isAttendanceRole(attendanceRole)) {
     throw new RangeError('Filter role absensi tidak valid.');
   }
 

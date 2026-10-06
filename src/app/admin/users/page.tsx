@@ -24,7 +24,7 @@ import { TableSkeleton } from '@/components/ui/LoadingSkeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { formatIndonesianDate } from '@/lib/utils/date';
-import { ATTENDANCE_ROLES, AuthSession, AttendanceRole, UserRole, UserStatus } from '@/types';
+import { ATTENDANCE_ROLES, AuthSession, AttendanceRole, UserRole, UserStatus, isAttendanceRole } from '@/types';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
@@ -211,7 +211,7 @@ export default function AdminUsersPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        toast.error('Gagal', data.error || 'Gagal memperbarui status user.');
+        toast.error('Gagal', data.error || 'Gagal memperbarui status pengguna.');
         return;
       }
 
@@ -243,13 +243,13 @@ export default function AdminUsersPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        toast.error('Gagal', data.error || 'Gagal mengubah role user.');
+        toast.error('Gagal', data.error || 'Gagal mengubah peran pengguna.');
         return;
       }
 
       toast.success(
-        'Role Diperbarui',
-        `Role @${editUser.username} berhasil diubah menjadi ${editRole}.`
+        'Peran Diperbarui',
+        `Peran @${editUser.username} berhasil diubah menjadi ${editRole}.`
       );
       setEditUser(null);
       fetchUsers();
@@ -273,13 +273,13 @@ export default function AdminUsersPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        toast.error('Gagal', data.error || 'Gagal mengubah role absensi user.');
+        toast.error('Gagal', data.error || 'Gagal mengubah peran absensi pengguna.');
         return;
       }
 
       toast.success(
-        'Role Absensi Diperbarui',
-        `Role absensi @${editAttendanceUser.username} berhasil diubah menjadi ${editAttendanceRole}.`
+        'Peran Absensi Diperbarui',
+        `Peran absensi @${editAttendanceUser.username} berhasil diubah menjadi ${editAttendanceRole}.`
       );
       setEditAttendanceUser(null);
       await fetchUsers();
@@ -318,7 +318,7 @@ export default function AdminUsersPage() {
       const res = await fetch(`/api/admin/users/${resetPasswordUser.id}`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        toast.error('Gagal Reset Password', data.error || 'Password tidak dapat dibuat ulang.');
+        toast.error('Gagal Mengatur Ulang Kata Sandi', data.error || 'Kata sandi tidak dapat dibuat ulang.');
         return;
       }
 
@@ -327,9 +327,9 @@ export default function AdminUsersPage() {
         password: data.data.temporaryPassword,
       });
       setResetPasswordUser(null);
-      toast.success('Password Diperbarui', 'Salin password sementara sebelum menutup jendela ini.');
+      toast.success('Kata Sandi Diperbarui', 'Salin kata sandi sementara sebelum menutup jendela ini.');
     } catch (error: unknown) {
-      toast.error('Gagal Reset Password', error instanceof Error ? error.message : 'Terjadi kesalahan.');
+      toast.error('Gagal Mengatur Ulang Kata Sandi', error instanceof Error ? error.message : 'Terjadi kesalahan.');
     } finally {
       setIsUpdating(false);
     }
@@ -339,9 +339,9 @@ export default function AdminUsersPage() {
     if (!temporaryPassword) return;
     try {
       await navigator.clipboard.writeText(temporaryPassword.password);
-      toast.success('Password Disalin', 'Password sementara sudah disalin ke clipboard.');
+      toast.success('Kata Sandi Disalin', 'Kata sandi sementara sudah disalin ke papan klip.');
     } catch {
-      toast.error('Gagal Menyalin', 'Silakan salin password yang tampil secara manual.');
+      toast.error('Gagal Menyalin', 'Silakan salin kata sandi yang tampil secara manual.');
     }
   };
 
@@ -356,7 +356,7 @@ export default function AdminUsersPage() {
                 Manajemen Akun Pengguna
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Kelola akun, hak akses, role absensi, dan status pengguna.
+                Kelola akun, hak akses, peran absensi, dan status pengguna.
               </p>
             </div>
             <Button variant="primary" onClick={() => setIsCreateUserOpen(true)} icon={<UserPlus className="h-4 w-4" />}>
@@ -372,7 +372,7 @@ export default function AdminUsersPage() {
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(220px,1.5fr)_repeat(3,minmax(145px,1fr))_auto] items-end gap-3"
           >
             <Input
-              placeholder="Username atau role absensi..."
+              placeholder="Nama pengguna atau peran absensi..."
               leftIcon={<Search className="w-4 h-4" />}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -384,13 +384,13 @@ export default function AdminUsersPage() {
                 setRoleFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              aria-label="Filter role sistem"
+              aria-label="Filter peran sistem"
               className="w-full rounded-xl text-xs sm:text-sm border border-slate-200 bg-white px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
-              <option value="ALL">Semua Role Sistem</option>
-              <option value="USER">User</option>
-              <option value="DEVELOPER">Developer</option>
-              <option value="ADMIN">Admin</option>
+              <option value="ALL">Semua Peran Sistem</option>
+              <option value="USER">Pengguna</option>
+              <option value="DEVELOPER">Pengembang</option>
+              <option value="ADMIN">Administrator</option>
             </select>
 
             <select
@@ -399,10 +399,10 @@ export default function AdminUsersPage() {
                 setAttendanceRoleFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              aria-label="Filter role absensi"
+              aria-label="Filter peran absensi"
               className="w-full rounded-xl text-xs sm:text-sm border border-slate-200 bg-white px-3 py-2.5 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             >
-              <option value="ALL">Semua Role Absensi</option>
+              <option value="ALL">Semua Peran Absensi</option>
               {ATTENDANCE_ROLES.map((attendanceRole) => (
                 <option key={attendanceRole} value={attendanceRole}>{attendanceRole}</option>
               ))}
@@ -433,7 +433,7 @@ export default function AdminUsersPage() {
           <TableSkeleton rows={6} cols={7} />
         ) : users.length === 0 ? (
           <EmptyState
-            title="Tidak Ada User Ditemukan"
+            title="Pengguna Tidak Ditemukan"
             description="Tidak ada pengguna yang cocok dengan kriteria pencarian Anda."
           />
         ) : (
@@ -445,11 +445,11 @@ export default function AdminUsersPage() {
                     <tr>
                       <th className="py-3.5 px-4 w-12 text-center">ID</th>
                       <th className="py-3.5 px-4">Pengguna</th>
-                      <th className="py-3.5 px-4 text-center">Role Sistem</th>
-                      <th className="py-3.5 px-4 text-center">Role Absensi</th>
+                      <th className="py-3.5 px-4 text-center">Peran Sistem</th>
+                      <th className="py-3.5 px-4 text-center">Peran Absensi</th>
                       <th className="py-3.5 px-4 text-center">Status</th>
                       <th className="py-3.5 px-4">Absen Terakhir</th>
-                      <th className="py-3.5 px-4 text-center">Action</th>
+                      <th className="py-3.5 px-4 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -483,7 +483,7 @@ export default function AdminUsersPage() {
                               variant={u.role === 'ADMIN' ? 'primary' : 'neutral'}
                               dot
                             >
-                              {u.role}
+                              {u.role === 'ADMIN' ? 'Administrator' : u.role === 'DEVELOPER' ? 'Pengembang' : 'Pengguna'}
                             </Badge>
                           </td>
                           <td className="py-3.5 px-4 text-center font-semibold text-slate-700">
@@ -521,7 +521,7 @@ export default function AdminUsersPage() {
                                 }}
                                 disabled={isSelf}
                                 className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                                title={isSelf ? 'Tidak bisa edit akun sendiri' : 'Ubah Role'}
+                                title={isSelf ? 'Tidak bisa mengedit akun sendiri' : 'Ubah Peran'}
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
@@ -530,14 +530,14 @@ export default function AdminUsersPage() {
                                 onClick={() => {
                                   setEditAttendanceUser(u);
                                   setEditAttendanceRole(
-                                    ATTENDANCE_ROLES.includes(u.attendance_role as AttendanceRole)
-                                      ? u.attendance_role as AttendanceRole
+                                    isAttendanceRole(u.attendance_role)
+                                      ? u.attendance_role
                                       : 'CSOT'
                                   );
                                 }}
                                 disabled={isUpdating || u.role !== 'USER'}
                                 className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                                title={u.role === 'USER' ? 'Ubah Role Absensi' : 'Role absensi hanya berlaku untuk User'}
+                                title={u.role === 'USER' ? 'Ubah Peran Absensi' : 'Peran absensi hanya berlaku untuk pengguna'}
                               >
                                 <BriefcaseBusiness className="w-4 h-4" />
                               </button>
@@ -570,7 +570,7 @@ export default function AdminUsersPage() {
                                 onClick={() => setResetPasswordUser(u)}
                                 disabled={isSelf || isUpdating}
                                 className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-                                title={isSelf ? 'Tidak bisa reset akun sendiri' : 'Reset dan tampilkan password baru'}
+                                title={isSelf ? 'Tidak bisa mengatur ulang akun sendiri' : 'Atur ulang dan tampilkan kata sandi baru'}
                               >
                                 <KeyRound className="w-4 h-4" />
                               </button>
@@ -607,12 +607,12 @@ export default function AdminUsersPage() {
           isOpen={isCreateUserOpen}
           onClose={() => setIsCreateUserOpen(false)}
           title="Buat Akun Pengguna"
-          description="Pilih role akun. Role absensi hanya berlaku untuk User."
+          description="Pilih peran akun. Peran absensi hanya berlaku untuk pengguna."
           maxWidth="md"
         >
           <form onSubmit={handleCreateUser} className="space-y-4">
             <Input
-              label="Username"
+              label="Nama pengguna"
               value={newUsername}
               onChange={(event) => setNewUsername(event.target.value)}
               minLength={3}
@@ -628,31 +628,31 @@ export default function AdminUsersPage() {
               helperText="Hanya administrator yang dapat melihat nama asli ini."
             />
             <Input
-              label="Password Awal"
+              label="Kata Sandi Awal"
               type="password"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
               minLength={8}
               autoComplete="new-password"
-              helperText="Minimal 8 karakter. Pengguna dapat memakai ini untuk login pertama."
+              helperText="Minimal 8 karakter. Pengguna dapat memakai ini untuk masuk pertama kali."
               required
             />
             <div className="space-y-1.5">
-              <label htmlFor="new-system-role" className="block text-xs font-semibold text-slate-700">Role Sistem</label>
+              <label htmlFor="new-system-role" className="block text-xs font-semibold text-slate-700">Peran Sistem</label>
               <select
                 id="new-system-role"
                 value={newSystemRole}
                 onChange={(event) => setNewSystemRole(event.target.value as UserRole)}
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
-                <option value="USER">User</option>
-                <option value="DEVELOPER">Developer</option>
-                <option value="ADMIN">Admin</option>
+                <option value="USER">Pengguna</option>
+                <option value="DEVELOPER">Pengembang</option>
+                <option value="ADMIN">Administrator</option>
               </select>
             </div>
             {newSystemRole === 'USER' && (
               <div className="space-y-1.5">
-                <label className="block text-xs font-semibold text-slate-700">Role Absensi</label>
+                <label className="block text-xs font-semibold text-slate-700">Peran Absensi</label>
                 <select
                   value={newAttendanceRole}
                   onChange={(event) => setNewAttendanceRole(event.target.value as AttendanceRole)}
@@ -661,6 +661,9 @@ export default function AdminUsersPage() {
                   {ATTENDANCE_ROLES.map((attendanceRole) => (
                     <option key={attendanceRole} value={attendanceRole}>{attendanceRole}</option>
                   ))}
+                  {isAttendanceRole(editAttendanceRole) && !ATTENDANCE_ROLES.includes(editAttendanceRole as (typeof ATTENDANCE_ROLES)[number]) && (
+                    <option value={editAttendanceRole}>{editAttendanceRole}</option>
+                  )}
                 </select>
               </div>
             )}
@@ -719,11 +722,13 @@ export default function AdminUsersPage() {
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-slate-400 block font-medium">Role Sistem</span>
-                  <span className="font-bold text-slate-800 mt-0.5 block">{viewUser.role}</span>
+                  <span className="text-slate-400 block font-medium">Peran Sistem</span>
+                  <span className="font-bold text-slate-800 mt-0.5 block">
+                    {viewUser.role === 'ADMIN' ? 'Administrator' : viewUser.role === 'DEVELOPER' ? 'Pengembang' : 'Pengguna'}
+                  </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <span className="text-slate-400 block font-medium">Role Absensi</span>
+                  <span className="text-slate-400 block font-medium">Peran Absensi</span>
                   <span className="font-bold text-slate-800 mt-0.5 block">
                     {viewUser.role === 'USER' ? viewUser.attendance_role || '-' : '-'}
                   </span>
@@ -759,15 +764,15 @@ export default function AdminUsersPage() {
         <Modal
           isOpen={!!editAttendanceUser}
           onClose={() => setEditAttendanceUser(null)}
-          title="Ubah Role Absensi"
-          description={`Pilih role absensi untuk akun @${editAttendanceUser?.username}`}
+          title="Ubah Peran Absensi"
+          description={`Pilih peran absensi untuk akun @${editAttendanceUser?.username}`}
           maxWidth="sm"
         >
           {editAttendanceUser && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <label htmlFor="attendance-role" className="block text-xs font-semibold text-slate-700">
-                  Role Absensi
+                  Peran Absensi
                 </label>
                 <select
                   id="attendance-role"
@@ -806,22 +811,22 @@ export default function AdminUsersPage() {
         <Modal
           isOpen={!!editUser}
           onClose={() => setEditUser(null)}
-          title="Ubah Role Pengguna"
+          title="Ubah Peran Pengguna"
           description={`Sesuaikan hak akses untuk akun @${editUser?.username}`}
           maxWidth="sm"
         >
           {editUser && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-700">Pilih Role</label>
+                <label className="block text-xs font-semibold text-slate-700">Pilih Peran</label>
                 <select
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as UserRole)}
                   className="w-full rounded-xl text-sm border border-slate-200 bg-white p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
-                  <option value="USER">USER (Hanya akses absensi & dashboard pribadi)</option>
-                  <option value="DEVELOPER">DEVELOPER (Absensi & tugas developer)</option>
-                  <option value="ADMIN">ADMIN (Akses penuh dashboard & laporan)</option>
+                  <option value="USER">USER (Hanya akses absensi & dasbor pribadi)</option>
+                  <option value="DEVELOPER">DEVELOPER (Absensi & tugas pengembang)</option>
+                  <option value="ADMIN">ADMIN (Akses penuh dasbor & laporan)</option>
                 </select>
               </div>
 
@@ -855,8 +860,8 @@ export default function AdminUsersPage() {
             }
             message={
               confirmToggleUser.status === 'ACTIVE'
-                ? `Akun @${confirmToggleUser.username} tidak akan dapat melakukan login atau mencatat absensi selama dinonaktifkan.`
-                : `Akun @${confirmToggleUser.username} akan dapat kembali login dan mengisi absensi seperti biasa.`
+                ? `Akun @${confirmToggleUser.username} tidak akan dapat masuk atau mencatat absensi selama dinonaktifkan.`
+                : `Akun @${confirmToggleUser.username} akan dapat kembali masuk dan mengisi absensi seperti biasa.`
             }
             confirmLabel={
               confirmToggleUser.status === 'ACTIVE' ? 'Nonaktifkan' : 'Aktifkan'
@@ -884,9 +889,9 @@ export default function AdminUsersPage() {
             isOpen
             onClose={() => setResetPasswordUser(null)}
             onConfirm={handleResetPassword}
-            title="Buat password baru?"
-            message={`Password lama @${resetPasswordUser.username} tidak dapat dilihat. Sistem akan menggantinya dengan password sementara baru yang ditampilkan satu kali.`}
-            confirmLabel="Reset Password"
+            title="Buat kata sandi baru?"
+            message={`Kata sandi lama @${resetPasswordUser.username} tidak dapat dilihat. Sistem akan menggantinya dengan kata sandi sementara baru yang ditampilkan satu kali.`}
+            confirmLabel="Atur Ulang Kata Sandi"
             isLoading={isUpdating}
           />
         )}
@@ -895,8 +900,8 @@ export default function AdminUsersPage() {
           <Modal
             isOpen
             onClose={() => setTemporaryPassword(null)}
-            title="Password Sementara"
-            description={`Password baru untuk @${temporaryPassword.username}. Salin sebelum menutup jendela ini.`}
+            title="Kata Sandi Sementara"
+            description={`Kata sandi baru untuk @${temporaryPassword.username}. Salin sebelum menutup jendela ini.`}
             maxWidth="sm"
           >
             <div className="space-y-4">
@@ -904,11 +909,11 @@ export default function AdminUsersPage() {
                 <p className="break-all font-mono text-sm font-semibold text-slate-800">{temporaryPassword.password}</p>
               </div>
               <p className="text-xs text-slate-500">
-                Password lama tidak bisa dipulihkan. Setelah jendela ditutup, password sementara ini tidak akan ditampilkan lagi.
+                Kata sandi lama tidak bisa dipulihkan. Setelah jendela ditutup, kata sandi sementara ini tidak akan ditampilkan lagi.
               </p>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={handleCopyTemporaryPassword} icon={<Copy className="h-4 w-4" />}>
-                  Salin Password
+                  Salin Kata Sandi
                 </Button>
                 <Button variant="primary" onClick={() => setTemporaryPassword(null)}>
                   Selesai

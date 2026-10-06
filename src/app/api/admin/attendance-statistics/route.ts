@@ -4,7 +4,7 @@ import { query } from '@/lib/database/db';
 import { resolveAttendanceDateRange } from '@/lib/admin/attendance-report';
 import { getJakartaDateString } from '@/lib/utils/date';
 import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
-import { ATTENDANCE_ROLES } from '@/types';
+import { isAttendanceRole } from '@/types';
 
 interface AttendanceStatisticsRecord {
   id: number;
@@ -40,10 +40,10 @@ export async function GET(request: Request) {
 
     if (
       attendanceRole !== 'ALL' &&
-      !ATTENDANCE_ROLES.includes(attendanceRole as (typeof ATTENDANCE_ROLES)[number])
+      !isAttendanceRole(attendanceRole)
     ) {
       return NextResponse.json(
-        { success: false, error: 'Filter role absensi tidak valid.' },
+        { success: false, error: 'Filter peran absensi tidak valid.' },
         { status: 400 }
       );
     }

@@ -90,8 +90,8 @@ function formatMessageTime(value: string) {
 
 function formatAccountRole(message: Pick<ChatMessage, 'role' | 'attendance_role'>) {
   if (message.role === 'ADMIN') return 'Administrator';
-  if (message.role === 'DEVELOPER') return 'Developer';
-  return message.attendance_role || 'Staff';
+  if (message.role === 'DEVELOPER') return 'Pengembang';
+  return message.attendance_role || 'Staf';
 }
 
 function getChatMessageType(message: Pick<
@@ -443,6 +443,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [messageActionsPosition, setMessageActionsPosition] = useState<{ top: number; left: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [chatWallpaperUrl, setChatWallpaperUrl] = useState<string | null>(null);
   const [isWallpaperSettingsOpen, setIsWallpaperSettingsOpen] = useState(false);
   const [isWallpaperLoading, setIsWallpaperLoading] = useState(true);
@@ -987,7 +988,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           return;
         }
         if (blob.size > MAX_CHAT_AUDIO_SIZE) {
-          setError('Ukuran voice note maksimal 15 MB. Rekam suara yang lebih pendek.');
+          setError('Ukuran pesan suara maksimal 15 MB. Rekam suara yang lebih pendek.');
           return;
         }
 
@@ -1487,11 +1488,11 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       const response = await fetch('/api/chat/wallpaper', { method: 'DELETE' });
       const result = await response.json() as WallpaperApiResponse;
       if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Gagal mengatur wallpaper ke Default.');
+        throw new Error(result.error || 'Gagal mengatur wallpaper ke bawaan.');
       }
       setChatWallpaperUrl(null);
     } catch (wallpaperError: unknown) {
-      setError(wallpaperError instanceof Error ? wallpaperError.message : 'Gagal mengatur wallpaper ke Default.');
+      setError(wallpaperError instanceof Error ? wallpaperError.message : 'Gagal mengatur wallpaper ke bawaan.');
     } finally {
       setIsWallpaperSaving(false);
     }
@@ -1528,10 +1529,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         )}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-base font-bold text-slate-900 dark:text-white">
-            {isWallpaperSettingsOpen ? 'Pengaturan wallpaper' : 'Chat Staff & Admin'}
+            {isWallpaperSettingsOpen ? 'Pengaturan wallpaper' : 'Chat Staf & Admin'}
           </h1>
           <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-            {isWallpaperSettingsOpen ? 'Wallpaper ini hanya terlihat oleh akun Anda' : 'Grup bersama untuk staff dan admin JRR'}
+            {isWallpaperSettingsOpen ? 'Wallpaper ini hanya terlihat oleh akun Anda' : 'Grup bersama untuk staf dan administrator JRR'}
           </p>
         </div>
         {!isWallpaperSettingsOpen && (
@@ -1677,7 +1678,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 <span className="flex h-16 w-full items-center justify-center rounded-xl bg-slate-50 text-xs font-medium text-slate-500 dark:bg-[#0d1117] dark:text-slate-400">
                   Default / kosong
                 </span>
-                <span>{!chatWallpaperUrl ? 'Sedang digunakan' : 'Gunakan Default'}</span>
+                <span>{!chatWallpaperUrl ? 'Sedang digunakan' : 'Gunakan bawaan'}</span>
               </button>
               <button
                 type="button"
@@ -1764,18 +1765,21 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         </div>
       )}
 
-      <div
-        ref={messagesContainerRef}
-        className={`${isWallpaperSettingsOpen ? 'hidden' : 'min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-transparent px-3 py-4 sm:px-6'}`}
-        onScroll={(event) => {
-          if (ignoreProgrammaticChatScrollRef.current) return;
-          preserveSearchJumpPositionRef.current = false;
-          const element = event.currentTarget;
-          shouldScrollRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
-        }}
-        aria-live="polite"
-        aria-label="Riwayat pesan chat"
-      >
+      <div className={`relative min-h-0 flex-1 ${isWallpaperSettingsOpen ? 'hidden' : ''}`}>
+        <div
+          ref={messagesContainerRef}
+          className="h-full space-y-3 overflow-y-auto overscroll-contain bg-transparent px-3 py-4 sm:px-6"
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+            setShowScrollToBottom(distanceFromBottom >= 80);
+            if (ignoreProgrammaticChatScrollRef.current) return;
+            preserveSearchJumpPositionRef.current = false;
+            shouldScrollRef.current = distanceFromBottom < 80;
+          }}
+          aria-live="polite"
+          aria-label="Riwayat pesan chat"
+        >
         {isLoading ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500 dark:text-slate-400">
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1800,8 +1804,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             <h2 className="font-semibold text-slate-800 dark:text-slate-100">Mulai obrolan</h2>
             <p className="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">
               {isDeveloper
-                ? 'Belum ada pesan di grup staff dan admin.'
-                : 'Kirim pesan pertama untuk memulai percakapan dengan staff dan admin.'}
+                ? 'Belum ada pesan di grup staf dan administrator.'
+                : 'Kirim pesan pertama untuk memulai percakapan dengan staf dan administrator.'}
             </p>
           </div>
         ) : (
@@ -2138,6 +2142,24 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           })
         )}
       </div>
+      {showScrollToBottom && !isLoading && !isShowingSearchResults && (
+        <button
+          type="button"
+          onClick={() => {
+            const container = messagesContainerRef.current;
+            if (!container) return;
+            shouldScrollRef.current = true;
+            preserveSearchJumpPositionRef.current = false;
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+          }}
+          aria-label="Gulir ke pesan terbaru"
+          title="Gulir ke pesan terbaru"
+          className="absolute bottom-4 right-5 z-20 flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-slate-700 shadow-lg transition hover:bg-white dark:border-slate-600 dark:bg-[#1c222b]/95 dark:text-slate-200 dark:hover:bg-[#252c35]"
+        >
+          <ChevronDown className="h-5 w-5" />
+        </button>
+      )}
+      </div>
 
       {error && (
         <div role="alert" className="border-t border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
@@ -2380,7 +2402,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             {attachmentFile.type.startsWith('audio/') ? (
               <ChatAudioPlayer
                 src={attachmentPreviewUrl}
-                senderName="Pratinjau voice note"
+                senderName="Pratinjau pesan suara"
                 profilePhoto={null}
                 ownMessage
                 knownDuration={recordedVoiceDuration}
@@ -2582,8 +2604,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               else void startVoiceRecording();
             }}
             disabled={!isRecordingVoice && (isSending || Boolean(attachmentFile))}
-            aria-label={isRecordingVoice ? 'Selesai merekam voice note' : 'Rekam voice note'}
-            title={isRecordingVoice ? 'Selesai merekam' : 'Rekam voice note'}
+            aria-label={isRecordingVoice ? 'Selesai merekam pesan suara' : 'Rekam pesan suara'}
+            title={isRecordingVoice ? 'Selesai merekam' : 'Rekam pesan suara'}
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
               isRecordingVoice
                 ? 'bg-rose-600 text-white hover:bg-rose-700'

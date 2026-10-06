@@ -84,7 +84,7 @@ export default function UserDashboardPage() {
       }
       setError(null);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Gagal memuat data dashboard.';
+      const message = err instanceof Error ? err.message : 'Gagal memuat data dasbor.';
       setError(message);
     } finally {
       if (showLoading) setIsLoading(false);
@@ -112,7 +112,7 @@ export default function UserDashboardPage() {
           <div className="relative z-10 max-w-2xl space-y-3">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs font-semibold text-blue-200">
               <Calendar className="w-3.5 h-3.5 text-blue-300" />
-              {todayDateStr ? formatIndonesianDate(todayDateStr) : 'WIB Timezone'}
+              {todayDateStr ? formatIndonesianDate(todayDateStr) : 'Zona waktu WIB'}
             </div>
 
             <div className="flex items-center gap-4 pt-1">
@@ -151,19 +151,19 @@ export default function UserDashboardPage() {
             <CardContent className="p-5">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Username</p>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Nama pengguna</p>
                   <p className="mt-1 text-base font-bold text-slate-800">{user?.username || '-'}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Role</p>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Peran</p>
                   <p className="mt-1 text-base font-bold text-slate-800">{profileRole}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Username Roblox</p>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Nama pengguna Roblox</p>
                   <p className="mt-1 text-base font-bold text-slate-800 font-mono">{robloxUsername || '-'}</p>
                 </div>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Username Discord</p>
+                  <p className="text-[11px] uppercase tracking-wide text-slate-500">Nama pengguna Discord</p>
                   <p className="mt-1 text-base font-bold text-slate-800 font-mono">{discordUsername || '-'}</p>
                 </div>
               </div>
@@ -248,7 +248,7 @@ export default function UserDashboardPage() {
                     <div>
                       <h4 className="text-sm font-bold">Kehadiran Hari Ini Telah Terverifikasi</h4>
                       <p className="text-xs text-emerald-700 mt-0.5">
-                        Data absensi Anda telah disimpan di database server.
+                        Data absensi Anda telah disimpan di basis data server.
                       </p>
                     </div>
                   </div>
@@ -278,14 +278,14 @@ export default function UserDashboardPage() {
                     </div>
 
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70">
-                      <span className="text-xs text-slate-500 font-medium block">Username Discord</span>
+                      <span className="text-xs text-slate-500 font-medium block">Nama pengguna Discord</span>
                       <span className="text-sm font-bold text-indigo-700 mt-1 block truncate font-mono">
                         {todayAttendance.discord_username}
                       </span>
                     </div>
 
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70">
-                      <span className="text-xs text-slate-500 font-medium block">Username Roblox</span>
+                      <span className="text-xs text-slate-500 font-medium block">Nama pengguna Roblox</span>
                       <span className="text-sm font-bold text-slate-800 mt-1 block truncate font-mono">
                         {todayAttendance.roblox_username}
                       </span>

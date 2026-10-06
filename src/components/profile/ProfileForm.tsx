@@ -5,7 +5,7 @@ import { ShieldCheck } from 'lucide-react';
 import { ProfilePhotoField } from '@/components/profile/ProfilePhotoField';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { ATTENDANCE_ROLES } from '@/types';
+import { ATTENDANCE_ROLES, isAttendanceRole } from '@/types';
 
 export interface ProfileFormValues {
   profile_photo: string;
@@ -56,11 +56,11 @@ export function ProfileForm({
 
     if (showRealName && !realName.trim()) nextErrors.real_name = 'Nama asli wajib diisi.';
     if (showRealName && realName.trim().length > 100) nextErrors.real_name = 'Nama asli maksimal 100 karakter.';
-    if (!photoOnly && !robloxUsername.trim()) nextErrors.roblox_username = 'Username Roblox wajib diisi.';
-    if (!photoOnly && !discordUsername.trim()) nextErrors.discord_username = 'Username Discord wajib diisi.';
+    if (!photoOnly && !robloxUsername.trim()) nextErrors.roblox_username = 'Nama pengguna Roblox wajib diisi.';
+    if (!photoOnly && !discordUsername.trim()) nextErrors.discord_username = 'Nama pengguna Discord wajib diisi.';
 
-    if (!photoOnly && showRole && !ATTENDANCE_ROLES.includes(attendanceRole as (typeof ATTENDANCE_ROLES)[number])) {
-      nextErrors.attendance_role = 'Role tidak valid.';
+    if (!photoOnly && showRole && !isAttendanceRole(attendanceRole)) {
+      nextErrors.attendance_role = 'Peran tidak valid.';
     }
 
     setErrors(nextErrors);
@@ -113,7 +113,7 @@ export function ProfileForm({
           {showRole && (
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                Role
+                Peran
               </label>
               <select
                 value={attendanceRole}
@@ -129,8 +129,11 @@ export function ProfileForm({
                     {role}
                   </option>
                 ))}
+                {isAttendanceRole(attendanceRole) && !ATTENDANCE_ROLES.includes(attendanceRole as (typeof ATTENDANCE_ROLES)[number]) && (
+                  <option value={attendanceRole}>{attendanceRole}</option>
+                )}
               </select>
-              <p className="text-[11px] text-slate-500">Role telah ditentukan admin saat akun dibuat dan tidak dapat diubah.</p>
+              <p className="text-[11px] text-slate-500">Peran telah ditentukan admin saat akun dibuat dan tidak dapat diubah.</p>
               {errors.attendance_role && (
                 <p className="text-xs text-rose-600">{errors.attendance_role}</p>
               )}
@@ -138,8 +141,8 @@ export function ProfileForm({
           )}
 
           <Input
-            label="Username Roblox"
-            placeholder="Masukkan username Roblox"
+            label="Nama Pengguna Roblox"
+            placeholder="Masukkan nama pengguna Roblox"
             value={robloxUsername}
             onChange={(e) => {
               hasLocalChanges.current = true;
@@ -149,8 +152,8 @@ export function ProfileForm({
           />
 
           <Input
-            label="Username Discord"
-            placeholder="Masukkan username Discord"
+            label="Nama Pengguna Discord"
+            placeholder="Masukkan nama pengguna Discord"
             value={discordUsername}
             onChange={(e) => {
               hasLocalChanges.current = true;

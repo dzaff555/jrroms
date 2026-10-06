@@ -18,7 +18,7 @@ export async function POST(
     const { id } = await params;
     const userId = Number(id);
     if (!Number.isSafeInteger(userId) || userId < 1) {
-      return NextResponse.json({ success: false, error: 'ID user tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'ID pengguna tidak valid.' }, { status: 400 });
     }
     if (session.id === userId) {
       return NextResponse.json(

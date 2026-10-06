@@ -39,13 +39,13 @@ export default async function StaffDirectoryPage({
       <div className="space-y-6">
         <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-blue-600">
           <ArrowLeft className="h-4 w-4" />
-          Kembali ke Dashboard
+          Kembali ke Dasbor
         </Link>
 
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Directory</p>
-            <h1 className="mt-1 text-2xl font-extrabold text-slate-900">List Staff</h1>
+            <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Direktori</p>
+            <h1 className="mt-1 text-2xl font-extrabold text-slate-900">Daftar Staf</h1>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700">
             <Users className="h-4 w-4 text-blue-600" />
@@ -82,8 +82,8 @@ export default async function StaffDirectoryPage({
                     {member.role === 'ADMIN'
                       ? 'Administrator'
                       : member.role === 'DEVELOPER'
-                        ? 'Developer'
-                        : member.attendance_role || 'Role belum ditentukan'}
+                        ? 'Pengembang'
+                        : member.attendance_role || 'Peran belum ditentukan'}
                   </span>
                 </span>
                 <ArrowRight className="h-4 w-4 shrink-0 text-slate-400" />

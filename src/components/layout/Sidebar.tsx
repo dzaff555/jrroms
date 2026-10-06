@@ -133,26 +133,26 @@ export function Sidebar({
   }, [refreshChatUnread, refreshStaff, userId]);
 
   const userNavItems = [
-    { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { label: "Today's Attendance", href: '/attendance', icon: UserCheck },
-    { label: 'Attendance History', href: '/attendance/history', icon: History },
-    { label: 'Chat Staff', href: '/chat', icon: MessageCircle },
+    { label: 'Dasbor', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Absensi Hari Ini', href: '/attendance', icon: UserCheck },
+    { label: 'Riwayat Absensi', href: '/attendance/history', icon: History },
+    { label: 'Chat Staf', href: '/chat', icon: MessageCircle },
   ];
 
   const adminNavItems = [
-    { label: 'Admin Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
-    { label: 'Chat Staff', href: '/admin/chat', icon: MessageCircle },
-    { label: 'Tugas Developer', href: '/admin/tasks', icon: ClipboardList },
-    { label: 'Attendance Reports', href: '/admin/reports', icon: FileSpreadsheet },
-    { label: 'Attendance Statistics', href: '/admin/attendance-statistics', icon: ChartNoAxesColumn },
-    { label: 'Manage Users', href: '/admin/users', icon: Users },
-    { label: 'System Settings', href: '/admin/settings', icon: Settings },
+    { label: 'Dasbor Admin', href: '/admin/dashboard', icon: LayoutDashboard },
+    { label: 'Chat Staf', href: '/admin/chat', icon: MessageCircle },
+    { label: 'Tugas Pengembang', href: '/admin/tasks', icon: ClipboardList },
+    { label: 'Laporan Absensi', href: '/admin/reports', icon: FileSpreadsheet },
+    { label: 'Statistik Absensi', href: '/admin/attendance-statistics', icon: ChartNoAxesColumn },
+    { label: 'Kelola Pengguna', href: '/admin/users', icon: Users },
+    { label: 'Pengaturan Sistem', href: '/admin/settings', icon: Settings },
   ];
 
   const developerNavItems = [
     { label: 'Tugas', href: '/developer/tasks', icon: ClipboardList },
-    { label: 'Upload Tugas', href: '/developer/upload', icon: Upload },
-    { label: 'Chat Staff', href: '/developer/chat', icon: MessageCircle },
+    { label: 'Unggah Tugas', href: '/developer/upload', icon: Upload },
+    { label: 'Chat Staf', href: '/developer/chat', icon: MessageCircle },
   ];
 
   const navItems = isAdmin ? adminNavItems : isDeveloper ? developerNavItems : userNavItems;
@@ -160,11 +160,11 @@ export function Sidebar({
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-      toast.info('Berhasil Logout', 'Sampai jumpa kembali!');
+      toast.info('Berhasil Keluar', 'Sampai jumpa kembali!');
       router.push('/login');
       router.refresh();
     } catch {
-      toast.error('Gagal logout', 'Silakan coba lagi');
+      toast.error('Gagal keluar', 'Silakan coba lagi.');
     }
   };
 
@@ -198,12 +198,12 @@ export function Sidebar({
               <span className="text-[10px] font-semibold text-blue-300 uppercase tracking-wider flex items-center gap-1">
                 {isAdmin ? (
                   <>
-                    <ShieldCheck className="w-3 h-3 text-emerald-400" /> Admin Portal
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" /> Portal Administrator
                   </>
                 ) : isDeveloper ? (
-                  'Developer Portal'
+                  'Portal Pengembang'
                 ) : (
-                  'User Attendance'
+                  'Absensi Pengguna'
                 )}
               </span>
             </div>
@@ -214,7 +214,7 @@ export function Sidebar({
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="hidden lg:flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Perluas bilah sisi' : 'Ciutkan bilah sisi'}
         >
           {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
         </button>
@@ -224,13 +224,13 @@ export function Sidebar({
       <div className="flex-1 overflow-y-auto py-5 px-3 space-y-1.5 custom-scrollbar">
         {!collapsed && (
           <div className="px-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            Main Menu
+            Menu Utama
           </div>
         )}
 
         {navItems.map((item) => {
           const active = isActive(item.href);
-          const isChatItem = item.label === 'Chat Staff';
+          const isChatItem = item.label === 'Chat Staf';
           const Icon = item.icon;
 
           return (
@@ -272,7 +272,7 @@ export function Sidebar({
             <div className={`flex items-center pb-2 ${collapsed ? 'justify-center' : 'justify-between px-3'}`}>
               {!collapsed && (
                 <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Staff List
+                  Daftar Staf
                 </div>
               )}
               <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-bold text-blue-200">
@@ -284,7 +284,7 @@ export function Sidebar({
                 key={staff.id}
                 href={isAdmin ? `/admin/users/${staff.id}` : `/staff/${staff.id}`}
                 onClick={() => setMobileOpen(false)}
-                title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (You)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role} · ${staff.is_online ? 'Online' : 'Offline'}` : undefined}
+                title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (Anda)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Pengembang' : staff.attendance_role} · ${staff.is_online ? 'Online' : 'Offline'}` : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/8 hover:text-white ${collapsed ? 'justify-center px-0' : ''}`}
               >
                 {staff.profile_photo ? (
@@ -302,10 +302,10 @@ export function Sidebar({
                   <span className="flex min-w-0 flex-1 items-center justify-between gap-1">
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate font-semibold text-white">
-                        {staff.username}{isCurrentStaff(staff) ? ' (You)' : ''}
+                        {staff.username}{isCurrentStaff(staff) ? ' (Anda)' : ''}
                       </span>
                       <span className="truncate text-[11px] text-slate-400">
-                        {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role}
+                        {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Pengembang' : staff.attendance_role}
                       </span>
                     </span>
                     <span className={`shrink-0 text-[10px] font-semibold ${staff.is_online ? 'text-emerald-300' : 'text-slate-500'}`}>
@@ -316,7 +316,7 @@ export function Sidebar({
               </Link>
             ))}
             {staffMembers.length === 0 && !collapsed && (
-              <p className="px-3 py-2 text-xs text-slate-400">No active staff yet.</p>
+              <p className="px-3 py-2 text-xs text-slate-400">Belum ada staf yang aktif.</p>
             )}
             {!collapsed && staffCount !== null && staffCount > staffMembers.length && (
               <Link
@@ -324,7 +324,7 @@ export function Sidebar({
                 onClick={() => setMobileOpen(false)}
                 className="block px-3 py-2 text-xs font-semibold text-blue-300 hover:text-white"
               >
-                View all staff
+                Lihat semua staf
               </Link>
             )}
         </div>
@@ -337,7 +337,7 @@ export function Sidebar({
           <Link
             href={isAdmin ? '/admin/profile' : '/profile'}
             onClick={() => setMobileOpen(false)}
-            title={collapsed ? `${user.username} profile` : 'View account profile'}
+            title={collapsed ? `Profil ${user.username}` : 'Lihat profil akun'}
             className={`mb-2 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-white/8 ${collapsed ? 'justify-center px-0' : ''}`}
           >
             {user.profile_photo ? (
@@ -355,7 +355,7 @@ export function Sidebar({
               <div className="flex min-w-0 flex-1 flex-col text-left">
                 <span className="truncate text-sm font-semibold text-white">{user.username}</span>
                 <span className="truncate text-xs text-slate-400">
-                  {isAdmin ? 'Administrator' : isDeveloper ? 'Developer' : user.attendance_role || 'Staff'}
+                  {isAdmin ? 'Administrator' : isDeveloper ? 'Pengembang' : user.attendance_role || 'Staf'}
                 </span>
               </div>
             )}
@@ -367,10 +367,10 @@ export function Sidebar({
           className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-rose-300 hover:text-white hover:bg-rose-600/20 transition-all cursor-pointer ${
             collapsed ? 'justify-center' : ''
           }`}
-          title="Log out"
+          title="Keluar"
         >
           <LogOut className="w-5 h-5 shrink-0 text-rose-400" />
-          {!collapsed && <span>Logout</span>}
+          {!collapsed && <span>Keluar</span>}
         </button>
       </div>
     </div>

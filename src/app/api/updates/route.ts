@@ -15,7 +15,7 @@ export async function GET() {
   try {
     const session = await getSessionUser();
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
 
     const [currentUsers, users, attendance, warnings, adminInbox, taskData] = await Promise.all([

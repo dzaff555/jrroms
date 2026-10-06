@@ -61,6 +61,7 @@ async function setup() {
         password VARCHAR(255) NOT NULL,
         role ENUM('USER', 'ADMIN') NOT NULL DEFAULT 'USER',
         status ENUM('ACTIVE', 'DISABLED') NOT NULL DEFAULT 'ACTIVE',
+        attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_users_username (username),
@@ -72,17 +73,25 @@ async function setup() {
       await db.query('ALTER TABLE users ADD COLUMN real_name VARCHAR(100) NULL AFTER username');
     }
 
+    const [userAttendanceRoleColumn] = await db.query("SHOW COLUMNS FROM users LIKE 'attendance_role'");
+    if (userAttendanceRoleColumn.length === 0) {
+      await db.query("ALTER TABLE users ADD COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'");
+    }
+
     const [emailColumn] = await db.query("SHOW COLUMNS FROM users LIKE 'email'");
     if (emailColumn.length > 0 && emailColumn[0].Null === 'NO') {
       await db.query('ALTER TABLE users MODIFY COLUMN email VARCHAR(100) NULL');
     }
+    await db.query(
+      "ALTER TABLE users MODIFY COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'"
+    );
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS attendance (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL,
         name VARCHAR(100) NOT NULL,
-        attendance_role ENUM('CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL') NOT NULL DEFAULT 'CSOT',
+        attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT',
         discord_username VARCHAR(100) NOT NULL,
         roblox_username VARCHAR(100) NOT NULL,
         attendance_date DATE NOT NULL,
@@ -98,8 +107,11 @@ async function setup() {
 
     const [attendanceRoleColumn] = await db.query("SHOW COLUMNS FROM attendance LIKE 'attendance_role'");
     if (attendanceRoleColumn.length === 0) {
-      await db.query("ALTER TABLE attendance ADD COLUMN attendance_role ENUM('CSOT', 'PPKA', 'MASINIS', 'PKD', 'PJL') NOT NULL DEFAULT 'CSOT' AFTER name");
+      await db.query("ALTER TABLE attendance ADD COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT' AFTER name");
     }
+    await db.query(
+      "ALTER TABLE attendance MODIFY COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'"
+    );
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS password_reset_tokens (

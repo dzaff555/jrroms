@@ -2,20 +2,20 @@ import { NextResponse } from 'next/server';
 import { getActiveSession } from '@/lib/auth/active-session';
 import { query } from '@/lib/database/db';
 import { getJakartaDateString, getJakartaTimeString, isAttendanceWindowOpen } from '@/lib/utils/date';
-import { ATTENDANCE_ROLES, Attendance, AttendanceRole } from '@/types';
+import { Attendance, AttendanceRole, isAttendanceRole } from '@/types';
 
 export async function POST(request: Request) {
   try {
     const active = await getActiveSession();
     if (!active) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized. Silakan login terlebih dahulu.' },
+        { success: false, error: 'Silakan masuk terlebih dahulu.' },
         { status: 401 }
       );
     }
     if (active.role === 'DEVELOPER') {
       return NextResponse.json(
-        { success: false, error: 'Absensi harian tidak tersedia untuk role Developer.' },
+        { success: false, error: 'Absensi harian tidak tersedia untuk peran Pengembang.' },
         { status: 403 }
       );
     }
@@ -34,9 +34,9 @@ export async function POST(request: Request) {
     // Field validations
     const errors: Record<string, string> = {};
     if (!name || !name.trim()) errors.name = 'Nama lengkap wajib diisi.';
-    if (!ATTENDANCE_ROLES.includes(attendance_role)) errors.attendance_role = 'Silakan pilih role yang valid.';
-    if (!discord_username || !discord_username.trim()) errors.discord_username = 'Username Discord wajib diisi.';
-    if (!roblox_username || !roblox_username.trim()) errors.roblox_username = 'Username Roblox wajib diisi.';
+    if (!isAttendanceRole(attendance_role)) errors.attendance_role = 'Silakan pilih peran yang valid.';
+    if (!discord_username || !discord_username.trim()) errors.discord_username = 'Nama pengguna Discord wajib diisi.';
+    if (!roblox_username || !roblox_username.trim()) errors.roblox_username = 'Nama pengguna Roblox wajib diisi.';
 
     if (Object.keys(errors).length > 0) {
       return NextResponse.json(

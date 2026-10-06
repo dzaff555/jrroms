@@ -91,7 +91,7 @@ export function ProfilePhotoField({ photo, onChange, error }: ProfilePhotoFieldP
         {photo ? (
           <ProtectedProfilePhoto
             src={photo}
-            alt="Preview foto profil"
+            alt="Pratinjau foto profil"
             className="h-40 w-40 rounded-full border-4 border-white object-cover shadow-lg shadow-slate-200"
           />
         ) : (
@@ -105,7 +105,7 @@ export function ProfilePhotoField({ photo, onChange, error }: ProfilePhotoFieldP
           {photo ? 'Ganti Foto' : 'Unggah Foto'}
           <input type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
         </label>
-        <p className="mt-2 text-[11px] text-slate-500">Foto opsional · crop 1:1 · maks. 2MB</p>
+        <p className="mt-2 text-[11px] text-slate-500">Foto opsional · pemotongan 1:1 · maks. 2 MB</p>
         {(error || cropError) && <p className="mt-2 text-xs font-medium text-rose-600">{error || cropError}</p>}
       </div>
 
@@ -140,7 +140,7 @@ export function ProfilePhotoField({ photo, onChange, error }: ProfilePhotoFieldP
             )}
           </div>
           <label className="block space-y-2 text-xs font-semibold text-slate-700">
-            Zoom
+            Perbesar
             <input
               type="range"
               min="1"

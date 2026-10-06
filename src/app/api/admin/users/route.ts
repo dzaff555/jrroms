@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { hashPassword } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
-import { ATTENDANCE_ROLES, AttendanceRole } from '@/types';
+import { ATTENDANCE_ROLES, isAttendanceRole } from '@/types';
 
 export async function GET(request: Request) {
   try {
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       params.push(role);
     }
 
-    if (ATTENDANCE_ROLES.includes(attendanceRole as AttendanceRole)) {
+    if (isAttendanceRole(attendanceRole)) {
       whereConditions.push('u.attendance_role = ?');
       params.push(attendanceRole);
     }
@@ -129,19 +129,19 @@ export async function POST(request: Request) {
     const attendanceRole = typeof body.attendance_role === 'string' ? body.attendance_role : '';
 
     if (username.length < 3) {
-      return NextResponse.json({ success: false, error: 'Username minimal 3 karakter.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Nama pengguna harus terdiri dari minimal 3 karakter.' }, { status: 400 });
     }
     if (password.length < 8) {
-      return NextResponse.json({ success: false, error: 'Password minimal 8 karakter.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Kata sandi harus terdiri dari minimal 8 karakter.' }, { status: 400 });
     }
     if (realName.length > 100) {
       return NextResponse.json({ success: false, error: 'Nama asli maksimal 100 karakter.' }, { status: 400 });
     }
     if (role !== 'USER' && role !== 'DEVELOPER' && role !== 'ADMIN') {
-      return NextResponse.json({ success: false, error: 'Role sistem tidak valid.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Peran sistem tidak valid.' }, { status: 400 });
     }
-    if (role === 'USER' && !ATTENDANCE_ROLES.includes(attendanceRole as AttendanceRole)) {
-      return NextResponse.json({ success: false, error: 'Role absensi tidak valid.' }, { status: 400 });
+    if (role === 'USER' && !(ATTENDANCE_ROLES as readonly string[]).includes(attendanceRole)) {
+      return NextResponse.json({ success: false, error: 'Peran absensi tidak valid.' }, { status: 400 });
     }
     const storedAttendanceRole = role === 'USER' ? attendanceRole : 'CSOT';
 
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
       [username]
     );
     if (existing.length > 0) {
-      return NextResponse.json({ success: false, error: 'Username sudah digunakan.' }, { status: 409 });
+      return NextResponse.json({ success: false, error: 'Nama pengguna sudah digunakan.' }, { status: 409 });
     }
 
     const result = await query<{ insertId: number }>(

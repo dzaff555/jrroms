@@ -4,7 +4,7 @@ import { TOKEN_COOKIE_NAME, getSessionUser } from '@/lib/auth/auth';
 export async function POST() {
   const response = NextResponse.json({
     success: true,
-    message: 'Logout berhasil.',
+    message: 'Anda berhasil keluar.',
   });
 
   response.cookies.set({
@@ -24,7 +24,7 @@ export async function GET() {
   const session = await getSessionUser();
   if (!session) {
     return NextResponse.json(
-      { success: false, error: 'Belum login atau session telah kedaluwarsa.' },
+      { success: false, error: 'Anda belum masuk atau sesi telah kedaluwarsa.' },
       { status: 401 }
     );
   }

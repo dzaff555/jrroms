@@ -8,13 +8,13 @@ export async function GET(request: Request) {
     const active = await getActiveSession();
     if (!active) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized. Silakan login terlebih dahulu.' },
+        { success: false, error: 'Silakan masuk terlebih dahulu.' },
         { status: 401 }
       );
     }
     if (active.role !== 'USER') {
       return NextResponse.json(
-        { success: false, error: 'Riwayat absensi tidak tersedia untuk role ini.' },
+        { success: false, error: 'Riwayat absensi tidak tersedia untuk peran ini.' },
         { status: 403 }
       );
     }

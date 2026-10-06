@@ -12,7 +12,7 @@ export async function GET(
   try {
     const session = await getSessionUser();
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     const users = await query<{ status: string; role: string }[]>(
       'SELECT status, role FROM users WHERE id = ? LIMIT 1',

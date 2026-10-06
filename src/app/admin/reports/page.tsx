@@ -135,9 +135,9 @@ export default function AdminReportsPage() {
       anchor.click();
       document.body.removeChild(anchor);
 
-      toast.success('Export Dimulai', 'File CSV laporan absensi sedang diunduh.');
+      toast.success('Ekspor Dimulai', 'Berkas CSV laporan absensi sedang diunduh.');
     } catch {
-      toast.error('Gagal Export', 'Tidak dapat menghasilkan file laporan.');
+      toast.error('Ekspor Gagal', 'Tidak dapat menghasilkan berkas laporan.');
     } finally {
       setIsExporting(false);
     }
@@ -157,7 +157,7 @@ export default function AdminReportsPage() {
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
-    toast.success('Export Dimulai', 'File Excel dengan kolom rapi sedang diunduh.');
+    toast.success('Ekspor Dimulai', 'Berkas Excel dengan kolom rapi sedang diunduh.');
   };
 
   return (
@@ -182,7 +182,7 @@ export default function AdminReportsPage() {
               loadingText="Mengekspor..."
               icon={<Download className="w-4 h-4" />}
             >
-              Export CSV
+              Ekspor CSV
             </Button>
             <Button
               variant="primary"
@@ -220,7 +220,7 @@ export default function AdminReportsPage() {
               {/* Keyword Search */}
               <Input
                 label="Pencarian"
-                placeholder="Nama, username, Discord, role..."
+                placeholder="Nama, nama pengguna, Discord, peran..."
                 leftIcon={<Search className="w-4 h-4" />}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -250,7 +250,7 @@ export default function AdminReportsPage() {
                   onChange={(e) => setAttendanceRole(e.target.value)}
                   className="w-full rounded-xl text-sm border border-slate-200 bg-white px-3.5 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 cursor-pointer"
                 >
-                  <option value="ALL">Semua Role</option>
+                  <option value="ALL">Semua Peran</option>
                   {ATTENDANCE_ROLES.map((role) => (
                     <option key={role} value={role}>{role}</option>
                   ))}
@@ -267,7 +267,7 @@ export default function AdminReportsPage() {
                 onClick={handleResetFilters}
                 icon={<RefreshCw className="w-3.5 h-3.5" />}
               >
-                Reset
+                Atur Ulang
               </Button>
               <Button
                 type="submit"
@@ -290,7 +290,7 @@ export default function AdminReportsPage() {
             description={status === 'Belum Absen'
               ? 'Tidak ditemukan akun aktif yang melewatkan jendela absensi Jumat–Minggu yang sudah ditutup pukul 18.00 WIB pada periode tersebut.'
               : 'Tidak ada catatan absensi yang sesuai dengan rentang tanggal atau kriteria filter yang Anda tentukan.'}
-            actionLabel="Reset Filter"
+            actionLabel="Atur Ulang Filter"
             onAction={handleResetFilters}
           />
         ) : (
@@ -304,7 +304,7 @@ export default function AdminReportsPage() {
                       <th className="py-3.5 px-4">Tanggal</th>
                       <th className="py-3.5 px-4">Nama Lengkap</th>
                       <th className="py-3.5 px-4">ID</th>
-                      <th className="py-3.5 px-4">Role Absensi</th>
+                      <th className="py-3.5 px-4">Peran Absensi</th>
                       <th className="py-3.5 px-4">Discord</th>
                       <th className="py-3.5 px-4">Roblox</th>
                       <th className="py-3.5 px-4">Jam Absen</th>

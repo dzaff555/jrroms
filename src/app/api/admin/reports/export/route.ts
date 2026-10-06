@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   try {
     const session = await getSessionUser();
     if (!session || session.role !== 'ADMIN') {
-      return new NextResponse('Unauthorized', { status: 401 });
+      return new NextResponse('Silakan masuk terlebih dahulu.', { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -82,6 +82,6 @@ export async function GET(request: Request) {
       return new NextResponse(error.message, { status: 400 });
     }
     console.error('[Export CSV Error]:', error);
-    return new NextResponse('Internal Server Error', { status: 500 });
+    return new NextResponse('Terjadi kesalahan pada server.', { status: 500 });
   }
 }

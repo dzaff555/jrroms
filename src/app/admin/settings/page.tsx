@@ -96,7 +96,7 @@ export default function AdminSettingsPage() {
             Pengaturan Sistem & Akun Admin
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Kelola informasi akun dan password administrator.
+            Kelola informasi akun dan kata sandi administrator.
           </p>
         </div>
 
@@ -106,7 +106,7 @@ export default function AdminSettingsPage() {
             <div>
               <CardTitle>Profil Akun Administrator</CardTitle>
               <CardDescription>
-                Ubah informasi akun login atau perbarui kata sandi admin Anda.
+                Ubah informasi akun masuk atau perbarui kata sandi admin Anda.
               </CardDescription>
             </div>
             <Shield className="w-5 h-5 text-blue-600" />
@@ -116,7 +116,7 @@ export default function AdminSettingsPage() {
             <form onSubmit={handleSaveProfile} className="space-y-6">
               <div className="grid grid-cols-1 gap-4">
                 <Input
-                  label="Username Admin"
+                  label="Nama pengguna admin"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -128,31 +128,31 @@ export default function AdminSettingsPage() {
                 <div>
                   <h4 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
                     <KeyRound className="w-4 h-4 text-blue-600" />
-                    Ubah Password Administrator (Opsional)
+                    Ubah Kata Sandi Administrator (Opsional)
                   </h4>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Kosongkan jika Anda tidak ingin mengubah password akun saat ini.
+                    Kosongkan jika Anda tidak ingin mengubah kata sandi akun saat ini.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <PasswordInput
-                    label="Password Saat Ini"
-                    placeholder="Masukkan password lama"
+                    label="Kata Sandi Saat Ini"
+                    placeholder="Masukkan kata sandi lama"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
                   />
 
                   <PasswordInput
-                    label="Password Baru"
+                    label="Kata Sandi Baru"
                     placeholder="Minimal 8 karakter"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                   />
 
                   <PasswordInput
-                    label="Konfirmasi Baru"
-                    placeholder="Ulangi password baru"
+                    label="Konfirmasi Kata Sandi Baru"
+                    placeholder="Ulangi kata sandi baru"
                     value={confirmNewPassword}
                     onChange={(e) => setConfirmNewPassword(e.target.value)}
                   />

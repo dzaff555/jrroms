@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
-import { ATTENDANCE_ROLES, AttendanceRole } from '@/types';
+import { isAttendanceRole } from '@/types';
 
 export async function GET() {
   try {
     const session = await getSessionUser();
     if (!session) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized. Silakan login terlebih dahulu.' },
+        { success: false, error: 'Silakan masuk terlebih dahulu.' },
         { status: 401 }
       );
     }
@@ -30,7 +30,7 @@ export async function GET() {
 
     const user = rows[0];
     if (!user) {
-      return NextResponse.json({ success: false, error: 'User tidak ditemukan.' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
     }
 
     return NextResponse.json({
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     const session = await getSessionUser();
     if (!session) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized. Silakan login terlebih dahulu.' },
+        { success: false, error: 'Silakan masuk terlebih dahulu.' },
         { status: 401 }
       );
     }
@@ -95,14 +95,14 @@ export async function POST(request: Request) {
 
     if (!roblox_username) {
       return NextResponse.json(
-        { success: false, error: 'Username Roblox wajib diisi.' },
+        { success: false, error: 'Nama pengguna Roblox wajib diisi.' },
         { status: 400 }
       );
     }
 
     if (!discord_username) {
       return NextResponse.json(
-        { success: false, error: 'Username Discord wajib diisi.' },
+        { success: false, error: 'Nama pengguna Discord wajib diisi.' },
         { status: 400 }
       );
     }
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
 
     const currentUser = userRows[0];
     if (!currentUser) {
-      return NextResponse.json({ success: false, error: 'User tidak ditemukan.' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
     }
 
     if (!real_name) {
@@ -130,8 +130,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const attendanceRole = ATTENDANCE_ROLES.includes(currentUser.attendance_role as AttendanceRole)
-      ? currentUser.attendance_role as AttendanceRole
+    const attendanceRole = isAttendanceRole(currentUser.attendance_role)
+      ? currentUser.attendance_role
       : 'CSOT';
 
     await query(

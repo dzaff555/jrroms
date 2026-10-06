@@ -23,7 +23,7 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     if (!username.trim() || !password) {
-      setErrorMessage('Harap masukkan username dan password Anda.');
+      setErrorMessage('Harap masukkan nama pengguna dan kata sandi Anda.');
       return;
     }
 
@@ -39,14 +39,14 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        const err = data.error || 'ID atau password salah.';
+        const err = data.error || 'ID atau kata sandi salah.';
         setErrorMessage(err);
-        toast.error('Login Gagal', err);
+        toast.error('Gagal Masuk', err);
         return;
       }
 
       toast.success(
-        'Login Berhasil!',
+        'Berhasil Masuk!',
         `Selamat datang kembali, ${data.data.user.username}. Mengalihkan...`
       );
 
@@ -116,7 +116,7 @@ export default function LoginPage() {
             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs">
               <Lock className="w-5 h-5 text-emerald-400 mb-2" />
               <div className="text-sm font-bold">Aman & Terenkripsi</div>
-              <div className="text-xs text-slate-400 mt-0.5">JWT & Bcrypt Hashing</div>
+              <div className="text-xs text-slate-400 mt-0.5">JWT & hash Bcrypt</div>
             </div>
           </div>
         </div>
@@ -155,7 +155,7 @@ export default function LoginPage() {
           {/* Headings */}
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Welcome Back
+              Selamat Datang Kembali
             </h1>
             <p className="text-sm text-slate-500 mt-2">
               Masuk untuk melanjutkan ke sistem absensi.
@@ -172,8 +172,8 @@ export default function LoginPage() {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
             <Input
-              label="ID / Username atau Email"
-              placeholder="Username"
+              label="ID / Nama pengguna atau email"
+              placeholder="Nama pengguna"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -182,8 +182,8 @@ export default function LoginPage() {
 
             <div className="space-y-1">
               <PasswordInput
-                label="Password"
-                placeholder="Password"
+                label="Kata sandi"
+                placeholder="Kata sandi"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -197,14 +197,14 @@ export default function LoginPage() {
                     onChange={(e) => setRememberMe(e.target.checked)}
                     className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                   />
-                  <span className="text-xs text-slate-600 font-medium">Remember me</span>
+                  <span className="text-xs text-slate-600 font-medium">Ingat saya</span>
                 </label>
 
                 <Link
                   href="/forgot-password"
                   className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
                 >
-                  Lupa password?
+                  Lupa kata sandi?
                 </Link>
               </div>
             </div>
@@ -218,7 +218,7 @@ export default function LoginPage() {
               loadingText="Memproses..."
               icon={<ArrowRight className="w-4 h-4" />}
             >
-              Login
+              Masuk
             </Button>
           </form>
 

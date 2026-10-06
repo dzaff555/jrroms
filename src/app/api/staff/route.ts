@@ -6,7 +6,7 @@ export async function GET(request: Request) {
   try {
     const session = await getSessionUser();
     if (!session) {
-      return NextResponse.json({ success: false, error: 'Silakan login terlebih dahulu.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);

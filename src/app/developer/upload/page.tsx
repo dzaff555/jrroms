@@ -55,8 +55,8 @@ function uploadFile(
       }
       resolve();
     });
-    request.addEventListener('error', () => reject(new Error('Koneksi terputus saat mengunggah file.')));
-    request.addEventListener('abort', () => reject(new Error('Upload dibatalkan.')));
+    request.addEventListener('error', () => reject(new Error('Koneksi terputus saat mengunggah berkas.')));
+    request.addEventListener('abort', () => reject(new Error('Pengunggahan dibatalkan.')));
     request.send(file);
   });
 }
@@ -114,16 +114,16 @@ export default function DeveloperTaskUploadPage() {
     }
     const files = Array.from(fileInput.current?.files || []);
     if (selectedTask.file_required && files.length === 0) {
-      toast.error('File wajib diunggah', 'Pilih minimal satu file sebelum mengirim tugas ini.');
+      toast.error('Berkas wajib diunggah', 'Pilih minimal satu berkas sebelum mengirim tugas ini.');
       return;
     }
     if (files.length === 0) {
-      toast.info('Tidak ada file dipilih', 'Tugas ini tidak mewajibkan file. Tidak ada upload yang dilakukan.');
+      toast.info('Tidak ada berkas dipilih', 'Tugas ini tidak mewajibkan berkas. Tidak ada pengunggahan yang dilakukan.');
       return;
     }
     const tooLarge = files.find((file) => file.size < 1 || file.size > MAX_FILE_SIZE);
     if (tooLarge) {
-      toast.error('Ukuran file tidak valid', `${tooLarge.name}: setiap file harus lebih besar dari 0 dan maksimal 1 GB.`);
+      toast.error('Ukuran berkas tidak valid', `${tooLarge.name}: setiap berkas harus lebih besar dari 0 dan maksimal 1 GB.`);
       return;
     }
 
@@ -142,7 +142,7 @@ export default function DeveloperTaskUploadPage() {
         });
         const prepared = await prepareResponse.json();
         if (!prepareResponse.ok || !prepared.success) {
-          throw new Error(prepared.error || `Gagal menyiapkan upload ${file.name}.`);
+          throw new Error(prepared.error || `Gagal menyiapkan pengunggahan ${file.name}.`);
         }
 
         await uploadFile(
@@ -157,16 +157,16 @@ export default function DeveloperTaskUploadPage() {
       });
       const completion = await completeResponse.json();
       if (!completeResponse.ok || !completion.success) {
-        throw new Error(completion.error || 'File terkirim, tetapi status tugas belum dapat diselesaikan.');
+        throw new Error(completion.error || 'Berkas terkirim, tetapi status tugas belum dapat diselesaikan.');
       }
       toast.success(
         'Tugas selesai',
-        `${files.length} file berhasil dikirim. Quest ditandai selesai dan upload berikutnya dikunci.`
+        `${files.length} berkas berhasil dikirim. Tugas ditandai selesai dan pengunggahan berikutnya dikunci.`
       );
       if (fileInput.current) fileInput.current.value = '';
       await loadTasks();
     } catch (error: unknown) {
-      toast.error('Upload gagal', error instanceof Error ? error.message : 'Terjadi kesalahan saat mengunggah file.');
+      toast.error('Pengunggahan gagal', error instanceof Error ? error.message : 'Terjadi kesalahan saat mengunggah berkas.');
       await loadTasks();
     } finally {
       setIsUploading(false);
@@ -177,8 +177,8 @@ export default function DeveloperTaskUploadPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-extrabold text-slate-900">Upload Tugas</h1>
-        <p className="mt-1 text-sm text-slate-500">Pilih quest yang sedang aktif, kirim satu atau beberapa file, lalu quest akan ditandai selesai.</p>
+        <h1 className="text-2xl font-extrabold text-slate-900">Unggah Tugas</h1>
+        <p className="mt-1 text-sm text-slate-500">Pilih tugas yang sedang aktif, kirim satu atau beberapa berkas, lalu tugas akan ditandai selesai.</p>
       </header>
 
       <Card className="space-y-5 p-5 sm:p-6">
@@ -193,7 +193,7 @@ export default function DeveloperTaskUploadPage() {
             <option value="">Pilih tugas aktif</option>
             {availableTasks.map((task) => (
               <option key={task.id} value={task.id} disabled={task.is_completed}>
-                {task.title} · {task.category === 'MODELLING' ? 'Modelling' : 'Scripting'}{task.is_completed ? ' · Selesai' : ''}
+                {task.title} · {task.category === 'MODELLING' ? 'Pemodelan' : 'Penulisan Skrip'}{task.is_completed ? ' · Selesai' : ''}
               </option>
             ))}
           </select>
@@ -204,11 +204,11 @@ export default function DeveloperTaskUploadPage() {
             <h2 className="font-bold text-slate-900">{selectedTask.title}</h2>
             <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{selectedTask.description}</p>
             <p className="mt-2 text-xs text-slate-500">
-              Deadline: {selectedTask.ends_on} · {selectedTask.file_required ? 'File wajib' : 'File opsional'} · Maksimal 1 GB per file
+              Tenggat waktu: {selectedTask.ends_on} · {selectedTask.file_required ? 'Berkas wajib' : 'Berkas opsional'} · Maksimal 1 GB per berkas
             </p>
             {selectedTask.is_completed && (
               <p className="mt-2 text-sm font-semibold text-emerald-700">
-                Tugas selesai. Upload untuk quest ini sudah ditutup.
+                Tugas selesai. Pengunggahan untuk tugas ini sudah ditutup.
               </p>
             )}
             {selectedTask.files.length > 0 && (
@@ -221,11 +221,11 @@ export default function DeveloperTaskUploadPage() {
 
         <Input
           ref={fileInput}
-          label="File tugas"
+          label="Berkas tugas"
           type="file"
           multiple
           disabled={!selectedTask || selectedTask.is_completed || isUploading}
-          helperText="Format bebas, dapat memilih beberapa file. Maksimal 1 GB untuk setiap file."
+          helperText="Format bebas, dapat memilih beberapa berkas. Maksimal 1 GB untuk setiap berkas."
         />
         {uploadProgress && <p role="status" className="text-sm font-medium text-blue-700">{uploadProgress}</p>}
         <Button
@@ -236,7 +236,7 @@ export default function DeveloperTaskUploadPage() {
           loadingText="Mengunggah..."
           icon={<UploadCloud className="h-4 w-4" />}
         >
-          Kirim File
+          Kirim Berkas
         </Button>
       </Card>
     </div>

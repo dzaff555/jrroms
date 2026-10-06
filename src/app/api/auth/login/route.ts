@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query, testConnection } from '@/lib/database/db';
 import { comparePassword, signToken, TOKEN_COOKIE_NAME } from '@/lib/auth/auth';
-import { User, AuthSession, AttendanceRole } from '@/types';
+import { User, AuthSession, AttendanceRole, isAttendanceRole } from '@/types';
 
 export async function POST(request: Request) {
   try {
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
 
     if (!username || !password) {
       return NextResponse.json(
-        { success: false, error: 'Username dan password wajib diisi.' },
+        { success: false, error: 'Nama pengguna dan kata sandi wajib diisi.' },
         { status: 400 }
       );
     }
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
 
     if (!users || users.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'ID atau password salah.' },
+        { success: false, error: 'ID atau kata sandi salah.' },
         { status: 401 }
       );
     }
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
     const isPasswordValid = await comparePassword(password, user.password || '');
     if (!isPasswordValid) {
       return NextResponse.json(
-        { success: false, error: 'ID atau password salah.' },
+        { success: false, error: 'ID atau kata sandi salah.' },
         { status: 401 }
       );
     }
@@ -87,14 +87,9 @@ export async function POST(request: Request) {
       profileData = {};
     }
 
-    const normalizedAttendanceRole: AttendanceRole =
-      profileData.attendance_role === 'CSOT' ||
-      profileData.attendance_role === 'PPKA' ||
-      profileData.attendance_role === 'MASINIS' ||
-      profileData.attendance_role === 'PKD' ||
-      profileData.attendance_role === 'PJL'
-        ? profileData.attendance_role
-        : 'CSOT';
+    const normalizedAttendanceRole: AttendanceRole = isAttendanceRole(profileData.attendance_role)
+      ? profileData.attendance_role
+      : 'CSOT';
 
     const profileCompleted =
       profileData.profile_completed === true ||
@@ -124,7 +119,7 @@ export async function POST(request: Request) {
 
     const response = NextResponse.json({
       success: true,
-      message: 'Login berhasil!',
+      message: 'Berhasil masuk!',
       data: {
         user: sessionPayload,
         redirectUrl,
@@ -145,7 +140,7 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Terjadi kesalahan pada server saat proses login.';
+    const message = error instanceof Error ? error.message : 'Terjadi kesalahan pada server saat proses masuk.';
     console.error('[Login API Error]:', error);
     return NextResponse.json(
       { success: false, error: message },

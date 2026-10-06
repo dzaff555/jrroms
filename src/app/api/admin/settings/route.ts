@@ -53,7 +53,7 @@ export async function PUT(request: Request) {
 
     if (!users || users.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'User tidak ditemukan.' },
+        { success: false, error: 'Pengguna tidak ditemukan.' },
         { status: 404 }
       );
     }
@@ -64,7 +64,7 @@ export async function PUT(request: Request) {
     if (newPassword) {
       if (!currentPassword) {
         return NextResponse.json(
-          { success: false, error: 'Password saat ini harus diisi untuk mengubah password.' },
+          { success: false, error: 'Kata sandi saat ini wajib diisi untuk mengubah kata sandi.' },
           { status: 400 }
         );
       }
@@ -72,21 +72,21 @@ export async function PUT(request: Request) {
       const isValid = await comparePassword(currentPassword, user.password || '');
       if (!isValid) {
         return NextResponse.json(
-          { success: false, error: 'Password saat ini yang Anda masukkan salah.' },
+          { success: false, error: 'Kata sandi saat ini yang Anda masukkan salah.' },
           { status: 400 }
         );
       }
 
       if (newPassword.length < 8) {
         return NextResponse.json(
-          { success: false, error: 'Password baru minimal 8 karakter.' },
+          { success: false, error: 'Kata sandi baru harus terdiri dari minimal 8 karakter.' },
           { status: 400 }
         );
       }
 
       if (newPassword !== confirmNewPassword) {
         return NextResponse.json(
-          { success: false, error: 'Password baru dan konfirmasi password tidak cocok.' },
+          { success: false, error: 'Kata sandi baru dan konfirmasinya tidak cocok.' },
           { status: 400 }
         );
       }
@@ -107,7 +107,7 @@ export async function PUT(request: Request) {
       );
       if (existingUser.length > 0) {
         return NextResponse.json(
-          { success: false, error: 'Username sudah digunakan oleh user lain.' },
+          { success: false, error: 'Nama pengguna sudah digunakan oleh pengguna lain.' },
           { status: 409 }
         );
       }
@@ -122,7 +122,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Pengaturan akun admin berhasil diperbarui.',
+      message: 'Pengaturan akun administrator berhasil diperbarui.',
     });
   } catch (error: any) {
     console.error('[Admin Settings PUT Error]:', error);

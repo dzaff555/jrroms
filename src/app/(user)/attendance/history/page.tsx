@@ -88,7 +88,7 @@ export default function AttendanceHistoryPage() {
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors mb-1"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Kembali ke Dashboard</span>
+              <span>Kembali ke Dasbor</span>
             </Link>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
               Riwayat Absensi Saya
@@ -143,7 +143,7 @@ export default function AttendanceHistoryPage() {
                   variant="outline"
                   size="md"
                   onClick={handleResetFilters}
-                  title="Reset Filter"
+                  title="Atur Ulang Filter"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </Button>
@@ -163,7 +163,7 @@ export default function AttendanceHistoryPage() {
                 ? 'Tidak ditemukan data riwayat yang cocok dengan kata kunci atau tanggal yang dipilih.'
                 : 'Anda belum pernah mencatat absensi kehadiran sebelumnya.'
             }
-            actionLabel={search || dateFilter ? 'Reset Filter' : 'Absen Sekarang'}
+            actionLabel={search || dateFilter ? 'Atur Ulang Filter' : 'Absen Sekarang'}
             onAction={
               search || dateFilter
                 ? handleResetFilters
@@ -181,7 +181,7 @@ export default function AttendanceHistoryPage() {
                       <th className="py-3.5 px-4 w-12 text-center">No</th>
                       <th className="py-3.5 px-4">Tanggal</th>
                       <th className="py-3.5 px-4">Nama Lengkap</th>
-                      <th className="py-3.5 px-4">Role</th>
+                      <th className="py-3.5 px-4">Peran</th>
                       <th className="py-3.5 px-4">Discord</th>
                       <th className="py-3.5 px-4">Roblox</th>
                       <th className="py-3.5 px-4">Jam Absen</th>
@@ -260,7 +260,7 @@ export default function AttendanceHistoryPage() {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Role:</span>
+                      <span className="text-slate-500">Peran:</span>
                       <span className="font-semibold text-slate-800">{r.attendance_role}</span>
                     </div>
 

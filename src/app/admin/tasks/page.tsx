@@ -93,7 +93,7 @@ export default function AdminTasksPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Gagal membuat tugas.');
       }
-      toast.success('Tugas dibuat', 'Tugas baru tersedia untuk semua Developer.');
+      toast.success('Tugas dibuat', 'Tugas baru tersedia untuk semua pengembang.');
       setTitle('');
       setDescription('');
       setCategory('MODELLING');
@@ -130,7 +130,7 @@ export default function AdminTasksPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Gagal memperbarui tugas.');
       }
-      toast.success('Tugas diperbarui', 'Perubahan quest berhasil disimpan.');
+      toast.success('Tugas diperbarui', 'Perubahan tugas berhasil disimpan.');
       setEditingTask(null);
       await loadTasks();
     } catch (error: unknown) {
@@ -142,7 +142,7 @@ export default function AdminTasksPage() {
 
   const deleteTask = async (task: DeveloperTask) => {
     const confirmed = window.confirm(
-      `Hapus quest "${task.title}"? Semua kiriman Developer untuk quest ini juga akan dihapus permanen.`
+      `Hapus tugas "${task.title}"? Semua kiriman pengembang untuk tugas ini juga akan dihapus permanen.`
     );
     if (!confirmed) return;
 
@@ -154,8 +154,8 @@ export default function AdminTasksPage() {
         throw new Error(result.error || 'Gagal menghapus tugas.');
       }
       toast.success('Tugas dihapus', result.cleanupWarning
-        ? 'Quest dan kiriman terhapus, tetapi sebagian file perlu dibersihkan dari penyimpanan.'
-        : result.message || 'Quest dan kiriman terkait berhasil dihapus.');
+        ? 'Tugas dan kiriman terhapus, tetapi sebagian berkas perlu dibersihkan dari penyimpanan.'
+        : result.message || 'Tugas dan kiriman terkait berhasil dihapus.');
       if (editingTask?.id === task.id) setEditingTask(null);
       await loadTasks();
     } catch (error: unknown) {
@@ -170,12 +170,12 @@ export default function AdminTasksPage() {
       const response = await fetch(`/api/admin/tasks/files/${fileId}`, { cache: 'no-store' });
       if (!response.ok) {
         const result = await response.json().catch(() => null) as { error?: string } | null;
-        throw new Error(result?.error || `Gagal mengunduh file (${response.status}).`);
+        throw new Error(result?.error || `Gagal mengunduh berkas (${response.status}).`);
       }
 
       const file = await response.blob();
       if (file.size === 0) {
-        throw new Error('File yang diunduh kosong.');
+        throw new Error('Berkas yang diunduh kosong.');
       }
       const objectUrl = URL.createObjectURL(file);
       const link = document.createElement('a');
@@ -194,14 +194,14 @@ export default function AdminTasksPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-extrabold text-slate-900">Tugas Developer</h1>
-        <p className="mt-1 text-sm text-slate-500">Buat quest dan pantau file yang dikirim Developer.</p>
+        <h1 className="text-2xl font-extrabold text-slate-900">Tugas Pengembang</h1>
+        <p className="mt-1 text-sm text-slate-500">Buat tugas dan pantau berkas yang dikirim pengembang.</p>
       </header>
 
       <Card className="p-5 sm:p-6">
         <form onSubmit={createTask} className="space-y-4">
           <h2 className="text-base font-bold text-slate-800">Buat Tugas Baru</h2>
-          <Input label="Judul quest" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={180} required />
+          <Input label="Judul tugas" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={180} required />
           <div className="space-y-1.5">
             <label htmlFor="task-description" className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
               Isi tugas
@@ -220,18 +220,18 @@ export default function AdminTasksPage() {
             <label className="space-y-1.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
               Jenis tugas
               <select value={category} onChange={(event) => setCategory(event.target.value as typeof category)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal normal-case text-slate-800">
-                <option value="MODELLING">Modelling</option>
-                <option value="SCRIPTING">Scripting</option>
+                <option value="MODELLING">Pemodelan</option>
+                <option value="SCRIPTING">Penulisan Skrip</option>
               </select>
             </label>
             <Input label="Tanggal mulai" type="date" value={startsOn} onChange={(event) => setStartsOn(event.target.value)} required />
             <Input label="Tanggal akhir" type="date" value={endsOn} onChange={(event) => setEndsOn(event.target.value)} min={startsOn} required />
             <label className="flex items-center gap-3 self-end rounded-xl border border-slate-200 p-3 text-sm text-slate-700">
               <input type="checkbox" checked={fileRequired} onChange={(event) => setFileRequired(event.target.checked)} className="h-4 w-4 accent-blue-600" />
-              <span>Wajib mengunggah file</span>
+              <span>Wajib mengunggah berkas</span>
             </label>
           </div>
-          <p className="text-xs text-slate-500">File dapat berformat apa saja, maksimal 1 GB per file. Tugas ini akan terlihat oleh semua Developer.</p>
+          <p className="text-xs text-slate-500">Berkas dapat berformat apa saja, maksimal 1 GB per berkas. Tugas ini akan terlihat oleh semua pengembang.</p>
           <Button type="submit" isLoading={isSaving} loadingText="Menyimpan..." icon={<Plus className="h-4 w-4" />}>
             Buat Tugas
           </Button>
@@ -239,11 +239,11 @@ export default function AdminTasksPage() {
       </Card>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-bold text-slate-900">Quest dan Kiriman Developer</h2>
+        <h2 className="text-lg font-bold text-slate-900">Tugas dan Kiriman Pengembang</h2>
         {isLoading ? (
           <Card className="p-6 text-sm text-slate-500">Memuat tugas...</Card>
         ) : tasks.length === 0 ? (
-          <EmptyState title="Belum ada tugas" description="Tugas yang dibuat akan muncul di sini dan di halaman Developer." icon={<ClipboardList className="h-7 w-7" />} />
+          <EmptyState title="Belum ada tugas" description="Tugas yang dibuat akan muncul di sini dan di halaman Pengembang." icon={<ClipboardList className="h-7 w-7" />} />
         ) : (
           tasks.map((task) => (
             <Card key={task.id} className="overflow-hidden">
@@ -251,7 +251,7 @@ export default function AdminTasksPage() {
                 {editingTask?.id === task.id ? (
                   <form onSubmit={saveTask} className="space-y-4">
                     <Input
-                      label="Judul quest"
+                      label="Judul tugas"
                       value={editingTask.title}
                       onChange={(event) => setEditingTask({ ...editingTask, title: event.target.value })}
                       maxLength={180}
@@ -279,8 +279,8 @@ export default function AdminTasksPage() {
                           onChange={(event) => setEditingTask({ ...editingTask, category: event.target.value as DeveloperTask['category'] })}
                           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-normal normal-case text-slate-800"
                         >
-                          <option value="MODELLING">Modelling</option>
-                          <option value="SCRIPTING">Scripting</option>
+                          <option value="MODELLING">Pemodelan</option>
+                          <option value="SCRIPTING">Penulisan Skrip</option>
                         </select>
                       </label>
                       <Input
@@ -305,7 +305,7 @@ export default function AdminTasksPage() {
                           onChange={(event) => setEditingTask({ ...editingTask, file_required: event.target.checked })}
                           className="h-4 w-4 accent-blue-600"
                         />
-                        <span>Wajib mengunggah file</span>
+                        <span>Wajib mengunggah berkas</span>
                       </label>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -323,7 +323,7 @@ export default function AdminTasksPage() {
                       <div>
                         <h3 className="text-base font-bold text-slate-900">{task.title}</h3>
                         <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                          {task.category === 'MODELLING' ? 'Modelling' : 'Scripting'}
+                          {task.category === 'MODELLING' ? 'Pemodelan' : 'Penulisan Skrip'}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -352,7 +352,7 @@ export default function AdminTasksPage() {
                     </div>
                     <p className="whitespace-pre-wrap text-sm text-slate-700">{task.description}</p>
                     <p className="text-xs font-medium text-slate-500">
-                      {task.file_required ? 'File wajib diunggah' : 'File opsional'} · {task.files.length} file terkirim
+                      {task.file_required ? 'Berkas wajib diunggah' : 'Berkas opsional'} · {task.files.length} berkas terkirim
                     </p>
                   </>
                 )}

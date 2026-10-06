@@ -54,7 +54,7 @@ export default function AdminAttendanceStatisticsPage() {
       const response = await fetch(`/api/admin/attendance-statistics?${params.toString()}`, { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Unable to load attendance statistics.');
+        throw new Error(data.error || 'Gagal memuat statistik absensi.');
       }
 
       setRecords(data.data.records as AttendanceStatisticsRecord[]);
@@ -64,8 +64,8 @@ export default function AdminAttendanceStatisticsPage() {
       console.error('Failed to fetch attendance statistics:', error);
       if (showLoading) {
         toast.error(
-          'Load failed',
-          error instanceof Error ? error.message : 'Unable to load attendance statistics.'
+          'Gagal memuat',
+          error instanceof Error ? error.message : 'Gagal memuat statistik absensi.'
         );
         setRecords([]);
       }
@@ -95,11 +95,11 @@ export default function AdminAttendanceStatisticsPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-            Attendance Statistics
+            Statistik Absensi
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Attendance is counted when recorded. An absence is counted only for a Friday–Sunday
-            attendance window after it closes at 18.00 WIB, starting after the account is created.
+            Kehadiran dihitung saat dicatat. Ketidakhadiran hanya dihitung untuk periode absensi
+            Jumat–Minggu setelah ditutup pukul 18.00 WIB, terhitung sejak akun dibuat.
           </p>
         </div>
 
@@ -108,7 +108,7 @@ export default function AdminAttendanceStatisticsPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Input
                 type="date"
-                label="Start date"
+                label="Tanggal mulai"
                 leftIcon={<Calendar className="h-4 w-4" />}
                 value={startDate}
                 onChange={(event) => {
@@ -118,7 +118,7 @@ export default function AdminAttendanceStatisticsPage() {
               />
               <Input
                 type="date"
-                label="End date"
+                label="Tanggal akhir"
                 leftIcon={<Calendar className="h-4 w-4" />}
                 value={endDate}
                 onChange={(event) => {
@@ -127,8 +127,8 @@ export default function AdminAttendanceStatisticsPage() {
                 }}
               />
               <Input
-                label="Search account"
-                placeholder="Username or attendance role"
+                label="Cari akun"
+                placeholder="Nama pengguna atau peran absensi"
                 leftIcon={<Search className="h-4 w-4" />}
                 value={search}
                 onChange={(event) => {
@@ -138,7 +138,7 @@ export default function AdminAttendanceStatisticsPage() {
               />
               <div className="space-y-1.5">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
-                  Attendance role
+                  Peran absensi
                 </label>
                 <select
                   value={attendanceRole}
@@ -148,7 +148,7 @@ export default function AdminAttendanceStatisticsPage() {
                   }}
                   className="w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
-                  <option value="ALL">All roles</option>
+                  <option value="ALL">Semua peran</option>
                   {ATTENDANCE_ROLES.map((role) => (
                     <option key={role} value={role}>{role}</option>
                   ))}
@@ -157,7 +157,7 @@ export default function AdminAttendanceStatisticsPage() {
             </div>
             <div className="flex justify-end border-t border-slate-100 pt-3">
               <Button type="submit" variant="primary" size="sm">
-                Apply filters
+                Terapkan filter
               </Button>
             </div>
           </form>
@@ -167,8 +167,8 @@ export default function AdminAttendanceStatisticsPage() {
           <TableSkeleton rows={8} cols={5} />
         ) : records.length === 0 ? (
           <EmptyState
-            title="No accounts found"
-            description="No active accounts match the selected dates and filters."
+            title="Akun tidak ditemukan"
+            description="Tidak ada akun aktif yang cocok dengan tanggal dan filter yang dipilih."
           />
         ) : (
           <div className="space-y-4">
@@ -177,10 +177,10 @@ export default function AdminAttendanceStatisticsPage() {
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-slate-100 bg-slate-50 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     <tr>
-                      <th className="px-4 py-3.5">Account</th>
-                      <th className="px-4 py-3.5">Attendance role</th>
-                      <th className="px-4 py-3.5 text-center">Attended</th>
-                      <th className="px-4 py-3.5 text-center">Absences (closed windows)</th>
+                      <th className="px-4 py-3.5">Akun</th>
+                      <th className="px-4 py-3.5">Peran absensi</th>
+                      <th className="px-4 py-3.5 text-center">Hadir</th>
+                      <th className="px-4 py-3.5 text-center">Tidak hadir (periode ditutup)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -191,7 +191,7 @@ export default function AdminAttendanceStatisticsPage() {
                             {record.profile_photo ? (
                               <ProtectedProfilePhoto
                                 src={record.profile_photo}
-                                alt={`${record.username} profile`}
+                                alt={`Foto profil ${record.username}`}
                                 className="h-9 w-9 rounded-full border border-slate-200 object-cover"
                               />
                             ) : (
@@ -231,8 +231,8 @@ export default function AdminAttendanceStatisticsPage() {
               onPageChange={setCurrentPage}
             />
             <p className="text-xs text-slate-500">
-              Period: {formatIndonesianDate(startDate)} – {formatIndonesianDate(endDate)}.
-              Only Friday–Sunday windows closed at 18.00 WIB count as absences.
+              Periode: {formatIndonesianDate(startDate)} – {formatIndonesianDate(endDate)}.
+              Hanya periode Jumat–Minggu yang ditutup pukul 18.00 WIB yang dihitung sebagai ketidakhadiran.
             </p>
           </div>
         )}

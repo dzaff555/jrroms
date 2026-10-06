@@ -22,7 +22,7 @@ export async function GET() {
   try {
     const userId = await getActiveUserId();
     if (userId === null) {
-      return NextResponse.json({ success: false, error: 'Silakan login dengan akun aktif.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk dengan akun aktif.' }, { status: 401 });
     }
 
     await query(
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   try {
     const userId = await getActiveUserId();
     if (userId === null) {
-      return NextResponse.json({ success: false, error: 'Silakan login dengan akun aktif.' }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Silakan masuk dengan akun aktif.' }, { status: 401 });
     }
 
     let body: unknown;
