@@ -533,6 +533,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   }, [isRecordingVoice, isVoiceRecordingPaused]);
 
   useLayoutEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = 'auto';
+    const maxHeight = Number.parseFloat(window.getComputedStyle(textarea).maxHeight) || 128;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, [draft]);
+
+  useLayoutEffect(() => {
     if (openMessageActionsId === null) return;
     const messagesContainer = messagesContainerRef.current;
 
@@ -1477,7 +1487,15 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const displayedMessages = isShowingSearchResults ? searchResults : messages;
 
   return (
-    <section className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-[#161b22]">
+    <section
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent"
+      style={chatWallpaperUrl ? {
+        backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.18)), url("${chatWallpaperUrl}")`,
+        backgroundPosition: 'center',
+        backgroundSize: 'cover',
+        backgroundAttachment: 'fixed',
+      } : undefined}
+    >
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 sm:px-6 dark:border-slate-700 dark:bg-[#161b22]">
         {isWallpaperSettingsOpen ? (
           <button
@@ -1734,13 +1752,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
 
       <div
         ref={messagesContainerRef}
-        className={`${isWallpaperSettingsOpen ? 'hidden' : 'min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-slate-50 px-3 py-4 sm:px-6 dark:bg-[#0d1117]'}`}
-        style={chatWallpaperUrl ? {
-          backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.18), rgba(15, 23, 42, 0.18)), url("${chatWallpaperUrl}")`,
-          backgroundPosition: 'center',
-          backgroundSize: 'cover',
-          backgroundAttachment: 'fixed',
-        } : undefined}
+        className={`${isWallpaperSettingsOpen ? 'hidden' : 'min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain bg-transparent px-3 py-4 sm:px-6'}`}
         onScroll={(event) => {
           if (ignoreProgrammaticChatScrollRef.current) return;
           preserveSearchJumpPositionRef.current = false;
@@ -2409,7 +2421,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             </button>
           </div>
         )}
-        <div className="flex items-end gap-1 rounded-full border border-slate-200 bg-white/95 p-1.5 shadow-lg shadow-slate-900/10 backdrop-blur-md dark:border-slate-700 dark:bg-[#1c222b]/95 sm:gap-2">
+        <div className="flex items-end gap-1 rounded-full border-0 bg-white/95 p-1.5 shadow-lg shadow-slate-900/10 backdrop-blur-md dark:bg-[#1c222b]/95 sm:gap-2">
           <input
             ref={stickerInputRef}
             type="file"
@@ -2529,7 +2541,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             rows={1}
             placeholder="Tulis pesan..."
             aria-label="Tulis pesan"
-            className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:outline-none dark:text-white dark:placeholder:text-slate-400"
+            className="max-h-32 min-h-10 flex-1 resize-none !border-0 !bg-transparent px-2 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-500 focus:outline-none dark:text-white dark:placeholder:text-slate-400"
           />
           {isRecordingVoice && (
             <>
