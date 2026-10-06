@@ -457,6 +457,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     deltaX: number;
     isHorizontal: boolean;
   } | null>(null);
+  const suppressPhotoClickRef = useRef<number | null>(null);
   const shouldScrollRef = useRef(true);
   const isLoadingMessagesRef = useRef(false);
   const initialMessagesLoadedRef = useRef(false);
@@ -1009,9 +1010,12 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   };
 
   const handleReplySwipeStart = (event: React.PointerEvent<HTMLDivElement>, message: ChatMessage) => {
-    if (event.button !== 0 || event.target instanceof Element && event.target.closest(
-      'button, a, input, textarea, video, audio, [role="slider"]'
-    )) {
+    const target = event.target;
+    const isPhotoPreview = target instanceof Element &&
+      target.closest('button[aria-label^="Perbesar foto dari "]');
+    const isOtherInteractiveTarget = target instanceof Element &&
+      target.closest('button, a, input, textarea, video, audio, [role="slider"]');
+    if (event.button !== 0 || isOtherInteractiveTarget && !isPhotoPreview) {
       return;
     }
     replySwipeRef.current = {
@@ -1056,8 +1060,29 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     if (!cancelled && gesture.isHorizontal && Math.abs(gesture.deltaX) >= 56) {
+      suppressPhotoClickRef.current = message.id;
+      window.setTimeout(() => {
+        if (suppressPhotoClickRef.current === message.id) suppressPhotoClickRef.current = null;
+      }, 500);
       handleReply(message);
     }
+  };
+
+  const handlePhotoPreviewClick = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    message: ChatMessage
+  ) => {
+    if (suppressPhotoClickRef.current === message.id) {
+      suppressPhotoClickRef.current = null;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    suppressPhotoClickRef.current = null;
+    setPhotoZoom(1);
+    setPhotoOffset({ x: 0, y: 0 });
+    setPhotoViewer({ url: message.media_url!, senderName: message.username });
   };
 
   const handleQuotedMessageClick = (messageId: number) => {
@@ -1470,11 +1495,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                       ) : (
                         <button
                           type="button"
-                          onClick={() => {
-                            setPhotoZoom(1);
-                            setPhotoOffset({ x: 0, y: 0 });
-                            setPhotoViewer({ url: message.media_url!, senderName });
-                          }}
+                          onClick={(event) => handlePhotoPreviewClick(event, message)}
                           className="mb-2 block overflow-hidden rounded-lg"
                           aria-label={`Perbesar foto dari ${senderName}`}
                         >
@@ -1485,6 +1506,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                             height={480}
                             unoptimized
                             className="h-auto max-h-80 w-auto max-w-full object-contain"
+                            draggable={false}
                           />
                         </button>
                       )
