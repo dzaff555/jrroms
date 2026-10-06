@@ -12,6 +12,7 @@ import {
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 import { IssueWarningForm } from '@/components/profile/IssueWarningForm';
+import { ProfileContentProtection } from '@/components/profile/ProfileContentProtection';
 import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 import { formatIndonesianDate, formatIndonesianDateTime } from '@/lib/utils/date';
 
@@ -114,101 +115,104 @@ export default async function AdminStaffProfilePage({
           Kembali ke Kelola User
         </Link>
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-5 bg-gradient-to-r from-[#0F2747] to-[#2563EB] p-6 text-white sm:flex-row sm:items-center">
-            {staff.profile_photo ? (
-              <img
-                src={staff.profile_photo}
-                alt={`Foto profil ${staff.username}`}
-                className="h-24 w-24 rounded-2xl border-2 border-white/70 object-cover"
-              />
-            ) : (
-              <div className="flex h-24 w-24 items-center justify-center rounded-2xl border-2 border-white/40 bg-white/10 text-3xl font-bold">
-                {staff.username.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Profil Staff</p>
-              <h1 className="mt-1 text-2xl font-extrabold">{staff.username}</h1>
-              {staff.role === 'USER' && (
-                <p className="mt-1 text-sm text-blue-100">{staff.attendance_role || 'Role belum ditentukan'}</p>
+        <ProfileContentProtection>
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-5 bg-gradient-to-r from-[#0F2747] to-[#2563EB] p-6 text-white sm:flex-row sm:items-center">
+              {staff.profile_photo ? (
+                <img
+                  src={staff.profile_photo}
+                  alt={`Foto profil ${staff.username}`}
+                  draggable={false}
+                  className="h-24 w-24 rounded-2xl border-2 border-white/70 object-cover"
+                />
+              ) : (
+                <div className="flex h-24 w-24 items-center justify-center rounded-2xl border-2 border-white/40 bg-white/10 text-3xl font-bold">
+                  {staff.username.charAt(0).toUpperCase()}
+                </div>
               )}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-blue-200">Profil Staff</p>
+                <h1 className="mt-1 text-2xl font-extrabold">{staff.username}</h1>
+                {staff.role === 'USER' && (
+                  <p className="mt-1 text-sm text-blue-100">{staff.attendance_role || 'Role belum ditentukan'}</p>
+                )}
+              </div>
+              <span className={`sm:ml-auto rounded-full px-3 py-1 text-xs font-bold ${staff.status === 'ACTIVE' ? 'bg-emerald-400/20 text-emerald-100' : 'bg-rose-400/20 text-rose-100'}`}>
+                {staff.status === 'ACTIVE' ? 'Aktif' : 'Nonaktif'}
+              </span>
             </div>
-            <span className={`sm:ml-auto rounded-full px-3 py-1 text-xs font-bold ${staff.status === 'ACTIVE' ? 'bg-emerald-400/20 text-emerald-100' : 'bg-rose-400/20 text-rose-100'}`}>
-              {staff.status === 'ACTIVE' ? 'Aktif' : 'Nonaktif'}
-            </span>
-          </div>
 
-          <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 sm:p-6">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <UserRound className="h-4 w-4" /> Nama Asli
-              </div>
-              <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.real_name || 'Belum diisi'}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <ShieldCheck className="h-4 w-4" /> Role Sistem
-              </div>
-              <p className="mt-2 text-sm font-bold text-slate-800">{staff.role}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <UserRound className="h-4 w-4" /> Username Roblox
-              </div>
-              <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.roblox_username || '-'}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <UserRound className="h-4 w-4" /> Username Discord
-              </div>
-              <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.discord_username || '-'}</p>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <CalendarDays className="h-4 w-4" /> Terdaftar Sejak
-              </div>
-              <p className="mt-2 text-sm font-bold text-slate-800">{staff.created_at}</p>
-            </div>
-            {staff.role === 'USER' && (
-              <>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                    <CalendarDays className="h-4 w-4" /> Absensi Terakhir
-                  </div>
-                  <p className="mt-2 text-sm font-bold text-slate-800">
-                    {staff.last_attendance
-                      ? `${formatIndonesianDate(staff.last_attendance)} · ${staff.last_attendance_status || 'Tercatat'}`
-                      : 'Belum Absen'}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Total Hadir
-                  </div>
-                  <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.attendance_count)}</p>
-                  <p className="mt-1 text-xs text-slate-500">kali tercatat hadir</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                    <XCircle className="h-4 w-4 text-rose-600" /> Tidak Hadir
-                  </div>
-                  <p className="mt-2 text-2xl font-extrabold text-slate-800">{missedAttendanceCount}</p>
-                  <p className="mt-1 text-xs text-slate-500">hari Jumat–Minggu tanpa catatan hadir</p>
-                </div>
-              </>
-            )}
-            {staff.role !== 'ADMIN' && (
+            <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2 sm:p-6">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
                 <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" /> Peringatan
+                  <UserRound className="h-4 w-4" /> Nama Asli
                 </div>
-                <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.warning_count)}</p>
-                <p className="mt-1 text-xs text-slate-500">kali diperingatkan oleh admin</p>
+                <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.real_name || 'Belum diisi'}</p>
               </div>
-            )}
-          </div>
-        </section>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <ShieldCheck className="h-4 w-4" /> Role Sistem
+                </div>
+                <p className="mt-2 text-sm font-bold text-slate-800">{staff.role}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <UserRound className="h-4 w-4" /> Username Roblox
+                </div>
+                <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.roblox_username || '-'}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <UserRound className="h-4 w-4" /> Username Discord
+                </div>
+                <p className="mt-2 break-words text-sm font-bold text-slate-800">{staff.discord_username || '-'}</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                  <CalendarDays className="h-4 w-4" /> Terdaftar Sejak
+                </div>
+                <p className="mt-2 text-sm font-bold text-slate-800">{staff.created_at}</p>
+              </div>
+              {staff.role === 'USER' && (
+                <>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                      <CalendarDays className="h-4 w-4" /> Absensi Terakhir
+                    </div>
+                    <p className="mt-2 text-sm font-bold text-slate-800">
+                      {staff.last_attendance
+                        ? `${formatIndonesianDate(staff.last_attendance)} · ${staff.last_attendance_status || 'Tercatat'}`
+                        : 'Belum Absen'}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Total Hadir
+                    </div>
+                    <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.attendance_count)}</p>
+                    <p className="mt-1 text-xs text-slate-500">kali tercatat hadir</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                      <XCircle className="h-4 w-4 text-rose-600" /> Tidak Hadir
+                    </div>
+                    <p className="mt-2 text-2xl font-extrabold text-slate-800">{missedAttendanceCount}</p>
+                    <p className="mt-1 text-xs text-slate-500">hari Jumat–Minggu tanpa catatan hadir</p>
+                  </div>
+                </>
+              )}
+              {staff.role !== 'ADMIN' && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" /> Peringatan
+                  </div>
+                  <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.warning_count)}</p>
+                  <p className="mt-1 text-xs text-slate-500">kali diperingatkan oleh admin</p>
+                </div>
+              )}
+            </div>
+          </section>
+        </ProfileContentProtection>
 
         {staff.role !== 'ADMIN' && (
           <>
