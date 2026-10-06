@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/LoadingSkeleton';
 import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
 import { Attendance, AuthSession } from '@/types';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 export default function UserDashboardPage() {
   const [user, setUser] = useState<AuthSession | null>(null);
@@ -116,7 +117,7 @@ export default function UserDashboardPage() {
 
             <div className="flex items-center gap-4 pt-1">
               {profilePhoto ? (
-                <img
+                <ProtectedProfilePhoto
                   src={profilePhoto}
                   alt="Foto profil"
                   className="h-14 w-14 rounded-full border-2 border-white/60 object-cover shadow-lg"

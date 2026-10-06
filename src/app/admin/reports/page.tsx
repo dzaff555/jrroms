@@ -13,6 +13,7 @@ import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
 import { ATTENDANCE_ROLES } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 type AttendanceReportRecord = {
   id: number | string;
@@ -322,7 +323,7 @@ export default function AdminReportsPage() {
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-2.5">
                             {r.profile_photo ? (
-                              <img
+                              <ProtectedProfilePhoto
                                 src={r.profile_photo}
                                 alt={`Foto profil ${r.name}`}
                                 className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"

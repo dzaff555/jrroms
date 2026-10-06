@@ -5,6 +5,7 @@ import Cropper from 'react-easy-crop';
 import { Camera, Check, UserCircle2, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface CropArea {
   x: number;
@@ -88,7 +89,7 @@ export function ProfilePhotoField({ photo, onChange, error }: ProfilePhotoFieldP
     <>
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
         {photo ? (
-          <img
+          <ProtectedProfilePhoto
             src={photo}
             alt="Preview foto profil"
             className="h-40 w-40 rounded-full border-4 border-white object-cover shadow-lg shadow-slate-200"
@@ -119,7 +120,11 @@ export function ProfilePhotoField({ photo, onChange, error }: ProfilePhotoFieldP
         portal
       >
         <div className="space-y-4">
-          <div className="relative mx-auto aspect-square w-[min(100%,420px,55dvh)] overflow-hidden rounded-xl bg-slate-950">
+          <div
+            className="relative mx-auto aspect-square w-[min(100%,420px,55dvh)] overflow-hidden rounded-xl bg-slate-950"
+            onContextMenu={(event) => event.preventDefault()}
+            onDragStart={(event) => event.preventDefault()}
+          >
             {cropSource && (
               <Cropper
                 image={cropSource}

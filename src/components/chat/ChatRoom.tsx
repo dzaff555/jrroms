@@ -1,9 +1,9 @@
 'use client';
 
-import React, { FormEvent, KeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import Image from 'next/image';
+import React, { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, MessageCircle, Reply, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { ListChecks, Loader2, MessageCircle, MoreVertical, Reply, Send, ShieldCheck, Trash2, Users, X } from 'lucide-react';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface RepliedMessage {
   id: number;
@@ -36,6 +36,7 @@ interface ChatApiResponse {
   data?: ChatMessage | ChatMessage[];
   error?: string;
   serverTime?: string;
+  deletedCount?: number;
 }
 
 interface ChatRoomProps {
@@ -66,7 +67,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [draft, setDraft] = useState('');
   const [replyTarget, setReplyTarget] = useState<ChatMessage | null>(null);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<number[]>([]);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [openMessageActionsId, setOpenMessageActionsId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<number | null>(null);
@@ -82,6 +86,27 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const initialMessagesLoadedRef = useRef(false);
   const initialScrollPositionedRef = useRef(false);
   const highlightTimeoutRef = useRef<number | null>(null);
+  const messageActionsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (openMessageActionsId === null) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!messageActionsRef.current?.contains(event.target as Node)) {
+        setOpenMessageActionsId(null);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenMessageActionsId(null);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMessageActionsId]);
 
   const mergeMessages = useCallback((incoming: ChatMessage[], replace = false) => {
     if (replace) profilePhotosRef.current.clear();
@@ -239,13 +264,61 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     }
   };
 
+  const handleToggleMessageSelection = (messageId: number) => {
+    setSelectedMessageIds((selectedIds) =>
+      selectedIds.includes(messageId)
+        ? selectedIds.filter((selectedId) => selectedId !== messageId)
+        : [...selectedIds, messageId]
+    );
+  };
+
+  const handleSelectAllDeletableMessages = () => {
+    setSelectedMessageIds(messages.filter(canDeleteMessage).map((message) => message.id));
+  };
+
+  const handleBulkDeleteMessages = async () => {
+    if (isDeveloper || selectedMessages.length === 0 || deletingMessageId !== null) return;
+
+    setDeletingMessageId(-1);
+    setError(null);
+    try {
+      const response = await fetch('/api/chat/messages/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedMessages.map((message) => message.id) }),
+      });
+      const result = await response.json() as ChatApiResponse;
+      if (!response.ok || !result.success || typeof result.deletedCount !== 'number') {
+        throw new Error(result.error || 'Gagal menghapus pesan.');
+      }
+
+      const deletedAt = new Date().toISOString();
+      mergeMessages(selectedMessages.map((message) => ({ ...message, message: '', deleted_at: deletedAt })));
+      setSelectedMessageIds([]);
+      setPendingBulkDelete(false);
+    } catch (deleteError: unknown) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Gagal menghapus pesan.');
+    } finally {
+      setDeletingMessageId(null);
+    }
+  };
+
   const isOwnMessage = (message: ChatMessage) => message.sender_id === currentUserId;
+  const canDeleteMessage = (message: ChatMessage) =>
+    !isDeveloper && (isOwnMessage(message) || currentUserRole === 'ADMIN');
+  const selectedMessages = messages.filter((message) => selectedMessageIds.includes(message.id));
   const getProfileHref = (message: ChatMessage) =>
     currentUserRole === 'ADMIN' ? `/admin/users/${message.sender_id}` : `/staff/${message.sender_id}`;
 
   const handleReply = (message: ChatMessage) => {
+    setOpenMessageActionsId(null);
     setReplyTarget(message);
     composerRef.current?.focus();
+  };
+
+  const handleSelectAllMessages = () => {
+    setSelectedMessageIds(messages.map((message) => message.id));
+    setOpenMessageActionsId(null);
   };
 
   const handleQuotedMessageClick = (messageId: number) => {
@@ -258,7 +331,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     highlightTimeoutRef.current = window.setTimeout(() => setHighlightedMessageId(null), 1500);
   };
 
-  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       event.currentTarget.form?.requestSubmit();
@@ -280,6 +353,41 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           Grup internal
         </div>
       </header>
+
+      {selectedMessages.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-2.5 dark:border-blue-900 dark:bg-blue-950/30">
+          <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+            {selectedMessages.length} pesan dipilih
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedMessages.length < messages.filter(canDeleteMessage).length && (
+              <button
+                type="button"
+                onClick={handleSelectAllDeletableMessages}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/50"
+              >
+                Pilih semua yang bisa dihapus
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelectedMessageIds([])}
+              className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Batal pilih
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingBulkDelete(true)}
+              disabled={deletingMessageId !== null}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Hapus dipilih
+            </button>
+          </div>
+        </div>
+      )}
 
       <div
         ref={messagesContainerRef}
@@ -311,7 +419,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         ) : (
           messages.map((message) => {
             const ownMessage = isOwnMessage(message);
-            const canDelete = !isDeveloper && (ownMessage || currentUserRole === 'ADMIN');
+            const canDelete = canDeleteMessage(message);
+            const isSelected = selectedMessageIds.includes(message.id);
             const senderName = message.username;
             const profileHref = getProfileHref(message);
 
@@ -321,7 +430,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 id={`chat-message-${message.id}`}
                 className={`flex scroll-m-4 rounded-xl transition-colors duration-500 ${
                   ownMessage ? 'justify-end' : 'justify-start'
-                } ${highlightedMessageId === message.id ? 'bg-blue-100/70 dark:bg-blue-900/30' : ''}`}
+                } ${isSelected ? 'bg-rose-100/70 dark:bg-rose-950/30' : highlightedMessageId === message.id ? 'bg-blue-100/70 dark:bg-blue-900/30' : ''}`}
               >
                 <div className="flex max-w-[92%] items-end gap-2 sm:max-w-[80%]">
                   <Link
@@ -331,12 +440,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-slate-200 text-xs font-bold uppercase text-slate-600 ring-1 ring-slate-300 transition hover:ring-blue-500 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600"
                   >
                     {message.profile_photo ? (
-                      <Image
+                      <ProtectedProfilePhoto
                         src={message.profile_photo}
                         alt=""
-                        width={32}
-                        height={32}
-                        unoptimized
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -384,50 +490,110 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                       >
                         {senderName}
                       </Link>
-                      <span className={`truncate text-[10px] ${ownMessage ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'}`}>
-                        - {formatAccountRole(message)}
-                      </span>
-                      {message.role === 'ADMIN' && (
-                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
-                          Admin
-                        </span>
-                      )}
-                      {ownMessage && (
-                        <span className="text-[9px] font-semibold uppercase tracking-wide text-blue-100">Anda</span>
-                      )}
                     </div>
                     <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.message}</p>
-                    <time
-                      className={`mt-1 block text-right text-[10px] ${ownMessage ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}
-                      dateTime={message.created_at}
-                      title={new Date(message.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}
-                    >
-                      {formatMessageTime(message.created_at)}
-                    </time>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className={`truncate text-[10px] ${ownMessage ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'}`}>
+                          {formatAccountRole(message)}
+                        </span>
+                        {message.role === 'ADMIN' && (
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                            Admin
+                          </span>
+                        )}
+                        {ownMessage && (
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-blue-100">Anda</span>
+                        )}
+                      </div>
+                      <time
+                        className={`shrink-0 text-[10px] ${ownMessage ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}
+                        dateTime={message.created_at}
+                        title={new Date(message.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}
+                      >
+                        {formatMessageTime(message.created_at)}
+                      </time>
+                    </div>
                   </article>
-                  <button
-                    type="button"
-                    onClick={() => handleReply(message)}
-                    aria-label={`Balas pesan dari ${senderName}`}
-                    title={`Balas ${senderName}`}
-                    className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
+                  <div
+                    ref={openMessageActionsId === message.id ? messageActionsRef : null}
+                    className="relative mb-1 shrink-0"
                   >
-                    <Reply className="h-4 w-4" />
-                  </button>
-                  {canDelete && (
                     <button
                       type="button"
-                      onClick={() => setPendingDeleteMessage(message)}
-                      disabled={deletingMessageId !== null}
-                      aria-label={`Hapus pesan dari ${senderName}`}
-                      title={ownMessage ? 'Hapus pesan untuk semua' : 'Admin: hapus pesan untuk semua'}
-                      className="mb-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
+                      onClick={() => setOpenMessageActionsId((openId) => openId === message.id ? null : message.id)}
+                      aria-label={`Aksi pesan dari ${senderName}`}
+                      aria-haspopup="true"
+                      aria-expanded={openMessageActionsId === message.id}
+                      title="Aksi pesan"
+                      className={`flex h-8 w-8 items-center justify-center rounded-full transition ${
+                        isSelected
+                          ? 'bg-rose-600 text-white'
+                          : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                      }`}
                     >
-                      {deletingMessageId === message.id
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
-                        : <Trash2 className="h-4 w-4" />}
+                      <MoreVertical className="h-4 w-4" />
                     </button>
-                  )}
+                    {openMessageActionsId === message.id && (
+                      <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-700 dark:bg-[#161b22]">
+                        <button
+                          type="button"
+                          onClick={() => handleReply(message)}
+                          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                          <Reply className="h-4 w-4" />
+                          Balas pesan
+                        </button>
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleToggleMessageSelection(message.id);
+                              setOpenMessageActionsId(null);
+                            }}
+                            disabled={deletingMessageId !== null}
+                            aria-pressed={isSelected}
+                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            <span className="flex h-4 w-4 items-center justify-center rounded border border-current">
+                              {isSelected && <span className="h-2 w-2 rounded-sm bg-current" />}
+                            </span>
+                            {isSelected ? 'Batalkan pilihan' : 'Pilih pesan'}
+                          </button>
+                        )}
+                        {currentUserRole === 'ADMIN' && selectedMessageIds.length < messages.length && (
+                          <button
+                            type="button"
+                            onClick={handleSelectAllMessages}
+                            disabled={deletingMessageId !== null}
+                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800"
+                          >
+                            <ListChecks className="h-4 w-4" />
+                            Pilih semua pesan di chat
+                          </button>
+                        )}
+                        {canDelete && (
+                          <>
+                            <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPendingDeleteMessage(message);
+                                setOpenMessageActionsId(null);
+                              }}
+                              disabled={deletingMessageId !== null}
+                              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:opacity-50 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                            >
+                              {deletingMessageId === message.id
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : <Trash2 className="h-4 w-4" />}
+                              Hapus pesan untuk semua
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             );
@@ -482,11 +648,14 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           </button>
         </div>
       </form>
-      {pendingDeleteMessage && (
+      {(pendingDeleteMessage || pendingBulkDelete) && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
           onKeyDown={(event) => {
-            if (event.key === 'Escape' && deletingMessageId === null) setPendingDeleteMessage(null);
+            if (event.key === 'Escape' && deletingMessageId === null) {
+              setPendingDeleteMessage(null);
+              setPendingBulkDelete(false);
+            }
           }}
         >
           <div
@@ -502,20 +671,27 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               </div>
               <div className="min-w-0">
                 <h2 id="delete-chat-message-title" className="text-base font-bold text-slate-900 dark:text-white">
-                  Hapus pesan?
+                  {pendingBulkDelete ? `Hapus ${selectedMessages.length} pesan?` : 'Hapus pesan?'}
                 </h2>
                 <p id="delete-chat-message-description" className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                  Pesan ini akan dihapus untuk semua pengguna dan tindakan ini tidak dapat dibatalkan.
+                  {pendingBulkDelete
+                    ? 'Pesan yang dipilih akan dihapus untuk semua pengguna dan tindakan ini tidak dapat dibatalkan.'
+                    : 'Pesan ini akan dihapus untuk semua pengguna dan tindakan ini tidak dapat dibatalkan.'}
                 </p>
-                <p className="mt-3 line-clamp-3 break-words rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-[#0d1117] dark:text-slate-300">
-                  {pendingDeleteMessage.message}
-                </p>
+                {pendingDeleteMessage && !pendingBulkDelete && (
+                  <p className="mt-3 line-clamp-3 break-words rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-[#0d1117] dark:text-slate-300">
+                    {pendingDeleteMessage.message}
+                  </p>
+                )}
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setPendingDeleteMessage(null)}
+                onClick={() => {
+                  setPendingDeleteMessage(null);
+                  setPendingBulkDelete(false);
+                }}
                 disabled={deletingMessageId !== null}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
               >
@@ -523,12 +699,18 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               </button>
               <button
                 type="button"
-                onClick={() => void handleDeleteMessage(pendingDeleteMessage)}
+                onClick={() => {
+                  if (pendingBulkDelete) {
+                    void handleBulkDeleteMessages();
+                  } else if (pendingDeleteMessage) {
+                    void handleDeleteMessage(pendingDeleteMessage);
+                  }
+                }}
                 disabled={deletingMessageId !== null}
                 className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {deletingMessageId === pendingDeleteMessage.id && <Loader2 className="h-4 w-4 animate-spin" />}
-                Hapus untuk semua
+                {deletingMessageId !== null && <Loader2 className="h-4 w-4 animate-spin" />}
+                {pendingBulkDelete ? `Hapus ${selectedMessages.length} pesan` : 'Hapus untuk semua'}
               </button>
             </div>
           </div>

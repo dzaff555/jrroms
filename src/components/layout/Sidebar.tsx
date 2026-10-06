@@ -22,6 +22,7 @@ import {
 import { AuthSession } from '@/types';
 import { useToast } from '../ui/Toast';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface SidebarStaff {
   id: number;
@@ -223,7 +224,7 @@ export function Sidebar({
                 className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/8 hover:text-white ${collapsed ? 'justify-center px-0' : ''}`}
               >
                 {staff.profile_photo ? (
-                  <img
+                  <ProtectedProfilePhoto
                     src={staff.profile_photo}
                     alt={`Foto profil ${staff.username}`}
                     className="h-8 w-8 shrink-0 rounded-lg border border-white/10 object-cover"
@@ -271,7 +272,7 @@ export function Sidebar({
             className={`mb-2 flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-white/8 ${collapsed ? 'justify-center px-0' : ''}`}
           >
             {user.profile_photo ? (
-              <img
+              <ProtectedProfilePhoto
                 src={user.profile_photo}
                 alt={`Foto profil ${user.username}`}
                 className="h-9 w-9 shrink-0 rounded-xl border border-blue-300/30 object-cover"

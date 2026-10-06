@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ShieldCheck, User
 import { query } from '@/lib/database/db';
 import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 import { formatIndonesianDate } from '@/lib/utils/date';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface StaffProfile {
   id: number;
@@ -72,7 +73,7 @@ export default async function StaffProfilePage({
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-5 bg-gradient-to-r from-[#0F2747] to-[#2563EB] p-6 text-white sm:flex-row sm:items-center">
             {staff.profile_photo ? (
-              <img
+              <ProtectedProfilePhoto
                 src={staff.profile_photo}
                 alt={`Foto profil ${staff.username}`}
                 className="h-24 w-24 rounded-2xl border-2 border-white/70 object-cover"

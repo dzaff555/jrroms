@@ -26,6 +26,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatIndonesianDate } from '@/lib/utils/date';
 import { ATTENDANCE_ROLES, AuthSession, AttendanceRole, UserRole, UserStatus } from '@/types';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface AdminUser {
   id: number;
@@ -462,7 +463,7 @@ export default function AdminUsersPage() {
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-2.5">
                               {u.profile_photo ? (
-                                <img
+                                <ProtectedProfilePhoto
                                   src={u.profile_photo}
                                   alt={`Foto profil ${u.username}`}
                                   className="h-8 w-8 shrink-0 rounded-xl border border-slate-200 object-cover"
@@ -687,7 +688,7 @@ export default function AdminUsersPage() {
               <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70 flex items-center justify-between gap-4">
                 <div className="flex min-w-0 items-center gap-3">
                   {viewUser.profile_photo ? (
-                    <img
+                    <ProtectedProfilePhoto
                       src={viewUser.profile_photo}
                       alt={`Foto profil ${viewUser.username}`}
                       className="h-14 w-14 shrink-0 rounded-full border border-slate-200 object-cover"

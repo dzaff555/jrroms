@@ -13,6 +13,7 @@ import { getJakartaDateString, formatIndonesianDate } from '@/lib/utils/date';
 import { ATTENDANCE_ROLES } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface AttendanceStatisticsRecord {
   id: number;
@@ -188,7 +189,7 @@ export default function AdminAttendanceStatisticsPage() {
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
                             {record.profile_photo ? (
-                              <img
+                              <ProtectedProfilePhoto
                                 src={record.profile_photo}
                                 alt={`${record.username} profile`}
                                 className="h-9 w-9 rounded-full border border-slate-200 object-cover"

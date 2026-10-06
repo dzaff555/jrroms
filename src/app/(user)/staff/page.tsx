@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Users } from 'lucide-react';
 import { query } from '@/lib/database/db';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface StaffCard {
   id: number;
@@ -65,7 +66,7 @@ export default async function StaffDirectoryPage({
                 className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 transition-colors hover:bg-slate-50"
               >
                 {member.profile_photo ? (
-                  <img
+                  <ProtectedProfilePhoto
                     src={member.profile_photo}
                     alt={`Foto profil ${member.username}`}
                     className="h-12 w-12 shrink-0 rounded-xl border border-slate-200 object-cover"

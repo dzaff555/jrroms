@@ -7,6 +7,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { ProfileForm, ProfileFormValues } from '@/components/profile/ProfileForm';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 import { AuthSession } from '@/types';
 import { useToast } from '@/components/ui/Toast';
 
@@ -146,7 +147,7 @@ export default function CompleteProfilePage() {
           <div className="space-y-5">
             <div className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               {pendingValues.profile_photo ? (
-                <img
+                <ProtectedProfilePhoto
                   src={pendingValues.profile_photo}
                   alt="Foto profil preview"
                   className="h-16 w-16 rounded-full object-cover border-2 border-white shadow-sm"

@@ -24,6 +24,7 @@ import { formatIndonesianDate, formatIndonesianDateTime, getJakartaTimeString } 
 import { useToast } from '../ui/Toast';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface InboxWarning {
   id: number;
@@ -495,7 +496,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
               className="flex items-center gap-2.5 p-1.5 pl-2.5 rounded-xl hover:bg-slate-100 transition-all cursor-pointer border border-transparent hover:border-slate-200/60"
             >
               {user?.profile_photo ? (
-                <img
+                <ProtectedProfilePhoto
                   src={user.profile_photo}
                   alt={`Foto profil ${user.username}`}
                   className="h-8 w-8 rounded-xl border border-slate-200 object-cover shadow-xs"
