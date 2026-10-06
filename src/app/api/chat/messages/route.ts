@@ -1,11 +1,7 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 import {
-  getChatPhotoPaths,
   isSupportedChatPhotoType,
   matchesChatPhotoType,
   MAX_CHAT_PHOTO_SIZE,
@@ -39,6 +35,7 @@ interface ChatMessage {
   reply_to_deleted_at: Date | null;
   image_path: string | null;
   image_type: string | null;
+  has_image: number | boolean;
   profile_photo_loaded?: number;
 }
 
@@ -65,7 +62,8 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
 
 const chatMessageSelect = `
   SELECT cm.id, cm.sender_id, u.username, u.real_name, u.profile_photo, u.role, u.attendance_role,
-    cm.message, cm.image_path, cm.image_type, cm.deleted_at, cm.created_at, cm.reply_to_id,
+    cm.message, cm.image_path, cm.image_type, (cm.image_data IS NOT NULL) AS has_image,
+    cm.deleted_at, cm.created_at, cm.reply_to_id,
     replied.sender_id AS reply_to_sender_id,
     reply_user.username AS reply_to_username,
     reply_user.role AS reply_to_role,
@@ -98,6 +96,7 @@ export async function GET(request: Request) {
             CASE WHEN cm.profile_rank = 1 THEN u.profile_photo ELSE NULL END AS profile_photo,
             (cm.profile_rank = 1) AS profile_photo_loaded,
             u.role, u.attendance_role, cm.message, cm.image_path, cm.image_type,
+            cm.has_image,
             cm.deleted_at, cm.created_at, cm.reply_to_id,
             replied.sender_id AS reply_to_sender_id,
             reply_user.username AS reply_to_username,
@@ -109,7 +108,8 @@ export async function GET(request: Request) {
             SELECT recent_messages.*,
               ROW_NUMBER() OVER (PARTITION BY sender_id ORDER BY id DESC) AS profile_rank
             FROM (
-              SELECT id, sender_id, message, image_path, image_type, deleted_at, created_at, reply_to_id
+              SELECT id, sender_id, message, image_path, image_type,
+                (image_data IS NOT NULL) AS has_image, deleted_at, created_at, reply_to_id
               FROM staff_admin_chat_messages
               ORDER BY id DESC
               LIMIT 100
@@ -154,7 +154,7 @@ export async function GET(request: Request) {
       success: true,
       data: messages.map((message) => ({
         ...message,
-        photo_url: message.image_path ? `/api/chat/messages/${message.id}/photo` : null,
+        photo_url: message.has_image || message.image_path ? `/api/chat/messages/${message.id}/photo` : null,
         image_path: undefined,
         image_type: undefined,
         reply_to: message.reply_to_id && message.reply_to_sender_id
@@ -178,7 +178,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  let uploadedPhotoPath: string | null = null;
   try {
     const access = await getChatUser({ allowDeveloper: true });
     if ('response' in access) return access.response;
@@ -253,8 +252,8 @@ export async function POST(request: Request) {
       }
     }
 
-    let imagePath: string | null = null;
     let imageType: ChatPhotoType | null = null;
+    let imageData: Buffer | null = null;
     if (photoFile) {
       if (photoFile.size < 1 || photoFile.size > MAX_CHAT_PHOTO_SIZE) {
         return NextResponse.json({ success: false, error: 'Ukuran foto maksimal 5 MB.' }, { status: 413 });
@@ -263,27 +262,20 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'Format foto harus JPEG, PNG, GIF, atau WebP.' }, { status: 415 });
       }
       imageType = photoFile.type;
-      const photoBytes = Buffer.from(await photoFile.arrayBuffer());
-      if (!matchesChatPhotoType(photoBytes, imageType)) {
+      imageData = Buffer.from(await photoFile.arrayBuffer());
+      if (!matchesChatPhotoType(imageData, imageType)) {
         return NextResponse.json({ success: false, error: 'Isi file tidak sesuai dengan format foto.' }, { status: 415 });
       }
-      imagePath = `chat/${access.session.id}/${randomUUID()}`;
-      const paths = getChatPhotoPaths(imagePath);
-      await mkdir(path.dirname(paths.absolutePath), { recursive: true });
-      uploadedPhotoPath = paths.absolutePath;
-      await writeFile(paths.absolutePath, photoBytes, { flag: 'wx' });
     }
 
     const insert = await query<{ insertId: number }>(
-      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type) VALUES (?, ?, ?, ?, ?)',
-      [access.session.id, replyToId, message, imagePath, imageType]
+      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data) VALUES (?, ?, ?, ?, ?, ?)',
+      [access.session.id, replyToId, message, null, imageType, imageData]
     );
     const messageId = insert.insertId;
     if (!messageId) {
       throw new Error('Chat message insert did not return an id.');
     }
-    uploadedPhotoPath = null;
-
     const messages = await query<ChatMessage[]>(
       `${chatMessageSelect} WHERE cm.id = ? LIMIT 1`,
       [messageId]
@@ -297,7 +289,9 @@ export async function POST(request: Request) {
       success: true,
       data: {
         ...sentMessage,
-        photo_url: sentMessage.image_path ? `/api/chat/messages/${sentMessage.id}/photo` : null,
+        photo_url: sentMessage.has_image || sentMessage.image_path
+          ? `/api/chat/messages/${sentMessage.id}/photo`
+          : null,
         image_path: undefined,
         image_type: undefined,
         reply_to: sentMessage.reply_to_id && sentMessage.reply_to_sender_id
@@ -314,11 +308,6 @@ export async function POST(request: Request) {
       },
     }, { status: 201 });
   } catch (error: unknown) {
-    if (uploadedPhotoPath) {
-      await rm(uploadedPhotoPath, { force: true }).catch((cleanupError: unknown) => {
-        console.error('[Chat Photo Upload Cleanup Error]:', cleanupError);
-      });
-    }
     console.error('[Chat messages POST Error]:', error);
     return NextResponse.json({ success: false, error: 'Gagal mengirim pesan.' }, { status: 500 });
   }

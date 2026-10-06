@@ -350,6 +350,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       { table: 'staff_admin_chat_messages', column: 'deleted_by', definition: 'INT NULL AFTER deleted_at' },
       { table: 'staff_admin_chat_messages', column: 'image_path', definition: 'VARCHAR(255) NULL AFTER message' },
       { table: 'staff_admin_chat_messages', column: 'image_type', definition: 'VARCHAR(50) NULL AFTER image_path' },
+      { table: 'staff_admin_chat_messages', column: 'image_data', definition: 'MEDIUMBLOB NULL AFTER image_type' },
     ]);
     await ensureChatDeletedAtIndex(dbPool);
     await ensureChatReplySchema(dbPool);

@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
   message VARCHAR(2000) NOT NULL,
   image_path VARCHAR(255) NULL,
   image_type VARCHAR(50) NULL,
+  image_data MEDIUMBLOB NULL,
   deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
   deleted_by INT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

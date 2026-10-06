@@ -40,7 +40,7 @@ export async function DELETE(
 
     const result = await query<{ affectedRows: number }>(
       `UPDATE staff_admin_chat_messages
-       SET message = '', image_path = NULL, image_type = NULL,
+       SET message = '', image_path = NULL, image_type = NULL, image_data = NULL,
            deleted_at = CURRENT_TIMESTAMP(6), deleted_by = ?
        WHERE id = ? AND deleted_at IS NULL`,
       [active.session.id, messageId]

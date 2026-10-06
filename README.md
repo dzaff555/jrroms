@@ -58,6 +58,9 @@ Developer task files upload directly to the Railway app and stream onto its
 persistent Volume; the app does not buffer whole files in memory. Files may use any
 format, up to 1 GB each, and are only downloadable by Admins through the authenticated
 app.
+Chat photos (up to 5 MB) are stored in MySQL so they are available across app
+instances and user devices; older photos stored only on a local app filesystem still
+require that original upload storage to remain available.
 
 Admins can create User or Developer accounts, or change an existing account's
 system role. Developer accounts do not have daily attendance and are not counted
