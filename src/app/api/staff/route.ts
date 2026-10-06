@@ -11,6 +11,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
+    const includeAll = searchParams.get('all') === 'true';
     const requestedLimit = Number.parseInt(searchParams.get('limit') || '20', 10);
     const limit = Math.min(Math.max(requestedLimit, 1), 50);
     const offset = (page - 1) * limit;
@@ -32,8 +33,8 @@ export async function GET(request: Request) {
        FROM users
        LEFT JOIN user_presence AS presence ON presence.user_id = users.id
        WHERE users.status = 'ACTIVE'
-       ORDER BY users.username ASC LIMIT ? OFFSET ?`,
-      [limit, offset]
+       ORDER BY users.username ASC${includeAll ? '' : ' LIMIT ? OFFSET ?'}`,
+      includeAll ? [] : [limit, offset]
     );
 
     return NextResponse.json({
@@ -41,7 +42,11 @@ export async function GET(request: Request) {
       data: {
         records,
         totalStaff,
-        pagination: { currentPage: page, pageSize: limit, totalPages: Math.ceil(totalStaff / limit) || 1 },
+        pagination: {
+          currentPage: page,
+          pageSize: includeAll ? totalStaff : limit,
+          totalPages: includeAll ? 1 : Math.ceil(totalStaff / limit) || 1,
+        },
       },
     });
   } catch (error: unknown) {

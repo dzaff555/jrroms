@@ -65,7 +65,7 @@ export function Sidebar({
     if (userId === undefined) return;
 
     try {
-      const response = await fetch('/api/staff?limit=8', { cache: 'no-store' });
+      const response = await fetch('/api/staff?all=true', { cache: 'no-store' });
       const data = await response.json();
       if (data.success) {
         setStaffCount(data.data.totalStaff);
@@ -317,15 +317,6 @@ export function Sidebar({
             ))}
             {staffMembers.length === 0 && !collapsed && (
               <p className="px-3 py-2 text-xs text-slate-400">Belum ada staf yang aktif.</p>
-            )}
-            {!collapsed && staffCount !== null && staffCount > staffMembers.length && (
-              <Link
-                href="/staff"
-                onClick={() => setMobileOpen(false)}
-                className="block px-3 py-2 text-xs font-semibold text-blue-300 hover:text-white"
-              >
-                Lihat semua staf
-              </Link>
             )}
         </div>
 
