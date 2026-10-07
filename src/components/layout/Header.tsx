@@ -514,7 +514,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
                   {user?.role === 'ADMIN'
                     ? 'Administrator'
                     : user?.role === 'DEVELOPER'
-                      ? 'Pengembang'
+                      ? 'Developer'
                       : user?.attendance_role || 'Pengguna'}
                 </span>
               </div>

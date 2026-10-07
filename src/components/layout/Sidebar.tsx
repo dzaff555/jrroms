@@ -180,7 +180,7 @@ export function Sidebar({
   const adminNavItems = [
     { label: 'Dasbor Admin', href: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'Chat Staf', href: '/admin/chat', icon: MessageCircle },
-    { label: 'Tugas Pengembang', href: '/admin/tasks', icon: ClipboardList },
+    { label: 'Tugas Developer', href: '/admin/tasks', icon: ClipboardList },
     { label: 'Laporan Absensi', href: '/admin/reports', icon: FileSpreadsheet },
     { label: 'Statistik Absensi', href: '/admin/attendance-statistics', icon: ChartNoAxesColumn },
     { label: 'Kelola Pengguna', href: '/admin/users', icon: Users },
@@ -241,7 +241,7 @@ export function Sidebar({
                     <ShieldCheck className="w-3 h-3 text-emerald-400" /> Portal Administrator
                   </>
                 ) : isDeveloper ? (
-                  'Portal Pengembang'
+                  'Portal Developer'
                 ) : (
                   'Absensi Pengguna'
                 )}
@@ -324,7 +324,7 @@ export function Sidebar({
                 key={staff.id}
                 href={isAdmin ? `/admin/users/${staff.id}` : `/staff/${staff.id}`}
                 onClick={() => setMobileOpen(false)}
-                title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (Anda)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Pengembang' : staff.attendance_role} · ${staff.is_online ? 'Online' : 'Offline'}` : undefined}
+                title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (Anda)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role} · ${staff.is_online ? 'Online' : 'Offline'}` : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/8 hover:text-white ${collapsed ? 'justify-center px-0' : ''}`}
               >
                 {staff.profile_photo ? (
@@ -345,7 +345,7 @@ export function Sidebar({
                         {staff.username}{isCurrentStaff(staff) ? ' (Anda)' : ''}
                       </span>
                       <span className="truncate text-[11px] text-slate-400">
-                        {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Pengembang' : staff.attendance_role}
+                        {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role}
                       </span>
                     </span>
                     <span className={`shrink-0 text-[10px] font-semibold ${staff.is_online ? 'text-emerald-300' : 'text-slate-500'}`}>
@@ -386,7 +386,7 @@ export function Sidebar({
               <div className="flex min-w-0 flex-1 flex-col text-left">
                 <span className="truncate text-sm font-semibold text-white">{user.username}</span>
                 <span className="truncate text-xs text-slate-400">
-                  {isAdmin ? 'Administrator' : isDeveloper ? 'Pengembang' : user.attendance_role || 'Staf'}
+                  {isAdmin ? 'Administrator' : isDeveloper ? 'Developer' : user.attendance_role || 'Staf'}
                 </span>
               </div>
             )}

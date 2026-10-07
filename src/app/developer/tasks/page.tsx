@@ -71,8 +71,8 @@ export default function DeveloperTasksPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-extrabold text-slate-900">Tugas Pengembang</h1>
-        <p className="mt-1 text-sm text-slate-500">Tugas dari Admin untuk semua pengembang.</p>
+        <h1 className="text-2xl font-extrabold text-slate-900">Tugas Developer</h1>
+        <p className="mt-1 text-sm text-slate-500">Tugas dari Admin untuk semua Developer.</p>
       </header>
 
       <Card className="grid gap-3 p-4 sm:grid-cols-[minmax(0,1fr)_220px]">

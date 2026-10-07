@@ -66,7 +66,7 @@ export async function GET() {
     });
   } catch (error: unknown) {
     console.error('[Admin Tasks GET Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal memuat tugas pengembang.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal memuat tugas Developer.' }, { status: 500 });
   }
 }
 
@@ -132,6 +132,6 @@ export async function POST(request: Request) {
     );
   } catch (error: unknown) {
     console.error('[Admin Tasks POST Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal membuat tugas pengembang.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal membuat tugas Developer.' }, { status: 500 });
   }
 }

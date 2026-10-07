@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     }
     if (active.role === 'DEVELOPER') {
       return NextResponse.json(
-        { success: false, error: 'Absensi harian tidak tersedia untuk peran Pengembang.' },
+        { success: false, error: 'Absensi harian tidak tersedia untuk peran Developer.' },
         { status: 403 }
       );
     }

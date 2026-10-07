@@ -90,7 +90,7 @@ export async function PATCH(
     return NextResponse.json({ success: true, message: 'Tugas berhasil diperbarui.' });
   } catch (error: unknown) {
     console.error('[Admin Task PATCH Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal memperbarui tugas pengembang.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal memperbarui tugas Developer.' }, { status: 500 });
   }
 }
 
@@ -138,11 +138,11 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: 'Tugas dan semua kiriman pengembang terkait berhasil dihapus.',
+      message: 'Tugas dan semua kiriman Developer terkait berhasil dihapus.',
       cleanupWarning: cleanupErrors.length > 0,
     });
   } catch (error: unknown) {
     console.error('[Admin Task DELETE Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal menghapus tugas pengembang.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal menghapus tugas Developer.' }, { status: 500 });
   }
 }

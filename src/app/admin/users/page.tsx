@@ -423,7 +423,7 @@ export default function AdminUsersPage() {
             >
               <option value="ALL">Semua Peran Sistem</option>
               <option value="USER">Pengguna</option>
-              <option value="DEVELOPER">Pengembang</option>
+              <option value="DEVELOPER">Developer</option>
               <option value="ADMIN">Administrator</option>
             </select>
 
@@ -518,7 +518,7 @@ export default function AdminUsersPage() {
                               variant={u.role === 'ADMIN' ? 'primary' : 'neutral'}
                               dot
                             >
-                              {u.role === 'ADMIN' ? 'Administrator' : u.role === 'DEVELOPER' ? 'Pengembang' : 'Pengguna'}
+                              {u.role === 'ADMIN' ? 'Administrator' : u.role === 'DEVELOPER' ? 'Developer' : 'Pengguna'}
                             </Badge>
                           </td>
                           <td className="py-3.5 px-4 text-center font-semibold text-slate-700">
@@ -696,7 +696,7 @@ export default function AdminUsersPage() {
                 className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
               >
                 <option value="USER">Pengguna</option>
-                <option value="DEVELOPER">Pengembang</option>
+                <option value="DEVELOPER">Developer</option>
                 <option value="ADMIN">Administrator</option>
               </select>
             </div>
@@ -780,7 +780,7 @@ export default function AdminUsersPage() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-400 block font-medium">Peran Sistem</span>
                   <span className="font-bold text-slate-800 mt-0.5 block">
-                    {viewUser.role === 'ADMIN' ? 'Administrator' : viewUser.role === 'DEVELOPER' ? 'Pengembang' : 'Pengguna'}
+                    {viewUser.role === 'ADMIN' ? 'Administrator' : viewUser.role === 'DEVELOPER' ? 'Developer' : 'Pengguna'}
                   </span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -922,7 +922,7 @@ export default function AdminUsersPage() {
                   className="w-full rounded-xl text-sm border border-slate-200 bg-white p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
                   <option value="USER">USER (Hanya akses absensi & dasbor pribadi)</option>
-                  <option value="DEVELOPER">DEVELOPER (Absensi & tugas pengembang)</option>
+                  <option value="DEVELOPER">DEVELOPER (Absensi & tugas Developer)</option>
                   <option value="ADMIN">ADMIN (Akses penuh dasbor & laporan)</option>
                 </select>
               </div>

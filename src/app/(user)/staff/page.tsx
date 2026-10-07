@@ -82,7 +82,7 @@ export default async function StaffDirectoryPage({
                     {member.role === 'ADMIN'
                       ? 'Administrator'
                       : member.role === 'DEVELOPER'
-                        ? 'Pengembang'
+                        ? 'Developer'
                         : member.attendance_role || 'Peran belum ditentukan'}
                   </span>
                 </span>

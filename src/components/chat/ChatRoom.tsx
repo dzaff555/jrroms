@@ -204,7 +204,7 @@ function formatMessageTime(value: string) {
 
 function formatAccountRole(message: Pick<ChatMessage, 'role' | 'attendance_role'>) {
   if (message.role === 'ADMIN') return 'Administrator';
-  if (message.role === 'DEVELOPER') return 'Pengembang';
+  if (message.role === 'DEVELOPER') return 'Developer';
   return message.attendance_role || 'Staf';
 }
 

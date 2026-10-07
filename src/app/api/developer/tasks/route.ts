@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'DEVELOPER') {
-      return NextResponse.json({ success: false, error: 'Akses hanya untuk pengembang.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses hanya untuk Developer.' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -87,6 +87,6 @@ export async function GET(request: Request) {
     });
   } catch (error: unknown) {
     console.error('[Developer Tasks GET Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal memuat tugas pengembang.' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Gagal memuat tugas Developer.' }, { status: 500 });
   }
 }

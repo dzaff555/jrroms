@@ -93,7 +93,7 @@ export default function AdminTasksPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Gagal membuat tugas.');
       }
-      toast.success('Tugas dibuat', 'Tugas baru tersedia untuk semua pengembang.');
+      toast.success('Tugas dibuat', 'Tugas baru tersedia untuk semua Developer.');
       setTitle('');
       setDescription('');
       setCategory('MODELLING');
@@ -142,7 +142,7 @@ export default function AdminTasksPage() {
 
   const deleteTask = async (task: DeveloperTask) => {
     const confirmed = window.confirm(
-      `Hapus tugas "${task.title}"? Semua kiriman pengembang untuk tugas ini juga akan dihapus permanen.`
+      `Hapus tugas "${task.title}"? Semua kiriman Developer untuk tugas ini juga akan dihapus permanen.`
     );
     if (!confirmed) return;
 
@@ -194,8 +194,8 @@ export default function AdminTasksPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-extrabold text-slate-900">Tugas Pengembang</h1>
-        <p className="mt-1 text-sm text-slate-500">Buat tugas dan pantau berkas yang dikirim pengembang.</p>
+        <h1 className="text-2xl font-extrabold text-slate-900">Tugas Developer</h1>
+        <p className="mt-1 text-sm text-slate-500">Buat tugas dan pantau berkas yang dikirim Developer.</p>
       </header>
 
       <Card className="p-5 sm:p-6">
@@ -231,7 +231,7 @@ export default function AdminTasksPage() {
               <span>Wajib mengunggah berkas</span>
             </label>
           </div>
-          <p className="text-xs text-slate-500">Berkas dapat berformat apa saja, maksimal 1 GB per berkas. Tugas ini akan terlihat oleh semua pengembang.</p>
+          <p className="text-xs text-slate-500">Berkas dapat berformat apa saja, maksimal 1 GB per berkas. Tugas ini akan terlihat oleh semua Developer.</p>
           <Button type="submit" isLoading={isSaving} loadingText="Menyimpan..." icon={<Plus className="h-4 w-4" />}>
             Buat Tugas
           </Button>
@@ -239,11 +239,11 @@ export default function AdminTasksPage() {
       </Card>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-bold text-slate-900">Tugas dan Kiriman Pengembang</h2>
+        <h2 className="text-lg font-bold text-slate-900">Tugas dan Kiriman Developer</h2>
         {isLoading ? (
           <Card className="p-6 text-sm text-slate-500">Memuat tugas...</Card>
         ) : tasks.length === 0 ? (
-          <EmptyState title="Belum ada tugas" description="Tugas yang dibuat akan muncul di sini dan di halaman Pengembang." icon={<ClipboardList className="h-7 w-7" />} />
+          <EmptyState title="Belum ada tugas" description="Tugas yang dibuat akan muncul di sini dan di halaman Developer." icon={<ClipboardList className="h-7 w-7" />} />
         ) : (
           tasks.map((task) => (
             <Card key={task.id} className="overflow-hidden">

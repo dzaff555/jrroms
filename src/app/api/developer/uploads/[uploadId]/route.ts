@@ -30,7 +30,7 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
     }
     if (active.role !== 'DEVELOPER') {
-      return NextResponse.json({ success: false, error: 'Akses hanya untuk pengembang.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'Akses hanya untuk Developer.' }, { status: 403 });
     }
 
     const { uploadId: uploadIdParam } = await params;

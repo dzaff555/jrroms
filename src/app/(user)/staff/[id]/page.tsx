@@ -95,7 +95,7 @@ export default async function StaffProfilePage({
                 {staff.role === 'ADMIN'
                   ? 'Administrator'
                   : staff.role === 'DEVELOPER'
-                    ? 'Pengembang'
+                    ? 'Developer'
                     : staff.attendance_role || 'Peran belum ditentukan'}
               </p>
             </div>

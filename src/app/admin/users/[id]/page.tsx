@@ -179,7 +179,7 @@ export default async function AdminStaffProfilePage({
                   <ShieldCheck className="h-4 w-4" /> Peran Sistem
                 </div>
                 <p className="mt-2 text-sm font-bold text-slate-800">
-                  {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Pengembang' : 'Pengguna'}
+                  {staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : 'Pengguna'}
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
