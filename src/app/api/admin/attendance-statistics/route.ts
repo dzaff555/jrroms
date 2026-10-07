@@ -84,7 +84,11 @@ export async function GET(request: Request) {
         ) AS created_at,
         COUNT(DISTINCT CASE WHEN a.status = 'Hadir' THEN a.attendance_date END) AS attended_days,
         COUNT(DISTINCT CASE WHEN a.status = 'Izin' THEN a.attendance_date END) AS permission_days,
-        COUNT(DISTINCT CASE WHEN a.attendance_date <= ? THEN a.attendance_date END) AS completed_attended_days
+        COUNT(DISTINCT CASE
+          WHEN a.attendance_date <= ?
+            AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)
+          THEN a.attendance_date
+        END) AS completed_attended_days
       FROM users u
       LEFT JOIN attendance a
         ON a.user_id = u.id
@@ -93,7 +97,6 @@ export async function GET(request: Request) {
           DATE(CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'))
         )
         AND a.attendance_date <= ?
-        AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)
       WHERE ${whereSql}
       GROUP BY u.id, u.username, u.attendance_role, u.profile_photo, u.created_at
       ORDER BY u.username ASC
