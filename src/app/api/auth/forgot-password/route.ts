@@ -12,19 +12,19 @@ export async function POST(request: Request) {
       );
     }
 
-    const { username, currentPassword, newPassword, confirmNewPassword } = body as Record<string, unknown>;
+    const { nip, currentPassword, newPassword, confirmNewPassword } = body as Record<string, unknown>;
     if (
-      typeof username !== 'string' ||
+      typeof nip !== 'string' ||
       typeof currentPassword !== 'string' ||
       typeof newPassword !== 'string' ||
       typeof confirmNewPassword !== 'string' ||
-      !username.trim() ||
+      !nip.trim() ||
       !currentPassword ||
       !newPassword ||
       !confirmNewPassword
     ) {
       return NextResponse.json(
-        { success: false, error: 'Nama pengguna dan semua kolom kata sandi wajib diisi.' },
+        { success: false, error: 'NIP dan semua kolom kata sandi wajib diisi.' },
         { status: 400 }
       );
     }
@@ -44,14 +44,21 @@ export async function POST(request: Request) {
     }
 
     const users = await query<{ id: number; password: string; status: string }[]>(
-      'SELECT id, password, status FROM users WHERE username = ? LIMIT 1',
-      [username.trim()]
+      'SELECT id, password, status FROM users WHERE nip = ? LIMIT 2',
+      [nip.trim()]
     );
+    if (users.length > 1) {
+      return NextResponse.json(
+        { success: false, error: 'NIP ini terdaftar pada lebih dari satu akun. Hubungi administrator untuk memperbaikinya.' },
+        { status: 409 }
+      );
+    }
+
     const user = users[0];
 
     if (!user || user.status !== 'ACTIVE' || !(await comparePassword(currentPassword, user.password))) {
       return NextResponse.json(
-        { success: false, error: 'Nama pengguna atau kata sandi saat ini salah.' },
+        { success: false, error: 'NIP atau kata sandi saat ini salah.' },
         { status: 400 }
       );
     }

@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 
 export default function ForgotPasswordPage() {
   const toast = useToast();
-  const [username, setUsername] = useState('');
+  const [nip, setNip] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
       const response = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, currentPassword, newPassword, confirmNewPassword }),
+        body: JSON.stringify({ nip, currentPassword, newPassword, confirmNewPassword }),
       });
       const data = await response.json();
 
@@ -95,7 +95,7 @@ export default function ForgotPasswordPage() {
               </div>
               <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Lupa Kata Sandi?</h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
-                Verifikasi akun dengan nama pengguna dan kata sandi saat ini.
+                Verifikasi akun dengan NIP dan kata sandi saat ini.
               </p>
             </div>
 
@@ -107,11 +107,11 @@ export default function ForgotPasswordPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <Input
-                label="Nama pengguna"
-                placeholder="Masukkan nama pengguna"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                autoComplete="username"
+                label="NIP"
+                placeholder="Masukkan NIP"
+                value={nip}
+                onChange={(event) => setNip(event.target.value)}
+                autoComplete="off"
                 required
                 autoFocus
               />
