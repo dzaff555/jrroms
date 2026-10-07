@@ -1706,11 +1706,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     const target = event.target;
     const isPhotoPreview = target instanceof Element &&
       target.closest('button[aria-label^="Perbesar foto dari "]');
+    const isVideoPreview = target instanceof Element &&
+      target.closest('button[aria-label^="Putar video dari "]');
     const isSticker = target instanceof Element &&
       target.closest('button[aria-label^="Opsi stiker dari "]');
     const isOtherInteractiveTarget = target instanceof Element &&
       target.closest('button, a, input, textarea, video, audio, [role="slider"]');
-    if (event.button !== 0 || isOtherInteractiveTarget && !isPhotoPreview && !isSticker) {
+    if (
+      event.button !== 0 ||
+      isOtherInteractiveTarget && !isPhotoPreview && !isVideoPreview && !isSticker
+    ) {
       return;
     }
     replySwipeRef.current = {
@@ -1778,6 +1783,25 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     setPhotoZoom(1);
     setPhotoOffset({ x: 0, y: 0 });
     setPhotoViewer({ url: message.media_url!, senderName: message.username });
+  };
+
+  const handleVideoPreviewClick = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    message: ChatMessage,
+    senderName: string,
+  ) => {
+    if (suppressPhotoClickRef.current === message.id) {
+      suppressPhotoClickRef.current = null;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
+    setVideoViewer({
+      url: message.media_url!,
+      senderName,
+      message,
+    });
   };
 
   const handleQuotedMessageClick = (messageId: number) => {
@@ -2571,9 +2595,11 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 )}
                 <div
                   className={`flex max-w-[92%] items-end gap-2 transition-transform duration-150 sm:max-w-[80%] ${
-                  message.is_sticker
-                    ? (ownMessage ? 'flex-row-reverse' : 'flex-row')
-                    : ''
+                  ownMessage
+                    ? 'flex-row-reverse'
+                    : message.is_sticker
+                      ? 'flex-row'
+                      : ''
                   } ${swipingMessage?.messageId === message.id ? '!transition-none' : ''}`}
                   style={{
                     transform: swipingMessage?.messageId === message.id
@@ -2685,11 +2711,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                       <div className="mb-2">
                         <button
                           type="button"
-                          onClick={() => setVideoViewer({
-                            url: message.media_url!,
-                            senderName,
-                            message,
-                          })}
+                          onClick={(event) => handleVideoPreviewClick(event, message, senderName)}
                           className="group relative flex h-36 w-56 max-w-full items-center justify-center overflow-hidden rounded-lg bg-slate-900 sm:h-44 sm:w-72"
                           aria-label={`Putar video dari ${senderName}`}
                         >
