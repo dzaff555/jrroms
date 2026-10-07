@@ -164,9 +164,9 @@ export default function AdminDashboardPage() {
         {/* =======================================================
          * 4 STATISTIC CARDS (PAGE 13)
          * ======================================================= */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 sm:gap-6">
           {isLoadingStats ? (
-            Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+            Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
           ) : (
             <>
               {/* Total User Card */}
@@ -188,6 +188,28 @@ export default function AdminDashboardPage() {
                 <div className="mt-3 flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
                   <TrendingUp className="w-3.5 h-3.5" />
                   <span>Akun Aktif</span>
+                </div>
+              </Card>
+
+              {/* Izin Card */}
+              <Card hover className="p-6">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Izin
+                  </span>
+                  <div className="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
+                    <Calendar className="w-5 h-5" />
+                  </div>
+                </div>
+                <div className="mt-4 flex items-baseline gap-2">
+                  <span className="text-3xl sm:text-4xl font-extrabold text-amber-600 tracking-tight">
+                    {stats?.permissionToday ?? 0}
+                  </span>
+                  <span className="text-xs text-slate-500 font-medium">Hari Ini</span>
+                </div>
+                <div className="mt-3 flex items-center gap-1.5 text-xs text-amber-700">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Izin tercatat</span>
                 </div>
               </Card>
 
@@ -303,6 +325,7 @@ export default function AdminDashboardPage() {
               ) : (
                 <AttendanceDonutChart
                   attended={stats?.statusDistribution.attended || 0}
+                  permission={stats?.statusDistribution.permission || 0}
                   absent={stats?.statusDistribution.absent || 0}
                 />
               )}
@@ -351,6 +374,19 @@ export default function AdminDashboardPage() {
                 }`}
               >
                 Hadir
+              </button>
+              <button
+                onClick={() => {
+                  setStatusFilter('IZIN');
+                  setCurrentPage(1);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  statusFilter === 'IZIN'
+                    ? 'bg-white text-amber-700 shadow-xs'
+                    : 'text-slate-500 hover:text-amber-700'
+                }`}
+              >
+                Izin
               </button>
               <button
                 onClick={() => {
@@ -410,7 +446,7 @@ export default function AdminDashboardPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {records.map((r, index) => {
-                        const isAttended = r.status === 'Hadir';
+                        const hasAttendance = r.status === 'Hadir' || r.status === 'Izin';
                         return (
                           <tr key={r.user_id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-3.5 px-4 text-center text-slate-400 font-medium">
@@ -429,7 +465,7 @@ export default function AdminDashboardPage() {
                               {r.roblox_username}
                             </td>
                             <td className="py-3.5 px-4 whitespace-nowrap">
-                              {isAttended ? (
+                              {hasAttendance ? (
                                 <span className="font-semibold text-blue-600">
                                   {formatIndonesianTime(r.attendance_time)}
                                 </span>
@@ -438,7 +474,10 @@ export default function AdminDashboardPage() {
                               )}
                             </td>
                             <td className="py-3.5 px-4 text-center">
-                              <Badge variant={isAttended ? 'success' : 'danger'} dot>
+                              <Badge
+                                variant={r.status === 'Izin' ? 'warning' : hasAttendance ? 'success' : 'danger'}
+                                dot
+                              >
                                 {r.status}
                               </Badge>
                             </td>
@@ -494,7 +533,12 @@ export default function AdminDashboardPage() {
                     <p className="text-xs text-slate-500">ID User: #{selectedRecord.user_id}</p>
                   </div>
                 </div>
-                <Badge variant={selectedRecord.status === 'Hadir' ? 'success' : 'danger'} dot>
+                <Badge
+                  variant={selectedRecord.status === 'Izin'
+                    ? 'warning'
+                    : selectedRecord.status === 'Hadir' ? 'success' : 'danger'}
+                  dot
+                >
                   {selectedRecord.status}
                 </Badge>
               </div>
@@ -531,11 +575,19 @@ export default function AdminDashboardPage() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-400 block font-medium">Jam Absen</span>
                   <span className="font-semibold text-blue-600 mt-0.5 block">
-                    {selectedRecord.status === 'Hadir'
+                    {selectedRecord.status === 'Hadir' || selectedRecord.status === 'Izin'
                       ? formatIndonesianTime(selectedRecord.attendance_time)
                       : 'Belum Melakukan Absen'}
                   </span>
                 </div>
+                {selectedRecord.status === 'Izin' && (
+                  <div className="col-span-2 p-3 bg-amber-50 rounded-xl border border-amber-100">
+                    <span className="text-slate-500 block font-medium">Alasan Izin</span>
+                    <span className="font-semibold text-slate-800 mt-0.5 block whitespace-pre-wrap">
+                      {selectedRecord.attendance_reason || '-'}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="pt-2 flex justify-end">

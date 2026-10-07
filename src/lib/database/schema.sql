@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS attendance (
   attendance_date DATE NOT NULL,
   attendance_time TIME NOT NULL,
   status VARCHAR(20) NOT NULL DEFAULT 'Hadir',
+  attendance_reason VARCHAR(1000) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_attendance_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT unique_user_daily_attendance UNIQUE (user_id, attendance_date),

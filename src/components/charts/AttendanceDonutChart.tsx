@@ -4,20 +4,23 @@ import React from 'react';
 
 export interface AttendanceDonutChartProps {
   attended: number;
+  permission: number;
   absent: number;
 }
 
-export function AttendanceDonutChart({ attended, absent }: AttendanceDonutChartProps) {
-  const total = attended + absent;
+export function AttendanceDonutChart({ attended, permission, absent }: AttendanceDonutChartProps) {
+  const total = attended + permission + absent;
   const attendedPct = total > 0 ? Math.round((attended / total) * 100) : 0;
-  const absentPct = total > 0 ? 100 - attendedPct : 0;
+  const permissionPct = total > 0 ? Math.round((permission / total) * 100) : 0;
+  const absentPct = Math.max(0, 100 - attendedPct - permissionPct);
 
   // SVG circle calculations
   const size = 160;
   const strokeWidth = 22;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const attendedOffset = circumference - (attendedPct / 100) * circumference;
+  const attendedLength = (attendedPct / 100) * circumference;
+  const permissionLength = (permissionPct / 100) * circumference;
 
   return (
     <div className="flex flex-col items-center justify-center p-2">
@@ -53,9 +56,21 @@ export function AttendanceDonutChart({ attended, absent }: AttendanceDonutChartP
             fill="transparent"
             stroke="#2563EB"
             strokeWidth={strokeWidth}
-            strokeDasharray={circumference}
-            strokeDashoffset={attendedOffset}
+            strokeDasharray={`${attendedLength} ${circumference - attendedLength}`}
+            strokeDashoffset={0}
             strokeLinecap="round"
+            className="transition-all duration-700 ease-out"
+          />
+          {/* Permission segment */}
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="transparent"
+            stroke="#F59E0B"
+            strokeWidth={strokeWidth}
+            strokeDasharray={`${permissionLength} ${circumference - permissionLength}`}
+            strokeDashoffset={-attendedLength}
             className="transition-all duration-700 ease-out"
           />
         </svg>
@@ -78,6 +93,14 @@ export function AttendanceDonutChart({ attended, absent }: AttendanceDonutChartP
           <div className="flex flex-col">
             <span className="font-semibold text-slate-700">Hadir</span>
             <span className="text-[11px] text-slate-500">{attended} ({attendedPct}%)</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="w-3 h-3 rounded-full bg-amber-500 shadow-xs" />
+          <div className="flex flex-col">
+            <span className="font-semibold text-slate-700">Izin</span>
+            <span className="text-[11px] text-slate-500">{permission} ({permissionPct}%)</span>
           </div>
         </div>
 

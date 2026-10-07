@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     const dataSql = `
       SELECT id, user_id, name, attendance_role, discord_username, roblox_username, 
              DATE_FORMAT(attendance_date, '%Y-%m-%d') as attendance_date, 
-             attendance_time, status, created_at 
+             attendance_time, status, attendance_reason, created_at
       FROM attendance 
       ${whereClause} 
       ORDER BY attendance_date DESC, attendance_time DESC 

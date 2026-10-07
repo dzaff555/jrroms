@@ -137,7 +137,9 @@ export default function UserDashboardPage() {
 
             <p className="text-sm sm:text-base text-slate-200/90 leading-relaxed">
               {hasAttended
-                ? 'Terima kasih, Anda telah mengisi kehadiran untuk hari ini. Tetap semangat menjalankan aktivitas!'
+                ? todayAttendance?.status === 'Izin'
+                  ? 'Izin Anda untuk hari ini sudah tercatat.'
+                  : 'Terima kasih, Anda telah mengisi kehadiran untuk hari ini. Tetap semangat menjalankan aktivitas!'
                 : 'Jangan lupa untuk melakukan absensi kehadiran Anda hari ini sebelum batas waktu berakhir.'}
             </p>
           </div>
@@ -177,8 +179,11 @@ export default function UserDashboardPage() {
             <CardContent className="p-5">
               <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <span className="text-sm font-medium text-slate-700">Status</span>
-                <Badge variant={hasAttended ? 'success' : 'danger'} dot>
-                  {hasAttended ? 'Sudah Absen' : 'Belum Absen'}
+                <Badge
+                  variant={!hasAttended ? 'danger' : todayAttendance?.status === 'Izin' ? 'warning' : 'success'}
+                  dot
+                >
+                  {hasAttended ? todayAttendance?.status || 'Sudah Absen' : 'Belum Absen'}
                 </Badge>
               </div>
               {!hasAttended && attendanceWindowOpen && (
@@ -229,11 +234,11 @@ export default function UserDashboardPage() {
               </div>
 
               <Badge
-                variant={hasAttended ? 'success' : 'danger'}
+                variant={!hasAttended ? 'danger' : todayAttendance?.status === 'Izin' ? 'warning' : 'success'}
                 dot
                 className="text-xs sm:text-sm px-3 py-1.5"
               >
-                {hasAttended ? 'Sudah Absen' : 'Belum Absen'}
+                {hasAttended ? todayAttendance?.status || 'Sudah Absen' : 'Belum Absen'}
               </Badge>
             </CardHeader>
 
@@ -241,14 +246,24 @@ export default function UserDashboardPage() {
               {hasAttended && todayAttendance ? (
                 /* Already Attended State */
                 <div className="space-y-6 animate-fade-in">
-                  <div className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-emerald-800">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <div className={`flex items-center gap-3 p-4 rounded-2xl border ${
+                    todayAttendance.status === 'Izin'
+                      ? 'bg-amber-50 border-amber-200/80 text-amber-800'
+                      : 'bg-emerald-50 border-emerald-200/80 text-emerald-800'
+                  }`}>
+                    <div className={`w-10 h-10 rounded-xl text-white flex items-center justify-center shrink-0 shadow-sm ${
+                      todayAttendance.status === 'Izin' ? 'bg-amber-600' : 'bg-emerald-600'
+                    }`}>
                       <CheckCircle2 className="w-6 h-6" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold">Kehadiran Hari Ini Telah Terverifikasi</h4>
-                      <p className="text-xs text-emerald-700 mt-0.5">
-                        Data absensi Anda telah disimpan di basis data server.
+                      <h4 className="text-sm font-bold">
+                        {todayAttendance.status === 'Izin' ? 'Izin Hari Ini Telah Tercatat' : 'Kehadiran Hari Ini Telah Terverifikasi'}
+                      </h4>
+                      <p className="text-xs mt-0.5">
+                        {todayAttendance.status === 'Izin'
+                          ? 'Pengajuan izin Anda telah disimpan di basis data server.'
+                          : 'Data absensi Anda telah disimpan di basis data server.'}
                       </p>
                     </div>
                   </div>
@@ -263,7 +278,9 @@ export default function UserDashboardPage() {
                     </div>
 
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70">
-                      <span className="text-xs text-slate-500 font-medium block">Jam Absen (WIB)</span>
+                      <span className="text-xs text-slate-500 font-medium block">
+                        {todayAttendance.status === 'Izin' ? 'Waktu Pengajuan (WIB)' : 'Jam Absen (WIB)'}
+                      </span>
                       <span className="text-sm font-bold text-blue-700 mt-1 flex items-center gap-1.5">
                         <Clock className="w-4 h-4 text-blue-600" />
                         {formatIndonesianTime(todayAttendance.attendance_time)}
@@ -293,10 +310,22 @@ export default function UserDashboardPage() {
 
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/70">
                       <span className="text-xs text-slate-500 font-medium block">Status</span>
-                      <span className="text-sm font-bold text-emerald-700 mt-1 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Hadir
+                      <span className={`text-sm font-bold mt-1 flex items-center gap-1.5 ${
+                        todayAttendance.status === 'Izin' ? 'text-amber-700' : 'text-emerald-700'
+                      }`}>
+                        <CheckCircle2 className={`w-4 h-4 ${
+                          todayAttendance.status === 'Izin' ? 'text-amber-600' : 'text-emerald-600'
+                        }`} /> {todayAttendance.status}
                       </span>
                     </div>
+                    {todayAttendance.status === 'Izin' && todayAttendance.attendance_reason && (
+                      <div className="p-4 rounded-xl bg-amber-50 border border-amber-200/70 sm:col-span-2 lg:col-span-3">
+                        <span className="text-xs text-slate-500 font-medium block">Alasan Izin</span>
+                        <span className="text-sm font-medium text-slate-800 mt-1 block whitespace-pre-wrap">
+                          {todayAttendance.attendance_reason}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -392,7 +421,7 @@ export default function UserDashboardPage() {
                           {formatIndonesianTime(r.attendance_time)}
                         </td>
                         <td className="py-3 px-4">
-                          <Badge variant="success" dot>
+                          <Badge variant={r.status === 'Izin' ? 'warning' : 'success'} dot>
                             {r.status}
                           </Badge>
                         </td>

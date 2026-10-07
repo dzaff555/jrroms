@@ -21,6 +21,7 @@ export interface AttendanceReportRecord {
   attendance_date: string;
   attendance_time: string;
   status: string;
+  attendance_reason: string | null;
   username: string;
   profile_photo: string | null;
 }
@@ -82,7 +83,7 @@ function buildAttendanceReportQuery(filters: AttendanceReportFilters): Attendanc
   let fromSql: string;
   let empty = false;
 
-  if (!['ALL', 'Hadir', 'Belum Absen'].includes(status)) {
+  if (!['ALL', 'Hadir', 'Izin', 'Belum Absen'].includes(status)) {
     throw new RangeError('Filter status tidak valid.');
   }
   if (attendanceRole !== 'ALL' && !isAttendanceRole(attendanceRole)) {
@@ -187,6 +188,7 @@ function getReportSelect(isAbsent: boolean): string {
         DATE_FORMAT(d.report_date, '%Y-%m-%d') AS attendance_date,
         '-' AS attendance_time,
         'Belum Absen' AS status,
+        NULL AS attendance_reason,
         u.username,
         u.profile_photo
     `;
@@ -203,6 +205,7 @@ function getReportSelect(isAbsent: boolean): string {
       DATE_FORMAT(a.attendance_date, '%Y-%m-%d') AS attendance_date,
       a.attendance_time,
       a.status,
+      a.attendance_reason,
       u.username,
       u.profile_photo
   `;

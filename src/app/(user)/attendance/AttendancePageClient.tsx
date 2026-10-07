@@ -42,6 +42,8 @@ export default function AttendancePage() {
   const [attendanceRole, setAttendanceRole] = useState('');
   const [discordUsername, setDiscordUsername] = useState('');
   const [robloxUsername, setRobloxUsername] = useState('');
+  const [attendanceStatus, setAttendanceStatus] = useState<'Hadir' | 'Izin' | ''>('');
+  const [attendanceReason, setAttendanceReason] = useState('');
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   const [isLoading, setIsLoading] = useState(true);
@@ -127,11 +129,9 @@ export default function AttendancePage() {
     })();
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitAttendance = async () => {
     setErrors({});
 
-    // Client-side field validations
     const formErrors: { [key: string]: string } = {};
     if (!name.trim()) formErrors.name = 'Nama lengkap wajib diisi.';
     if (!isAttendanceRole(attendanceRole)) {
@@ -139,10 +139,14 @@ export default function AttendancePage() {
     }
     if (!discordUsername.trim()) formErrors.discordUsername = 'Nama pengguna Discord wajib diisi.';
     if (!robloxUsername.trim()) formErrors.robloxUsername = 'Nama pengguna Roblox wajib diisi.';
+    if (!attendanceStatus) formErrors.status = 'Silakan pilih Hadir atau Izin.';
+    if (attendanceStatus === 'Izin' && !attendanceReason.trim()) {
+      formErrors.attendance_reason = 'Alasan izin wajib diisi.';
+    }
 
     if (Object.keys(formErrors).length > 0) {
       setErrors(formErrors);
-      toast.warning('Form Belum Lengkap', 'Silakan periksa kembali field yang berwarna merah.');
+      toast.warning('Form Belum Lengkap', 'Pilih status absensi dan lengkapi data yang wajib diisi.');
       return;
     }
 
@@ -157,6 +161,8 @@ export default function AttendancePage() {
           attendance_role: attendanceRole,
           discord_username: discordUsername.trim(),
           roblox_username: robloxUsername.trim(),
+          status: attendanceStatus,
+          attendance_reason: attendanceStatus === 'Izin' ? attendanceReason.trim() : null,
         }),
       });
 
@@ -171,9 +177,11 @@ export default function AttendancePage() {
         return;
       }
 
-      // Successful attendance recording
       setSubmittedData(data.data);
-      toast.success('Absensi Berhasil!', 'Kehadiran Anda telah dicatat hari ini.');
+      toast.success(
+        'Absensi Berhasil!',
+        attendanceStatus === 'Izin' ? 'Izin Anda telah dicatat hari ini.' : 'Kehadiran Anda telah dicatat hari ini.'
+      );
     } catch (err: unknown) {
       const errText = err instanceof Error ? err.message : 'Koneksi ke server gagal.';
       toast.error('Gagal', errText);
@@ -182,34 +190,13 @@ export default function AttendancePage() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitAttendance();
+  };
+
   const handleConfirmAttendance = async () => {
-    setIsSubmitting(true);
-    try {
-      const res = await fetch('/api/attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          attendance_role: attendanceRole,
-          discord_username: discordUsername.trim(),
-          roblox_username: robloxUsername.trim(),
-        }),
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        toast.error('Absensi Gagal', data.error || 'Gagal menyimpan absensi.');
-        return;
-      }
-
-      setSubmittedData(data.data);
-      toast.success('Absensi Berhasil!', 'Kehadiran Anda telah dicatat hari ini.');
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Koneksi ke server gagal.';
-      toast.error('Gagal', message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    await submitAttendance();
   };
 
   return (
@@ -305,16 +292,32 @@ export default function AttendancePage() {
                 <div className="p-4 rounded-xl bg-white border border-slate-200/80 shadow-2xs sm:col-span-2 flex items-center justify-between">
                   <div>
                     <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-                      Waktu Kehadiran (WIB)
+                      {submittedData.status === 'Izin' ? 'Waktu Pengajuan (WIB)' : 'Waktu Kehadiran (WIB)'}
                     </span>
                     <span className="text-base font-extrabold text-blue-600 mt-0.5 block">
                       {formatIndonesianTime(submittedData.attendance_time)}
                     </span>
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Hadir
+                  <span className={`px-3 py-1 rounded-full font-bold text-xs flex items-center gap-1.5 ${
+                    submittedData.status === 'Izin'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-emerald-100 text-emerald-800'
+                  }`}>
+                    <CheckCircle2 className={`w-4 h-4 ${
+                      submittedData.status === 'Izin' ? 'text-amber-600' : 'text-emerald-600'
+                    }`} /> {submittedData.status}
                   </span>
                 </div>
+                {submittedData.status === 'Izin' && submittedData.attendance_reason && (
+                  <div className="p-4 rounded-xl bg-white border border-amber-200 shadow-2xs sm:col-span-2">
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
+                      Alasan Izin
+                    </span>
+                    <span className="text-sm font-medium text-slate-800 mt-1 block whitespace-pre-wrap">
+                      {submittedData.attendance_reason}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Action Back Button */}
@@ -363,6 +366,18 @@ export default function AttendancePage() {
                   <span className="text-slate-500">Roblox:</span>
                   <span className="font-mono font-semibold text-slate-800">{existingAttendance.roblox_username}</span>
                 </div>
+                <div className="flex justify-between py-1 border-b border-slate-200/60">
+                  <span className="text-slate-500">Status:</span>
+                  <span className="font-bold text-slate-800">{existingAttendance.status}</span>
+                </div>
+                {existingAttendance.status === 'Izin' && (
+                  <div className="py-1 border-b border-slate-200/60">
+                    <span className="text-slate-500 block">Alasan Izin:</span>
+                    <span className="font-medium text-slate-800 block mt-1 whitespace-pre-wrap">
+                      {existingAttendance.attendance_reason}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between py-1 border-b border-slate-200/60">
                   <span className="text-slate-500">Tanggal:</span>
                   <span className="font-bold text-slate-800">{formatIndonesianDate(existingAttendance.attendance_date)}</span>
@@ -569,6 +584,68 @@ export default function AttendancePage() {
               <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Nama pengguna Discord</p>
               <p className="mt-1 break-words text-sm font-bold text-slate-800">{discordUsername || '-'}</p>
             </div>
+            <div className="space-y-1.5 sm:col-span-2">
+              <label htmlFor="attendance-status-confirm" className="block text-xs font-semibold text-slate-700">
+                Pilih Status Absensi <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="attendance-status-confirm"
+                value={attendanceStatus}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setAttendanceStatus(value === 'Hadir' || value === 'Izin' ? value : '');
+                  if (errors.status) setErrors((previous) => ({ ...previous, status: '' }));
+                  if (value !== 'Izin') {
+                    setAttendanceReason('');
+                    if (errors.attendance_reason) {
+                      setErrors((previous) => ({ ...previous, attendance_reason: '' }));
+                    }
+                  }
+                }}
+                aria-invalid={Boolean(errors.status)}
+                className={`w-full rounded-xl border bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-2 ${
+                  errors.status
+                    ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+                    : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
+                }`}
+                required
+              >
+                <option value="" disabled>Pilih Hadir atau Izin</option>
+                <option value="Hadir">Hadir</option>
+                <option value="Izin">Izin</option>
+              </select>
+              {errors.status && <p className="text-xs text-red-600">{errors.status}</p>}
+            </div>
+            {attendanceStatus === 'Izin' && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <label htmlFor="attendance-reason-confirm" className="block text-xs font-semibold text-slate-700">
+                  Alasan Izin <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  id="attendance-reason-confirm"
+                  value={attendanceReason}
+                  onChange={(event) => {
+                    setAttendanceReason(event.target.value);
+                    if (errors.attendance_reason) {
+                      setErrors((previous) => ({ ...previous, attendance_reason: '' }));
+                    }
+                  }}
+                  aria-invalid={Boolean(errors.attendance_reason)}
+                  maxLength={1000}
+                  rows={3}
+                  placeholder="Tuliskan alasan izin"
+                  className={`w-full resize-y rounded-xl border bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-2 ${
+                    errors.attendance_reason
+                      ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+                      : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100'
+                  }`}
+                  required
+                />
+                {errors.attendance_reason && (
+                  <p className="text-xs text-red-600">{errors.attendance_reason}</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">

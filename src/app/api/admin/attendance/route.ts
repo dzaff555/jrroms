@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search')?.trim() || '';
-    const status = searchParams.get('status')?.trim() || 'ALL'; // 'ALL', 'HADIR', 'BELUM_ABSEN'
+    const status = searchParams.get('status')?.trim() || 'ALL';
     const page = parseInt(searchParams.get('page') || '1', 10);
     const limit = parseInt(searchParams.get('limit') || '10', 10);
     const offset = (page - 1) * limit;
@@ -37,7 +37,9 @@ export async function GET(request: Request) {
     }
 
     if (status === 'HADIR') {
-      baseSql += ' AND a.id IS NOT NULL';
+      baseSql += " AND a.status = 'Hadir'";
+    } else if (status === 'IZIN') {
+      baseSql += " AND a.status = 'Izin'";
     } else if (status === 'BELUM_ABSEN') {
       baseSql += ' AND a.id IS NULL';
     }
@@ -58,7 +60,8 @@ export async function GET(request: Request) {
         COALESCE(a.roblox_username, '-') as roblox_username,
         ? as attendance_date,
         COALESCE(a.attendance_time, '-') as attendance_time,
-        CASE WHEN a.id IS NOT NULL THEN 'Hadir' ELSE 'Belum Absen' END as status,
+        CASE WHEN a.id IS NOT NULL THEN a.status ELSE 'Belum Absen' END as status,
+        a.attendance_reason,
         a.id as attendance_id
       ${baseSql}
       ORDER BY (CASE WHEN a.id IS NOT NULL THEN 0 ELSE 1 END), a.attendance_time DESC, u.username ASC

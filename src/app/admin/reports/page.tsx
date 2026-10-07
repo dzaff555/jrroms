@@ -25,6 +25,7 @@ type AttendanceReportRecord = {
   attendance_date: string;
   attendance_time: string;
   status: string;
+  attendance_reason: string | null;
   username: string;
   profile_photo?: string | null;
 };
@@ -237,6 +238,7 @@ export default function AdminReportsPage() {
                   className="w-full rounded-xl text-sm border border-slate-200 bg-white px-3.5 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 cursor-pointer"
                 >
                   <option value="Hadir">Hadir</option>
+                  <option value="Izin">Izin</option>
                   <option value="Belum Absen">Belum Absen</option>
                 </select>
               </div>
@@ -283,7 +285,7 @@ export default function AdminReportsPage() {
 
         {/* Reports Table */}
         {isLoading ? (
-          <TableSkeleton rows={8} cols={8} />
+          <TableSkeleton rows={8} cols={10} />
         ) : records.length === 0 ? (
           <EmptyState
             title="Tidak Ada Laporan Ditemukan"
@@ -309,6 +311,7 @@ export default function AdminReportsPage() {
                       <th className="py-3.5 px-4">Roblox</th>
                       <th className="py-3.5 px-4">Jam Absen</th>
                       <th className="py-3.5 px-4 text-center">Status</th>
+                      <th className="py-3.5 px-4">Alasan Izin</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -352,9 +355,17 @@ export default function AdminReportsPage() {
                           {r.attendance_time === '-' ? '-' : formatIndonesianTime(r.attendance_time)}
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <Badge variant={r.status === 'Belum Absen' ? 'danger' : 'success'} dot>
+                          <Badge
+                            variant={r.status === 'Belum Absen'
+                              ? 'danger'
+                              : r.status === 'Izin' ? 'warning' : 'success'}
+                            dot
+                          >
                             {r.status}
                           </Badge>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600">
+                          {r.attendance_reason || '-'}
                         </td>
                       </tr>
                     ))}

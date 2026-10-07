@@ -154,7 +154,7 @@ export default function AttendanceHistoryPage() {
 
         {/* History Table / Responsive Cards */}
         {isLoading ? (
-          <TableSkeleton rows={5} cols={7} />
+          <TableSkeleton rows={5} cols={9} />
         ) : records.length === 0 ? (
           <EmptyState
             title="Belum Ada Riwayat Absensi"
@@ -186,6 +186,7 @@ export default function AttendanceHistoryPage() {
                       <th className="py-3.5 px-4">Roblox</th>
                       <th className="py-3.5 px-4">Jam Absen</th>
                       <th className="py-3.5 px-4 text-center">Status</th>
+                      <th className="py-3.5 px-4">Alasan Izin</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -212,9 +213,12 @@ export default function AttendanceHistoryPage() {
                           {formatIndonesianTime(r.attendance_time)}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <Badge variant="success" dot>
+                          <Badge variant={r.status === 'Izin' ? 'warning' : 'success'} dot>
                             {r.status}
                           </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">
+                          {r.attendance_reason || '-'}
                         </td>
                       </tr>
                     ))}
@@ -234,7 +238,7 @@ export default function AttendanceHistoryPage() {
                     <span className="text-xs font-bold text-slate-400">
                       #{(currentPage - 1) * 10 + index + 1}
                     </span>
-                    <Badge variant="success" dot>
+                    <Badge variant={r.status === 'Izin' ? 'warning' : 'success'} dot>
                       {r.status}
                     </Badge>
                   </div>
@@ -273,6 +277,12 @@ export default function AttendanceHistoryPage() {
                       <span className="text-slate-500">Roblox:</span>
                       <span className="font-mono text-slate-800">{r.roblox_username}</span>
                     </div>
+                    {r.attendance_reason && (
+                      <div className="space-y-1">
+                        <span className="text-slate-500">Alasan Izin:</span>
+                        <p className="font-medium text-slate-800 whitespace-pre-wrap">{r.attendance_reason}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

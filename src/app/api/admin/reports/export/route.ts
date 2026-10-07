@@ -36,6 +36,7 @@ export async function GET(request: Request) {
       'Roblox',
       'Jam Absen',
       'Status',
+      'Alasan Izin',
     ];
 
     const escapeCsv = (val: unknown) => {
@@ -60,6 +61,7 @@ export async function GET(request: Request) {
       escapeCsv(row.roblox_username),
       escapeCsv(row.attendance_time),
       escapeCsv(row.status),
+      escapeCsv(row.attendance_reason),
     ]);
 
     const csvString = [

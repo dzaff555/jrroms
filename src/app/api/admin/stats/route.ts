@@ -23,14 +23,19 @@ export async function GET() {
     const totalUsers = totalUsersResult[0]?.count || 0;
 
     // 2. Total Attended Today
-    const attendedResult = await query<{ count: number }[]>(
-      'SELECT COUNT(DISTINCT user_id) as count FROM attendance WHERE attendance_date = ?',
+    const attendanceResult = await query<{ attended: number; permission: number }[]>(
+      `SELECT
+        COUNT(DISTINCT CASE WHEN status = 'Hadir' THEN user_id END) AS attended,
+        COUNT(DISTINCT CASE WHEN status = 'Izin' THEN user_id END) AS permission
+       FROM attendance
+       WHERE attendance_date = ?`,
       [todayDate]
     );
-    const attendedToday = attendedResult[0]?.count || 0;
+    const attendedToday = Number(attendanceResult[0]?.attended || 0);
+    const permissionToday = Number(attendanceResult[0]?.permission || 0);
 
-    // 3. Absent Today
-    const notAttendedToday = Math.max(0, totalUsers - attendedToday);
+    // 3. Users with no attendance record today
+    const notAttendedToday = Math.max(0, totalUsers - attendedToday - permissionToday);
 
     // 4. Attendance Rate
     const attendanceRate = totalUsers > 0 ? parseFloat(((attendedToday / totalUsers) * 100).toFixed(1)) : 0;
@@ -40,7 +45,7 @@ export async function GET() {
     const recentDaysTrend = await Promise.all(
       attendanceDays.map(async (d) => {
         const countRes = await query<{ count: number }[]>(
-          'SELECT COUNT(DISTINCT user_id) as count FROM attendance WHERE attendance_date = ?',
+          "SELECT COUNT(DISTINCT user_id) as count FROM attendance WHERE attendance_date = ? AND status = 'Hadir'",
           [d.date]
         );
         return {
@@ -54,11 +59,13 @@ export async function GET() {
     const statsData: DashboardStats = {
       totalUsers,
       attendedToday,
+      permissionToday,
       notAttendedToday,
       attendanceRate,
       recentDaysTrend,
       statusDistribution: {
         attended: attendedToday,
+        permission: permissionToday,
         absent: notAttendedToday,
       },
     };

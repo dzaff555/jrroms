@@ -29,7 +29,14 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { name, attendance_role, discord_username, roblox_username } = body;
+    const {
+      name,
+      attendance_role,
+      discord_username,
+      roblox_username,
+      status,
+      attendance_reason,
+    } = body;
 
     // Field validations
     const errors: Record<string, string> = {};
@@ -37,6 +44,10 @@ export async function POST(request: Request) {
     if (!isAttendanceRole(attendance_role)) errors.attendance_role = 'Silakan pilih peran yang valid.';
     if (!discord_username || !discord_username.trim()) errors.discord_username = 'Nama pengguna Discord wajib diisi.';
     if (!roblox_username || !roblox_username.trim()) errors.roblox_username = 'Nama pengguna Roblox wajib diisi.';
+    if (status !== 'Hadir' && status !== 'Izin') errors.status = 'Silakan pilih Hadir atau Izin.';
+    const reason = typeof attendance_reason === 'string' ? attendance_reason.trim() : '';
+    if (status === 'Izin' && !reason) errors.attendance_reason = 'Alasan izin wajib diisi.';
+    if (reason.length > 1000) errors.attendance_reason = 'Alasan izin maksimal 1000 karakter.';
 
     if (Object.keys(errors).length > 0) {
       return NextResponse.json(
@@ -64,8 +75,8 @@ export async function POST(request: Request) {
     // Insert attendance record
     try {
       const result = await query<{ insertId: number }>(
-        `INSERT INTO attendance (user_id, name, attendance_role, discord_username, roblox_username, attendance_date, attendance_time, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO attendance (user_id, name, attendance_role, discord_username, roblox_username, attendance_date, attendance_time, status, attendance_reason)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           session.id,
           name.trim(),
@@ -74,7 +85,8 @@ export async function POST(request: Request) {
           roblox_username.trim(),
           todayDate,
           todayTime,
-          'Hadir',
+          status,
+          status === 'Izin' ? reason : null,
         ]
       );
 
@@ -87,7 +99,8 @@ export async function POST(request: Request) {
         roblox_username: roblox_username.trim(),
         attendance_date: todayDate,
         attendance_time: todayTime,
-        status: 'Hadir',
+        status,
+        attendance_reason: status === 'Izin' ? reason : null,
         created_at: new Date().toISOString(),
       };
 

@@ -17,6 +17,7 @@ interface StaffProfile {
   discord_username: string | null;
   joined_at: string;
   attendance_count: number;
+  permission_count: number;
   weekend_attendance_count: number;
   warning_count: number;
   last_attendance: string | null;
@@ -43,7 +44,9 @@ export default async function StaffProfilePage({
       (SELECT COUNT(*) FROM attendance a
        WHERE a.user_id = u.id AND a.status = 'Hadir') AS attendance_count,
       (SELECT COUNT(*) FROM attendance a
-       WHERE a.user_id = u.id AND a.status = 'Hadir'
+       WHERE a.user_id = u.id AND a.status = 'Izin') AS permission_count,
+      (SELECT COUNT(*) FROM attendance a
+       WHERE a.user_id = u.id AND a.status IN ('Hadir', 'Izin')
          AND a.attendance_date BETWEEN DATE(
            CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00')
          ) AND ?
@@ -135,6 +138,13 @@ export default async function StaffProfilePage({
                   </div>
                   <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.attendance_count)}</p>
                   <p className="mt-1 text-xs text-slate-500">kali tercatat hadir</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <CalendarDays className="h-4 w-4 text-amber-600" /> Total Izin
+                  </div>
+                  <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.permission_count)}</p>
+                  <p className="mt-1 text-xs text-slate-500">kali tercatat izin</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">

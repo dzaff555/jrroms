@@ -13,6 +13,7 @@ interface AttendanceStatisticsRecord {
   profile_photo: string | null;
   created_at: string;
   attended_days: number;
+  permission_days: number;
   completed_attended_days: number;
 }
 
@@ -81,7 +82,8 @@ export async function GET(request: Request) {
           CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
           '%Y-%m-%d %H:%i:%s'
         ) AS created_at,
-        COUNT(DISTINCT a.attendance_date) AS attended_days,
+        COUNT(DISTINCT CASE WHEN a.status = 'Hadir' THEN a.attendance_date END) AS attended_days,
+        COUNT(DISTINCT CASE WHEN a.status = 'Izin' THEN a.attendance_date END) AS permission_days,
         COUNT(DISTINCT CASE WHEN a.attendance_date <= ? THEN a.attendance_date END) AS completed_attended_days
       FROM users u
       LEFT JOIN attendance a
@@ -112,6 +114,7 @@ export async function GET(request: Request) {
       return {
         ...record,
         attended_days: Number(record.attended_days || 0),
+        permission_days: Number(record.permission_days || 0),
         absent_days: Math.max(0, expectedDays - completedAttendedDays),
       };
     });

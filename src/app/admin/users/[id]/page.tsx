@@ -32,6 +32,7 @@ interface StaffProfile {
   created_at: string;
   joined_at: string;
   attendance_count: number;
+  permission_count: number;
   weekend_attendance_count: number;
   warning_count: number;
   last_attendance: string | null;
@@ -44,6 +45,11 @@ interface StaffWarning {
   warning_date: string;
   warning_time: string;
   issued_by_username: string | null;
+}
+
+interface PermissionRecord {
+  attendance_date: string;
+  attendance_reason: string | null;
 }
 
 export default async function AdminStaffProfilePage({
@@ -70,7 +76,9 @@ export default async function AdminStaffProfilePage({
       (SELECT COUNT(*) FROM attendance a
        WHERE a.user_id = u.id AND a.status = 'Hadir') AS attendance_count,
       (SELECT COUNT(*) FROM attendance a
-       WHERE a.user_id = u.id AND a.status = 'Hadir'
+       WHERE a.user_id = u.id AND a.status = 'Izin') AS permission_count,
+      (SELECT COUNT(*) FROM attendance a
+       WHERE a.user_id = u.id AND a.status IN ('Hadir', 'Izin')
          AND a.attendance_date BETWEEN DATE(
            CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00')
          ) AND ?
@@ -105,6 +113,16 @@ export default async function AdminStaffProfilePage({
      LIMIT 5`,
     [userId]
   );
+  const permissions = staff.role === 'USER'
+    ? await query<PermissionRecord[]>(
+      `SELECT DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date, attendance_reason
+       FROM attendance
+       WHERE user_id = ? AND status = 'Izin'
+       ORDER BY attendance_date DESC, attendance_time DESC
+       LIMIT 10`,
+      [userId]
+    )
+    : [];
 
   return (
     <>
@@ -203,6 +221,13 @@ export default async function AdminStaffProfilePage({
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                      <CalendarDays className="h-4 w-4 text-amber-600" /> Total Izin
+                    </div>
+                    <p className="mt-2 text-2xl font-extrabold text-slate-800">{Number(staff.permission_count)}</p>
+                    <p className="mt-1 text-xs text-slate-500">kali tercatat izin</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                       <XCircle className="h-4 w-4 text-rose-600" /> Tidak Hadir
                     </div>
                     <p className="mt-2 text-2xl font-extrabold text-slate-800">{missedAttendanceCount}</p>
@@ -225,6 +250,31 @@ export default async function AdminStaffProfilePage({
 
         {staff.role !== 'ADMIN' && (
           <>
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <h2 className="text-lg font-extrabold text-slate-900">Riwayat Izin</h2>
+              {permissions.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-500">Belum ada catatan izin.</p>
+              ) : (
+                <ul className="mt-4 divide-y divide-slate-100">
+                  {permissions.map((permission, index) => (
+                    <li key={`${permission.attendance_date}-${index}`} className="py-3 first:pt-0 last:pb-0">
+                      <p className="text-sm font-semibold text-slate-800">
+                        {formatIndonesianDate(permission.attendance_date)}
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-slate-700">
+                        {permission.attendance_reason || 'Alasan tidak tersedia.'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {Number(staff.permission_count) > permissions.length && (
+                <p className="mt-3 text-xs text-slate-500">
+                  Menampilkan {permissions.length} dari {Number(staff.permission_count)} catatan izin terbaru.
+                </p>
+              )}
+            </section>
+
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
               <h2 className="text-lg font-extrabold text-slate-900">Beri Peringatan</h2>
               <p className="mt-1 text-sm text-slate-500">

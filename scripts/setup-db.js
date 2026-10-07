@@ -102,6 +102,7 @@ async function setup() {
         attendance_date DATE NOT NULL,
         attendance_time TIME NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'Hadir',
+        attendance_reason VARCHAR(1000) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT fk_attendance_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         CONSTRAINT unique_user_daily_attendance UNIQUE (user_id, attendance_date),
@@ -117,6 +118,10 @@ async function setup() {
     await db.query(
       "ALTER TABLE attendance MODIFY COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'"
     );
+    const [attendanceReasonColumn] = await db.query("SHOW COLUMNS FROM attendance LIKE 'attendance_reason'");
+    if (attendanceReasonColumn.length === 0) {
+      await db.query('ALTER TABLE attendance ADD COLUMN attendance_reason VARCHAR(1000) NULL AFTER status');
+    }
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS password_reset_tokens (

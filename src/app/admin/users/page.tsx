@@ -796,8 +796,15 @@ export default function AdminUsersPage() {
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 col-span-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-slate-400 block font-medium">Status Absensi Terakhir</span>
-                    <Badge variant={viewUser.last_attendance ? 'success' : 'neutral'} dot>
-                      {viewUser.last_attendance_status === 'Hadir' ? 'Sudah Absen' : 'Belum Pernah Absen'}
+                    <Badge
+                      variant={!viewUser.last_attendance
+                        ? 'neutral'
+                        : viewUser.last_attendance_status === 'Izin' ? 'warning' : 'success'}
+                      dot
+                    >
+                      {!viewUser.last_attendance
+                        ? 'Belum Pernah Absen'
+                        : viewUser.last_attendance_status === 'Izin' ? 'Izin' : 'Hadir'}
                     </Badge>
                   </div>
                   <span className="font-semibold text-blue-600 mt-1 block">

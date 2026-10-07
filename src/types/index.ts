@@ -51,7 +51,8 @@ export interface Attendance {
   roblox_username: string;
   attendance_date: string; // YYYY-MM-DD
   attendance_time: string; // HH:mm:ss
-  status: string; // 'Hadir'
+  status: 'Hadir' | 'Izin';
+  attendance_reason: string | null;
   created_at: string;
   username?: string;
   email?: string;
@@ -60,6 +61,7 @@ export interface Attendance {
 export interface DashboardStats {
   totalUsers: number;
   attendedToday: number;
+  permissionToday: number;
   notAttendedToday: number;
   attendanceRate: number; // percentage e.g. 92.5
   recentDaysTrend: {
@@ -69,6 +71,7 @@ export interface DashboardStats {
   }[];
   statusDistribution: {
     attended: number;
+    permission: number;
     absent: number;
   };
 }

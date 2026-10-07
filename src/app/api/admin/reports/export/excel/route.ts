@@ -40,6 +40,7 @@ export async function GET(request: Request) {
       { header: 'Roblox', key: 'roblox', width: 22 },
       { header: 'Jam Absen', key: 'time', width: 14 },
       { header: 'Status', key: 'status', width: 16 },
+      { header: 'Alasan Izin', key: 'attendanceReason', width: 32 },
     ];
 
     for (const [index, record] of records.entries()) {
@@ -54,6 +55,7 @@ export async function GET(request: Request) {
         roblox: record.roblox_username,
         time: record.attendance_time,
         status: record.status,
+        attendanceReason: record.attendance_reason,
       });
     }
 
@@ -73,7 +75,7 @@ export async function GET(request: Request) {
     header.alignment = { vertical: 'middle', horizontal: 'center' };
     sheet.autoFilter = {
       from: { row: 1, column: 1 },
-      to: { row: Math.max(records.length + 1, 1), column: 10 },
+      to: { row: Math.max(records.length + 1, 1), column: 11 },
     };
     sheet.views = [{ state: 'frozen', ySplit: 1 }];
 

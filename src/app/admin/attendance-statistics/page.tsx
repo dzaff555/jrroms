@@ -21,6 +21,7 @@ interface AttendanceStatisticsRecord {
   attendance_role: string;
   profile_photo: string | null;
   attended_days: number;
+  permission_days: number;
   absent_days: number;
 }
 
@@ -164,7 +165,7 @@ export default function AdminAttendanceStatisticsPage() {
         </Card>
 
         {isLoading ? (
-          <TableSkeleton rows={8} cols={5} />
+          <TableSkeleton rows={8} cols={6} />
         ) : records.length === 0 ? (
           <EmptyState
             title="Akun tidak ditemukan"
@@ -180,6 +181,7 @@ export default function AdminAttendanceStatisticsPage() {
                       <th className="px-4 py-3.5">Akun</th>
                       <th className="px-4 py-3.5">Peran absensi</th>
                       <th className="px-4 py-3.5 text-center">Hadir</th>
+                      <th className="px-4 py-3.5 text-center">Izin</th>
                       <th className="px-4 py-3.5 text-center">Tidak hadir (periode ditutup)</th>
                     </tr>
                   </thead>
@@ -209,6 +211,11 @@ export default function AdminAttendanceStatisticsPage() {
                           <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
                             <CheckCircle2 className="h-4 w-4" />
                             {record.attended_days}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-center">
+                          <span className="inline-flex items-center gap-1.5 font-semibold text-amber-700">
+                            {record.permission_days}
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-center">
