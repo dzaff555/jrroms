@@ -12,6 +12,7 @@ export interface ProfileFormValues {
   attendance_role: string;
   roblox_username: string;
   discord_username: string;
+  username?: string;
 }
 
 interface ProfileFormProps {
@@ -21,6 +22,8 @@ interface ProfileFormProps {
   isSubmitting?: boolean;
   showRole?: boolean;
   photoOnly?: boolean;
+  showUsername?: boolean;
+  requireSocials?: boolean;
 }
 
 export function ProfileForm({
@@ -30,11 +33,14 @@ export function ProfileForm({
   isSubmitting = false,
   showRole = true,
   photoOnly = false,
+  showUsername = false,
+  requireSocials = true,
 }: ProfileFormProps) {
   const [profilePhoto, setProfilePhoto] = useState<string>(initialValues?.profile_photo || '');
   const [attendanceRole, setAttendanceRole] = useState<string>(initialValues?.attendance_role || 'CSOT');
   const [robloxUsername, setRobloxUsername] = useState<string>(initialValues?.roblox_username || '');
   const [discordUsername, setDiscordUsername] = useState<string>(initialValues?.discord_username || '');
+  const [username, setUsername] = useState<string>(initialValues?.username || '');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const hasLocalChanges = useRef(false);
 
@@ -44,13 +50,15 @@ export function ProfileForm({
     setAttendanceRole(initialValues?.attendance_role || 'CSOT');
     setRobloxUsername(initialValues?.roblox_username || '');
     setDiscordUsername(initialValues?.discord_username || '');
+    setUsername(initialValues?.username || '');
   }, [initialValues]);
 
   const validate = () => {
     const nextErrors: Record<string, string> = {};
 
-    if (!photoOnly && !robloxUsername.trim()) nextErrors.roblox_username = 'Nama pengguna Roblox wajib diisi.';
-    if (!photoOnly && !discordUsername.trim()) nextErrors.discord_username = 'Nama pengguna Discord wajib diisi.';
+    if (!photoOnly && requireSocials && !robloxUsername.trim()) nextErrors.roblox_username = 'Nama pengguna Roblox wajib diisi.';
+    if (!photoOnly && requireSocials && !discordUsername.trim()) nextErrors.discord_username = 'Nama pengguna Discord wajib diisi.';
+    if (showUsername && !username.trim()) nextErrors.username = 'Nama pengguna admin wajib diisi.';
 
     if (!photoOnly && showRole && !isAttendanceRole(attendanceRole)) {
       nextErrors.attendance_role = 'Peran tidak valid.';
@@ -69,6 +77,7 @@ export function ProfileForm({
       attendance_role: attendanceRole,
       roblox_username: robloxUsername.trim(),
       discord_username: discordUsername.trim(),
+      ...(showUsername ? { username: username.trim() } : {}),
     });
   };
 
@@ -86,6 +95,18 @@ export function ProfileForm({
         />
 
         {!photoOnly && <div className="space-y-4">
+          {showUsername && (
+            <Input
+              label="Nama pengguna admin"
+              value={username}
+              onChange={(event) => {
+                hasLocalChanges.current = true;
+                setUsername(event.target.value);
+              }}
+              error={errors.username}
+              required
+            />
+          )}
           {showRole && (
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-700">
@@ -143,7 +164,11 @@ export function ProfileForm({
       {!photoOnly && <div className="flex items-center justify-between rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
         <div className="flex items-center gap-2 text-blue-700">
           <ShieldCheck className="h-4 w-4" />
-          <span className="text-xs font-medium">Data Anda akan disimpan dan dipakai saat absensi hari ini.</span>
+          <span className="text-xs font-medium">
+            {showUsername
+              ? 'Informasi profil administrator Anda akan diperbarui.'
+              : 'Data Anda akan disimpan dan dipakai saat absensi hari ini.'}
+          </span>
         </div>
       </div>}
 

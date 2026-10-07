@@ -93,6 +93,13 @@ export default function ProfilePage() {
 
       toast.success('Biodata Diperbarui', 'Perubahan profil berhasil disimpan.');
       if (user?.role === 'ADMIN') {
+        setUser((currentUser) => currentUser ? {
+          ...currentUser,
+          username: values.username || currentUser.username,
+          profile_photo: values.profile_photo || null,
+          roblox_username: values.roblox_username || null,
+          discord_username: values.discord_username || null,
+        } : currentUser);
         router.refresh();
       } else {
         router.push('/dashboard');
@@ -167,7 +174,7 @@ export default function ProfilePage() {
             <ShieldCheck className="h-5 w-5" />
             <p className="text-xs font-medium sm:text-sm">
               {user?.role === 'ADMIN'
-                ? 'Di halaman ini Anda hanya dapat mengubah foto profil akun administrator.'
+                ? 'Perbarui nama pengguna admin, foto profil, dan username Discord serta Roblox di sini.'
                 : 'Foto profil, nama pengguna Roblox, dan nama pengguna Discord dapat diubah. Nama asli dan NIP tidak dapat diubah dari halaman ini.'}
             </p>
           </div>
@@ -196,12 +203,14 @@ export default function ProfilePage() {
               attendance_role: user?.attendance_role || 'CSOT',
               roblox_username: user?.roblox_username || '',
               discord_username: user?.discord_username || '',
+              username: user?.username || '',
             }}
             onSubmit={handleSubmit}
             isSubmitting={isSubmitting}
             submitLabel="Simpan Perubahan"
             showRole={user?.role !== 'ADMIN'}
-            photoOnly={user?.role === 'ADMIN'}
+            showUsername={user?.role === 'ADMIN'}
+            requireSocials={user?.role !== 'ADMIN'}
           />
         </div>
 

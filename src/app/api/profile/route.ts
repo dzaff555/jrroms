@@ -73,6 +73,24 @@ export async function POST(request: Request) {
     const profile_photo = typeof body.profile_photo === 'string' ? body.profile_photo.trim() : '';
 
     if (session.role === 'ADMIN') {
+      const username = typeof body.username === 'string' ? body.username.trim() : '';
+      const roblox_username = typeof body.roblox_username === 'string' ? body.roblox_username.trim() : '';
+      const discord_username = typeof body.discord_username === 'string' ? body.discord_username.trim() : '';
+
+      if (!username || username.length > 50) {
+        return NextResponse.json(
+          { success: false, error: 'Nama pengguna admin wajib diisi dan maksimal 50 karakter.' },
+          { status: 400 }
+        );
+      }
+
+      if (roblox_username.length > 100 || discord_username.length > 100) {
+        return NextResponse.json(
+          { success: false, error: 'Username Roblox dan Discord maksimal 100 karakter.' },
+          { status: 400 }
+        );
+      }
+
       if (profile_photo && (
         profile_photo.length > 3_000_000 ||
         !profile_photo.startsWith('data:image/')
@@ -83,11 +101,25 @@ export async function POST(request: Request) {
         );
       }
 
-      await query('UPDATE users SET profile_photo = ? WHERE id = ?', [profile_photo || null, session.id]);
+      const existingUsers = await query<{ id: number }[]>(
+        'SELECT id FROM users WHERE username = ? AND id != ? LIMIT 1',
+        [username, session.id]
+      );
+      if (existingUsers.length > 0) {
+        return NextResponse.json(
+          { success: false, error: 'Nama pengguna sudah digunakan oleh pengguna lain.' },
+          { status: 409 }
+        );
+      }
+
+      await query(
+        'UPDATE users SET username = ?, profile_photo = ?, roblox_username = ?, discord_username = ? WHERE id = ?',
+        [username, profile_photo || null, roblox_username || null, discord_username || null, session.id]
+      );
       return NextResponse.json({
         success: true,
-        message: 'Foto profil administrator berhasil diperbarui.',
-        data: { profile_photo },
+        message: 'Biodata administrator berhasil diperbarui.',
+        data: { username, profile_photo, roblox_username, discord_username },
       });
     }
 
