@@ -1,10 +1,10 @@
 'use client';
 
-import React, { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Copy, Crop, Download, Headphones, ImagePlus, ListChecks, Loader2, MessageCircle, Mic, MoreVertical, Music2, Paperclip, Pause, Pencil, Play, Reply, RotateCcw, Search, Send, ShieldCheck, Smile, Star, Sticker, Trash2, Upload, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bell, BellOff, Check, ChevronDown, ChevronUp, Copy, Crop, Download, Headphones, ImagePlus, ListChecks, Loader2, MessageCircle, Mic, MoreVertical, Music2, Paperclip, Pause, Pencil, Play, Reply, RotateCcw, Search, Send, ShieldCheck, Smile, Star, Sticker, Trash2, Upload, Users, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 import { MAX_CHAT_AUDIO_SIZE, MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
 
@@ -163,6 +163,59 @@ interface WallpaperApiResponse {
   error?: string;
 }
 
+const CHAT_NOTIFICATION_PREFERENCE_KEY = 'jrr-chat-notifications-enabled';
+const CHAT_NOTIFICATION_PREFERENCE_EVENT = 'jrr-chat-notification-preference-change';
+const MUTED_CHAT_SENDERS_STORAGE_PREFIX = 'jrr-muted-chat-senders';
+
+function subscribeToChatNotificationPreference(onChange: () => void) {
+  const handleChange = () => onChange();
+  window.addEventListener('storage', handleChange);
+  window.addEventListener(CHAT_NOTIFICATION_PREFERENCE_EVENT, handleChange);
+  return () => {
+    window.removeEventListener('storage', handleChange);
+    window.removeEventListener(CHAT_NOTIFICATION_PREFERENCE_EVENT, handleChange);
+  };
+}
+
+function getChatNotificationPreference(userId: number) {
+  return (
+    'Notification' in window &&
+    Notification.permission === 'granted' &&
+    window.localStorage.getItem(`${CHAT_NOTIFICATION_PREFERENCE_KEY}:${userId}`) === 'true'
+  );
+}
+
+function getChatNotificationSupport() {
+  return 'Notification' in window && 'serviceWorker' in navigator;
+}
+
+function setChatNotificationPreference(userId: number, enabled: boolean) {
+  window.localStorage.setItem(`${CHAT_NOTIFICATION_PREFERENCE_KEY}:${userId}`, String(enabled));
+  window.dispatchEvent(new Event(CHAT_NOTIFICATION_PREFERENCE_EVENT));
+}
+
+function getMutedChatSendersSnapshot(userId: number) {
+  return window.localStorage.getItem(`${MUTED_CHAT_SENDERS_STORAGE_PREFIX}:${userId}`) || '[]';
+}
+
+function parseMutedChatSenderIds(snapshot: string) {
+  try {
+    const parsed: unknown = JSON.parse(snapshot);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is number => Number.isSafeInteger(id) && id > 0);
+  } catch {
+    return [];
+  }
+}
+
+function setMutedChatSenders(userId: number, senderIds: number[]) {
+  window.localStorage.setItem(
+    `${MUTED_CHAT_SENDERS_STORAGE_PREFIX}:${userId}`,
+    JSON.stringify(senderIds)
+  );
+  window.dispatchEvent(new Event(CHAT_NOTIFICATION_PREFERENCE_EVENT));
+}
+
 interface ChatRoomProps {
   currentUserId: number;
   currentUserRole: 'USER' | 'ADMIN' | 'DEVELOPER';
@@ -204,6 +257,34 @@ function formatAudioTime(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = Math.floor(seconds % 60);
   return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function getNotificationMessage(message: ChatMessage) {
+  if (message.message.trim()) return message.message.trim().slice(0, 180);
+  return getChatMessageType(message);
+}
+
+function getNotificationIcon(profilePhoto: string | null) {
+  if (!profilePhoto) return undefined;
+  if (!profilePhoto.startsWith('data:image/') || profilePhoto.length <= 180_000) return profilePhoto;
+
+  return new Promise<string | undefined>((resolve) => {
+    const image = new window.Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 96;
+      canvas.height = 96;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        resolve(undefined);
+        return;
+      }
+      context.drawImage(image, 0, 0, 96, 96);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    image.onerror = () => resolve(undefined);
+    image.src = profilePhoto;
+  });
 }
 
 function parseVideoDrawing(value: string | null | undefined): VideoDrawing | null {
@@ -623,8 +704,25 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [stickerFavoritePromptId, setStickerFavoritePromptId] = useState<number | null>(null);
   const [openMessageActionsId, setOpenMessageActionsId] = useState<number | null>(null);
   const [messageActionsPosition, setMessageActionsPosition] = useState<{ top: number; left: number } | null>(null);
+  const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const isChatNotificationsEnabled = useSyncExternalStore(
+    subscribeToChatNotificationPreference,
+    () => getChatNotificationPreference(currentUserId),
+    () => false
+  );
+  const isChatNotificationsSupported = useSyncExternalStore(
+    () => () => {},
+    getChatNotificationSupport,
+    () => false
+  );
+  const mutedChatSendersSnapshot = useSyncExternalStore(
+    subscribeToChatNotificationPreference,
+    () => getMutedChatSendersSnapshot(currentUserId),
+    () => '[]'
+  );
+  const mutedChatSenderIds = parseMutedChatSenderIds(mutedChatSendersSnapshot);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [chatWallpaperUrl, setChatWallpaperUrl] = useState<string | null>(null);
   const [isWallpaperSettingsOpen, setIsWallpaperSettingsOpen] = useState(false);
@@ -677,6 +775,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const highlightTimeoutRef = useRef<number | null>(null);
   const messageActionsRef = useRef<HTMLDivElement>(null);
   const messageActionsMenuRef = useRef<HTMLDivElement>(null);
+  const notificationSettingsRef = useRef<HTMLDivElement>(null);
   const stickerFavoritePromptRef = useRef<HTMLDivElement>(null);
   const drawingPointerRef = useRef<number | null>(null);
   const cropInteractionRef = useRef<CropInteraction | null>(null);
@@ -693,6 +792,19 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     document.addEventListener('pointerdown', closeOnOutsidePointerDown);
     return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown);
   }, [isAttachmentMenuOpen]);
+
+  useEffect(() => {
+    if (!isNotificationSettingsOpen) return;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !notificationSettingsRef.current?.contains(event.target)) {
+        setIsNotificationSettingsOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown);
+  }, [isNotificationSettingsOpen]);
 
   useEffect(() => {
     if (stickerFavoritePromptId === null) return;
@@ -980,6 +1092,86 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     setMessages(latest);
   }, []);
 
+  const handleChatNotificationsToggle = async () => {
+    if (!isChatNotificationsSupported) {
+      setError('Notifikasi perangkat tidak didukung oleh browser ini.');
+      return;
+    }
+    if (isChatNotificationsEnabled) {
+      setChatNotificationPreference(currentUserId, false);
+      setError(null);
+      return;
+    }
+
+    try {
+      const permission = Notification.permission === 'default'
+        ? await Notification.requestPermission()
+        : Notification.permission;
+      if (permission !== 'granted') {
+        throw new Error('Izin notifikasi ditolak. Ubah izin situs di pengaturan browser untuk mengaktifkannya.');
+      }
+
+      await navigator.serviceWorker.register('/chat-notification-sw.js');
+      setChatNotificationPreference(currentUserId, true);
+      setError(null);
+    } catch (notificationError: unknown) {
+      setError(notificationError instanceof Error
+        ? notificationError.message
+        : 'Gagal mengaktifkan notifikasi chat.');
+    }
+  };
+
+  const showChatNotification = useCallback(async (message: ChatMessage) => {
+    if (
+      !isChatNotificationsEnabled ||
+      Notification.permission !== 'granted' ||
+      (document.visibilityState === 'visible' && document.hasFocus()) ||
+      message.sender_id === currentUserId ||
+      parseMutedChatSenderIds(getMutedChatSendersSnapshot(currentUserId)).includes(message.sender_id)
+    ) {
+      return;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const icon = await getNotificationIcon(message.profile_photo);
+      const chatPath = currentUserRole === 'ADMIN'
+        ? '/admin/chat'
+        : currentUserRole === 'DEVELOPER'
+          ? '/developer/chat'
+          : '/chat';
+      await registration.showNotification('Chat Staf & Admin', {
+        body: `${message.username}: ${getNotificationMessage(message)}`,
+        ...(icon ? { icon } : {}),
+        tag: `staff-admin-chat-${message.id}`,
+        data: { url: chatPath },
+      });
+    } catch (notificationError: unknown) {
+      console.error('[Chat Device Notification Error]:', notificationError);
+      setError(notificationError instanceof Error
+        ? notificationError.message
+        : 'Gagal menampilkan notifikasi chat di perangkat.');
+    }
+  }, [currentUserId, currentUserRole, isChatNotificationsEnabled]);
+
+  const handleToggleMutedChatSender = (senderId: number) => {
+    try {
+      const currentMutedIds = parseMutedChatSenderIds(getMutedChatSendersSnapshot(currentUserId));
+      const isMuted = currentMutedIds.includes(senderId);
+      setMutedChatSenders(
+        currentUserId,
+        isMuted
+          ? currentMutedIds.filter((mutedSenderId) => mutedSenderId !== senderId)
+          : [...currentMutedIds, senderId]
+      );
+      setError(null);
+    } catch (muteError: unknown) {
+      setError(muteError instanceof Error
+        ? muteError.message
+        : 'Gagal memperbarui pengaturan notifikasi pengirim.');
+    }
+  };
+
   const loadMessages = useCallback(async (signal?: AbortSignal, initial = false) => {
     if (isLoadingMessagesRef.current) return;
     isLoadingMessagesRef.current = true;
@@ -1006,6 +1198,13 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           (latestId, message) => Math.max(latestId, message.id),
           cursor
         );
+        if (document.visibilityState !== 'visible' || !document.hasFocus()) {
+          for (const message of result.data) {
+            if (message.id > cursor && message.sender_id !== currentUserId) {
+              void showChatNotification(message);
+            }
+          }
+        }
       }
       deletionCursorRef.current = result.serverTime;
       mergeMessages(result.data, cursor === null);
@@ -1038,7 +1237,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       isLoadingMessagesRef.current = false;
       if (initial) setIsLoading(false);
     }
-  }, [mergeMessages]);
+  }, [currentUserId, mergeMessages, showChatNotification]);
 
   const handleJumpToSearchMessage = async (messageId: number) => {
     setIsJumpingToMessage(true);
@@ -1967,6 +2166,22 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const isShowingSearchResults = isSearchOpen && searchQuery.trim().length > 0;
   const displayedMessages = isShowingSearchResults ? searchResults : messages;
   const videoViewerDrawing = parseVideoDrawing(videoViewer?.message.drawing_data);
+  const notificationSendersById = new Map<number, { id: number; name: string }>();
+  for (const message of messages) {
+    if (message.sender_id !== currentUserId) {
+      notificationSendersById.set(message.sender_id, {
+        id: message.sender_id,
+        name: message.real_name || message.username,
+      });
+    }
+  }
+  for (const senderId of mutedChatSenderIds) {
+    if (!notificationSendersById.has(senderId)) {
+      notificationSendersById.set(senderId, { id: senderId, name: `Pengirim #${senderId}` });
+    }
+  }
+  const notificationSenders = Array.from(notificationSendersById.values())
+    .sort((left, right) => left.name.localeCompare(right.name, 'id'));
 
   return (
     <section
@@ -2004,6 +2219,93 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         </div>
         {!isWallpaperSettingsOpen && (
           <>
+            <div className="relative shrink-0" ref={notificationSettingsRef}>
+              <button
+                type="button"
+                onClick={() => setIsNotificationSettingsOpen((open) => !open)}
+                aria-label="Pengaturan notifikasi chat"
+                aria-expanded={isNotificationSettingsOpen}
+                aria-controls="chat-notification-settings"
+                title="Pengaturan notifikasi chat"
+                className={`flex h-10 w-10 items-center justify-center rounded-full transition ${
+                  isChatNotificationsEnabled
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-blue-300'
+                }`}
+              >
+                {isChatNotificationsEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+              </button>
+              {isNotificationSettingsOpen && (
+                <div
+                  id="chat-notification-settings"
+                  className="absolute right-0 top-full z-[140] mt-2 max-h-[min(70dvh,32rem)] w-[min(20rem,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-[#161b22]"
+                >
+                  <h2 className="text-sm font-bold text-slate-900 dark:text-white">Pengaturan notifikasi</h2>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Pengaturan ini hanya berlaku untuk akun Anda.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleChatNotificationsToggle()}
+                    disabled={!isChatNotificationsSupported}
+                    aria-pressed={isChatNotificationsEnabled}
+                    className="mt-3 flex w-full items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2.5 text-left disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-800/70"
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        Notifikasi chat di perangkat
+                      </span>
+                      <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                        {isChatNotificationsSupported
+                          ? isChatNotificationsEnabled ? 'Aktif' : 'Nonaktif'
+                          : 'Tidak didukung browser ini'}
+                      </span>
+                    </span>
+                    {isChatNotificationsEnabled
+                      ? <Bell className="h-5 w-5 shrink-0 text-blue-600 dark:text-blue-300" />
+                      : <BellOff className="h-5 w-5 shrink-0 text-slate-400" />}
+                  </button>
+                  <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Notifikasi per pengirim
+                    </h3>
+                    {notificationSenders.length > 0 ? (
+                      <div className="mt-2 space-y-1">
+                        {notificationSenders.map((sender) => {
+                          const isMuted = mutedChatSenderIds.includes(sender.id);
+                          return (
+                            <button
+                              key={sender.id}
+                              type="button"
+                              onClick={() => handleToggleMutedChatSender(sender.id)}
+                              aria-pressed={isMuted}
+                              className="flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-left transition hover:bg-slate-100 dark:hover:bg-slate-800"
+                            >
+                              <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                                {sender.name}
+                              </span>
+                              <span className={`flex shrink-0 items-center gap-1.5 text-xs font-semibold ${
+                                isMuted
+                                  ? 'text-slate-500 dark:text-slate-400'
+                                  : 'text-emerald-700 dark:text-emerald-300'
+                              }`}>
+                                {isMuted
+                                  ? <><VolumeX className="h-4 w-4" /> Dibisukan</>
+                                  : <><Volume2 className="h-4 w-4" /> Aktif</>}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                        Belum ada pengirim lain di percakapan.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => {
