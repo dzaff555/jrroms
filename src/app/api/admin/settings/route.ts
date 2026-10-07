@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser, comparePassword, hashPassword } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 import { User } from '@/types';
+import { AttendanceMode, getAttendanceMode } from '@/lib/attendance/availability';
 
 export async function GET() {
   try {
@@ -17,17 +18,19 @@ export async function GET() {
       'SELECT id, username, role, status, created_at FROM users WHERE id = ?',
       [session.id]
     );
+    const attendanceMode = await getAttendanceMode();
 
     return NextResponse.json({
       success: true,
       data: {
         user: users[0] || null,
+        attendanceMode,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Admin Settings GET Error]:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Gagal memuat pengaturan.' },
+      { success: false, error: error instanceof Error ? error.message : 'Gagal memuat pengaturan.' },
       { status: 500 }
     );
   }
@@ -44,6 +47,27 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
+    if (Object.hasOwn(body, 'attendanceMode')) {
+      const attendanceMode: unknown = body.attendanceMode;
+      if (attendanceMode !== 'AUTO' && attendanceMode !== 'MANUAL') {
+        return NextResponse.json(
+          { success: false, error: 'Mode absensi harus Otomatis atau Manual.' },
+          { status: 400 }
+        );
+      }
+
+      await query(
+        'UPDATE attendance_settings SET mode = ? WHERE id = 1',
+        [attendanceMode satisfies AttendanceMode]
+      );
+      return NextResponse.json({
+        success: true,
+        message: attendanceMode === 'AUTO'
+          ? 'Mode otomatis aktif. Absensi dibuka Jumat–Minggu pukul 05.00–18.00 WIB.'
+          : 'Mode manual aktif. Absensi dapat diisi kapan saja.',
+      });
+    }
+
     const { username, currentPassword, newPassword, confirmNewPassword } = body;
 
     const users = await query<User[]>(
@@ -97,7 +121,7 @@ export async function PUT(request: Request) {
 
     // If updating the username
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
 
     if (username && username.trim() !== '') {
       // Check if username taken by another user
@@ -124,10 +148,10 @@ export async function PUT(request: Request) {
       success: true,
       message: 'Pengaturan akun administrator berhasil diperbarui.',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Admin Settings PUT Error]:', error);
     return NextResponse.json(
-      { success: false, error: error.message || 'Gagal memperbarui pengaturan admin.' },
+      { success: false, error: error instanceof Error ? error.message : 'Gagal memperbarui pengaturan admin.' },
       { status: 500 }
     );
   }

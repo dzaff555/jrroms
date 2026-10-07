@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
-import { getJakartaDateString, isAttendanceWindowOpen } from '@/lib/utils/date';
+import { getJakartaDateString } from '@/lib/utils/date';
+import { getCurrentAttendanceAvailability } from '@/lib/attendance/availability';
 
 interface InboxWarning {
   id: number;
@@ -43,14 +44,15 @@ export async function GET() {
       await query(
         'DELETE FROM admin_inbox_notifications WHERE created_at <= CURRENT_TIMESTAMP - INTERVAL 24 HOUR'
       );
-      if (isAttendanceWindowOpen()) {
+      const availability = await getCurrentAttendanceAvailability();
+      if (availability.isOpen) {
         const eventKey = `attendance-opened:${getJakartaDateString()}`;
         await query(
           `INSERT IGNORE INTO admin_inbox_notifications (admin_id, event_key, title, message)
-           SELECT id, ?, 'Absensi dibuka', 'Absensi untuk hari ini telah dibuka dan dapat diisi pada pukul 05.00–18.00 WIB.'
+           SELECT id, ?, 'Absensi dibuka', ?
            FROM users
            WHERE role = 'ADMIN'`,
-          [eventKey]
+          [eventKey, availability.message]
         );
       }
       await query(

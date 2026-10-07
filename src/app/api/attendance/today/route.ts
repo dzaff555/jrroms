@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
-import { getJakartaDateString, isAttendanceWindowOpen } from '@/lib/utils/date';
+import { getJakartaDateString } from '@/lib/utils/date';
+import { getCurrentAttendanceAvailability } from '@/lib/attendance/availability';
 import { Attendance } from '@/types';
 
 export async function GET() {
@@ -23,13 +24,14 @@ export async function GET() {
 
     const hasAttended = records && records.length > 0;
     const attendance = hasAttended ? records[0] : null;
-    const attendanceWindowOpen = isAttendanceWindowOpen();
+    const availability = await getCurrentAttendanceAvailability();
 
     return NextResponse.json({
       success: true,
       hasAttended,
-      attendanceWindowOpen,
-      attendanceWindowMessage: 'Absensi dibuka Jumat–Minggu pukul 05.00–18.00 WIB.',
+      attendanceWindowOpen: availability.isOpen,
+      attendanceWindowMessage: availability.message,
+      attendanceMode: availability.mode,
       todayDate,
       attendance,
     });

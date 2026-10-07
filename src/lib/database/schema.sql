@@ -49,6 +49,15 @@ CREATE TABLE IF NOT EXISTS attendance (
   INDEX idx_attendance_user_date (user_id, attendance_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS attendance_settings (
+  id TINYINT UNSIGNED PRIMARY KEY,
+  mode ENUM('AUTO', 'MANUAL') NOT NULL DEFAULT 'AUTO',
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT chk_attendance_settings_singleton CHECK (id = 1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO attendance_settings (id, mode) VALUES (1, 'AUTO');
+
 -- Table: staff warnings
 CREATE TABLE IF NOT EXISTS staff_warnings (
   id INT AUTO_INCREMENT PRIMARY KEY,

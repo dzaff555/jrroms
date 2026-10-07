@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getActiveSession } from '@/lib/auth/active-session';
 import { query } from '@/lib/database/db';
-import { getJakartaDateString, getJakartaTimeString, isAttendanceWindowOpen } from '@/lib/utils/date';
+import { getJakartaDateString, getJakartaTimeString } from '@/lib/utils/date';
+import { getCurrentAttendanceAvailability } from '@/lib/attendance/availability';
 import { Attendance, AttendanceRole, isAttendanceRole } from '@/types';
 
 export async function POST(request: Request) {
@@ -21,9 +22,10 @@ export async function POST(request: Request) {
     }
     const { session } = active;
 
-    if (!isAttendanceWindowOpen()) {
+    const availability = await getCurrentAttendanceAvailability();
+    if (!availability.isOpen) {
       return NextResponse.json(
-        { success: false, error: 'Absensi hanya dibuka Jumat sampai Minggu pukul 05.00–18.00 WIB.' },
+        { success: false, error: availability.message },
         { status: 403 }
       );
     }

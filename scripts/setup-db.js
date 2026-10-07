@@ -122,6 +122,15 @@ async function setup() {
     if (attendanceReasonColumn.length === 0) {
       await db.query('ALTER TABLE attendance ADD COLUMN attendance_reason VARCHAR(1000) NULL AFTER status');
     }
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS attendance_settings (
+        id TINYINT UNSIGNED PRIMARY KEY,
+        mode ENUM('AUTO', 'MANUAL') NOT NULL DEFAULT 'AUTO',
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT chk_attendance_settings_singleton CHECK (id = 1)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await db.query("INSERT IGNORE INTO attendance_settings (id, mode) VALUES (1, 'AUTO')");
 
     await db.query(`
       CREATE TABLE IF NOT EXISTS password_reset_tokens (
