@@ -7,6 +7,15 @@ import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Bell, BellOff, Check, ChevronDown, ChevronUp, Copy, Crop, Download, Headphones, ImagePlus, ListChecks, Loader2, MessageCircle, Mic, MoreVertical, Music2, Paperclip, Pause, Pencil, Play, Reply, RotateCcw, Search, Send, ShieldCheck, Smile, Star, Sticker, Trash2, Upload, Users, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 import { MAX_CHAT_AUDIO_SIZE, MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
+import {
+  CHAT_NOTIFICATION_PREFERENCE_EVENT,
+  getChatNotificationIcon,
+  getChatNotificationPreference,
+  getMutedChatSendersSnapshot,
+  parseMutedChatSenderIds,
+  setChatNotificationPreference,
+  setMutedChatSenders,
+} from '@/lib/chat/notification-preferences';
 
 interface CropArea {
   x: number;
@@ -163,10 +172,6 @@ interface WallpaperApiResponse {
   error?: string;
 }
 
-const CHAT_NOTIFICATION_PREFERENCE_KEY = 'jrr-chat-notifications-enabled';
-const CHAT_NOTIFICATION_PREFERENCE_EVENT = 'jrr-chat-notification-preference-change';
-const MUTED_CHAT_SENDERS_STORAGE_PREFIX = 'jrr-muted-chat-senders';
-
 function subscribeToChatNotificationPreference(onChange: () => void) {
   const handleChange = () => onChange();
   window.addEventListener('storage', handleChange);
@@ -177,43 +182,8 @@ function subscribeToChatNotificationPreference(onChange: () => void) {
   };
 }
 
-function getChatNotificationPreference(userId: number) {
-  return (
-    'Notification' in window &&
-    Notification.permission === 'granted' &&
-    window.localStorage.getItem(`${CHAT_NOTIFICATION_PREFERENCE_KEY}:${userId}`) === 'true'
-  );
-}
-
 function getChatNotificationSupport() {
   return 'Notification' in window && 'serviceWorker' in navigator;
-}
-
-function setChatNotificationPreference(userId: number, enabled: boolean) {
-  window.localStorage.setItem(`${CHAT_NOTIFICATION_PREFERENCE_KEY}:${userId}`, String(enabled));
-  window.dispatchEvent(new Event(CHAT_NOTIFICATION_PREFERENCE_EVENT));
-}
-
-function getMutedChatSendersSnapshot(userId: number) {
-  return window.localStorage.getItem(`${MUTED_CHAT_SENDERS_STORAGE_PREFIX}:${userId}`) || '[]';
-}
-
-function parseMutedChatSenderIds(snapshot: string) {
-  try {
-    const parsed: unknown = JSON.parse(snapshot);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((id): id is number => Number.isSafeInteger(id) && id > 0);
-  } catch {
-    return [];
-  }
-}
-
-function setMutedChatSenders(userId: number, senderIds: number[]) {
-  window.localStorage.setItem(
-    `${MUTED_CHAT_SENDERS_STORAGE_PREFIX}:${userId}`,
-    JSON.stringify(senderIds)
-  );
-  window.dispatchEvent(new Event(CHAT_NOTIFICATION_PREFERENCE_EVENT));
 }
 
 interface ChatRoomProps {
@@ -262,29 +232,6 @@ function formatAudioTime(seconds: number) {
 function getNotificationMessage(message: ChatMessage) {
   if (message.message.trim()) return message.message.trim().slice(0, 180);
   return getChatMessageType(message);
-}
-
-function getNotificationIcon(profilePhoto: string | null) {
-  if (!profilePhoto) return undefined;
-  if (!profilePhoto.startsWith('data:image/') || profilePhoto.length <= 180_000) return profilePhoto;
-
-  return new Promise<string | undefined>((resolve) => {
-    const image = new window.Image();
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 96;
-      canvas.height = 96;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        resolve(undefined);
-        return;
-      }
-      context.drawImage(image, 0, 0, 96, 96);
-      resolve(canvas.toDataURL('image/png'));
-    };
-    image.onerror = () => resolve(undefined);
-    image.src = profilePhoto;
-  });
 }
 
 function parseVideoDrawing(value: string | null | undefined): VideoDrawing | null {
@@ -1134,7 +1081,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
 
     try {
       const registration = await navigator.serviceWorker.ready;
-      const icon = await getNotificationIcon(message.profile_photo);
+      const icon = await getChatNotificationIcon(message.profile_photo);
       const chatPath = currentUserRole === 'ADMIN'
         ? '/admin/chat'
         : currentUserRole === 'DEVELOPER'
