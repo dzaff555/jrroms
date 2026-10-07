@@ -2408,13 +2408,13 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     )}
                     {message.media_url && message.media_type?.startsWith('image/') && (
                       message.is_sticker ? (
-                        <div className="relative h-28 w-28 overflow-hidden">
+                        <div className="relative h-[clamp(7rem,16vw,14rem)] w-[clamp(7rem,16vw,14rem)] max-w-[70vw] overflow-hidden">
                           <Image
                             src={message.media_url}
                             alt={`Stiker dari ${senderName}`}
                             fill
                             unoptimized
-                            sizes="112px"
+                            sizes="(min-width: 1280px) 224px, (min-width: 768px) 16vw, 112px"
                             className="object-contain"
                           />
                         </div>
@@ -2970,13 +2970,13 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
               <div
                 role="menu"
                 aria-label="Pilihan lampiran"
-                className="absolute bottom-14 left-0 z-40 w-48 rounded-2xl border border-slate-700 bg-[#1b1b1b] p-2 shadow-2xl"
+                className="absolute bottom-14 left-0 z-40 w-48 rounded-2xl border border-slate-200 bg-white p-2 text-slate-900 shadow-2xl dark:border-slate-700 dark:bg-[#1b1b1b] dark:text-white"
               >
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => attachmentInputRef.current?.click()}
-                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
                 >
                   <ImagePlus className="h-4 w-4 text-sky-400" />
                   Foto &amp; Video
@@ -2985,7 +2985,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                   type="button"
                   role="menuitem"
                   onClick={() => audioInputRef.current?.click()}
-                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
                 >
                   <Music2 className="h-4 w-4 text-orange-400" />
                   Audio
@@ -2995,7 +2995,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                   role="menuitem"
                   disabled
                   title="Polling belum tersedia"
-                  className="flex w-full cursor-not-allowed items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-slate-500"
+                  className="flex w-full cursor-not-allowed items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-slate-400 dark:text-slate-500"
                 >
                   <ListChecks className="h-4 w-4 text-amber-400" />
                   Polling
@@ -3007,7 +3007,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     setIsAttachmentMenuOpen(false);
                     stickerInputRef.current?.click();
                   }}
-                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-slate-800 transition hover:bg-slate-100 dark:text-white dark:hover:bg-white/10"
                 >
                   <Sticker className="h-4 w-4 text-emerald-400" />
                   Stiker baru
