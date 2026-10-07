@@ -42,6 +42,7 @@ interface ChatMessage {
   reply_to_audio_duration_seconds: number;
   image_path: string | null;
   image_type: string | null;
+  drawing_data: string | null;
   has_image: number | boolean;
   is_sticker: number | boolean;
   is_voice_note: number | boolean;
@@ -50,6 +51,69 @@ interface ChatMessage {
   media_type?: string | null;
   photo_url?: string | null;
   profile_photo_loaded?: number;
+}
+
+interface DrawingPoint {
+  x: number;
+  y: number;
+}
+
+interface DrawingStroke {
+  color: string;
+  points: DrawingPoint[];
+}
+
+interface VideoDrawing {
+  width: number;
+  height: number;
+  strokes: DrawingStroke[];
+}
+
+function parseVideoDrawing(value: string): VideoDrawing | null {
+  if (value.length > 100_000) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+  const candidate = parsed as Record<string, unknown>;
+  const { width, height, strokes } = candidate;
+  if (
+    !Number.isSafeInteger(width) || Number(width) < 1 || Number(width) > 100_000 ||
+    !Number.isSafeInteger(height) || Number(height) < 1 || Number(height) > 100_000 ||
+    !Array.isArray(strokes) || strokes.length > 100
+  ) {
+    return null;
+  }
+
+  let totalPoints = 0;
+  const validColors = new Set(['#ff3b30', '#ffd60a', '#34c759', '#0a84ff', '#ffffff']);
+  const normalizedStrokes: DrawingStroke[] = [];
+  for (const strokeValue of strokes) {
+    if (typeof strokeValue !== 'object' || strokeValue === null || Array.isArray(strokeValue)) return null;
+    const stroke = strokeValue as Record<string, unknown>;
+    if (typeof stroke.color !== 'string' || !validColors.has(stroke.color) || !Array.isArray(stroke.points)) return null;
+    totalPoints += stroke.points.length;
+    if (stroke.points.length < 1 || stroke.points.length > 2000 || totalPoints > 10_000) return null;
+
+    const points: DrawingPoint[] = [];
+    for (const pointValue of stroke.points) {
+      if (typeof pointValue !== 'object' || pointValue === null || Array.isArray(pointValue)) return null;
+      const point = pointValue as Record<string, unknown>;
+      if (
+        typeof point.x !== 'number' || !Number.isFinite(point.x) || point.x < 0 || point.x > Number(width) ||
+        typeof point.y !== 'number' || !Number.isFinite(point.y) || point.y < 0 || point.y > Number(height)
+      ) {
+        return null;
+      }
+      points.push({ x: point.x, y: point.y });
+    }
+    normalizedStrokes.push({ color: stroke.color, points });
+  }
+  if (normalizedStrokes.length === 0) return null;
+  return { width: Number(width), height: Number(height), strokes: normalizedStrokes };
 }
 
 async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolean } = {}) {
@@ -75,7 +139,7 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
 
 const chatMessageSelect = `
   SELECT cm.id, cm.sender_id, u.username, u.real_name, u.profile_photo, u.role, u.attendance_role,
-    cm.message, cm.image_path, cm.image_type, (cm.image_data IS NOT NULL) AS has_image,
+    cm.message, cm.image_path, cm.image_type, cm.drawing_data, (cm.image_data IS NOT NULL) AS has_image,
     cm.is_sticker, cm.is_voice_note, cm.audio_duration_seconds,
     cm.deleted_at, cm.created_at, cm.reply_to_id,
     replied.sender_id AS reply_to_sender_id,
@@ -165,7 +229,7 @@ export async function GET(request: Request) {
           SELECT cm.id, cm.sender_id, u.username, u.real_name,
             CASE WHEN cm.profile_rank = 1 THEN u.profile_photo ELSE NULL END AS profile_photo,
             (cm.profile_rank = 1) AS profile_photo_loaded,
-            u.role, u.attendance_role, cm.message, cm.image_path, cm.image_type, cm.is_sticker,
+            u.role, u.attendance_role, cm.message, cm.image_path, cm.image_type, cm.drawing_data, cm.is_sticker,
             cm.is_voice_note, cm.audio_duration_seconds,
             cm.has_image,
             cm.deleted_at, cm.created_at, cm.reply_to_id,
@@ -184,7 +248,7 @@ export async function GET(request: Request) {
             SELECT recent_messages.*,
               ROW_NUMBER() OVER (PARTITION BY sender_id ORDER BY id DESC) AS profile_rank
             FROM (
-              SELECT id, sender_id, message, image_path, image_type, is_sticker,
+              SELECT id, sender_id, message, image_path, image_type, drawing_data, is_sticker,
                 is_voice_note, audio_duration_seconds,
                 (image_data IS NOT NULL) AS has_image, deleted_at, created_at, reply_to_id
               FROM staff_admin_chat_messages
@@ -281,10 +345,11 @@ export async function POST(request: Request) {
     let favoriteImageType: ChatMediaType | null = null;
     let favoriteImageData: Buffer | null = null;
     let attachmentFile: File | null = null;
+    let videoDrawing: VideoDrawing | null = null;
     const contentType = request.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
       const contentLength = Number(request.headers.get('content-length') || 0);
-      if (contentLength > MAX_CHAT_VIDEO_SIZE + 65_536) {
+      if (contentLength > MAX_CHAT_VIDEO_SIZE + 131_072) {
         return NextResponse.json({ success: false, error: 'Ukuran lampiran melebihi batas maksimum.' }, { status: 413 });
       }
 
@@ -301,6 +366,7 @@ export async function POST(request: Request) {
       const formIsSticker = form.get('isSticker');
       const formIsVoiceNote = form.get('isVoiceNote');
       const formAudioDuration = form.get('audioDurationSeconds');
+      const formVideoDrawing = form.get('videoDrawing');
       if (typeof formMessage !== 'string') {
         return NextResponse.json({ success: false, error: 'Format pesan tidak valid.' }, { status: 400 });
       }
@@ -322,6 +388,15 @@ export async function POST(request: Request) {
           return NextResponse.json({ success: false, error: 'Format lampiran tidak valid.' }, { status: 400 });
         }
         attachmentFile = formAttachment;
+      }
+      if (formVideoDrawing !== null) {
+        if (typeof formVideoDrawing !== 'string') {
+          return NextResponse.json({ success: false, error: 'Data coretan video tidak valid.' }, { status: 400 });
+        }
+        videoDrawing = parseVideoDrawing(formVideoDrawing);
+        if (!videoDrawing) {
+          return NextResponse.json({ success: false, error: 'Data coretan video tidak valid.' }, { status: 400 });
+        }
       }
     } else {
       let body: unknown;
@@ -434,10 +509,13 @@ export async function POST(request: Request) {
     if (isSticker && (!imageType?.startsWith('image/') || !imageData)) {
       return NextResponse.json({ success: false, error: 'Stiker harus berupa gambar yang valid.' }, { status: 415 });
     }
+    if (videoDrawing && !imageType?.startsWith('video/')) {
+      return NextResponse.json({ success: false, error: 'Coretan hanya dapat dikirim bersama video.' }, { status: 400 });
+    }
 
     const insert = await query<{ insertId: number }>(
-      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data, is_sticker, is_voice_note, audio_duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [access.session.id, replyToId, message, null, imageType, imageData, isSticker, isVoiceNote, isAudioAttachment ? audioDurationSeconds : 0]
+      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data, drawing_data, is_sticker, is_voice_note, audio_duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [access.session.id, replyToId, message, null, imageType, imageData, videoDrawing ? JSON.stringify(videoDrawing) : null, isSticker, isVoiceNote, isAudioAttachment ? audioDurationSeconds : 0]
     );
     const messageId = insert.insertId;
     if (!messageId) {

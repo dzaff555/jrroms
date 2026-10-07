@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
   image_path VARCHAR(255) NULL,
   image_type VARCHAR(50) NULL,
   image_data MEDIUMBLOB NULL,
+  drawing_data LONGTEXT NULL,
   is_sticker BOOLEAN NOT NULL DEFAULT FALSE,
   is_voice_note BOOLEAN NOT NULL DEFAULT FALSE,
   audio_duration_seconds INT UNSIGNED NOT NULL DEFAULT 0,

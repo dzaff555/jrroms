@@ -4,9 +4,99 @@ import React, { FormEvent, KeyboardEvent as ReactKeyboardEvent, useCallback, use
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronUp, Download, Headphones, ImagePlus, Loader2, MessageCircle, Mic, MoreVertical, Paperclip, Pause, Play, Reply, RotateCcw, Search, Send, ShieldCheck, Smile, Star, Trash2, Upload, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, Crop, Download, Headphones, ImagePlus, ListChecks, Loader2, MessageCircle, Mic, MoreVertical, Music2, Paperclip, Pause, Pencil, Play, Reply, RotateCcw, Search, Send, ShieldCheck, Smile, Star, Sticker, Trash2, Upload, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 import { MAX_CHAT_AUDIO_SIZE, MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
+
+interface CropArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface DrawingPoint {
+  x: number;
+  y: number;
+}
+
+interface DrawingStroke {
+  color: string;
+  points: DrawingPoint[];
+}
+
+interface VideoDrawing {
+  width: number;
+  height: number;
+  strokes: DrawingStroke[];
+}
+
+interface CropInteraction {
+  pointerId: number;
+  mode: 'new' | 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+  start: DrawingPoint;
+  initialArea: CropArea | null;
+}
+
+function createEditedImage(
+  imageSource: string,
+  dimensions: { width: number; height: number },
+  cropArea: CropArea | null,
+  strokes: DrawingStroke[],
+  mimeType: string,
+  fileName: string,
+): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => {
+      const sourceX = cropArea ? Math.round(cropArea.x) : 0;
+      const sourceY = cropArea ? Math.round(cropArea.y) : 0;
+      const outputWidth = cropArea ? Math.round(cropArea.width) : dimensions.width;
+      const outputHeight = cropArea ? Math.round(cropArea.height) : dimensions.height;
+      const canvas = document.createElement('canvas');
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        reject(new Error('Foto tidak dapat diproses di browser ini.'));
+        return;
+      }
+
+      context.drawImage(image, sourceX, sourceY, outputWidth, outputHeight, 0, 0, outputWidth, outputHeight);
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, outputWidth, outputHeight);
+      context.clip();
+      for (const stroke of strokes) {
+        if (stroke.points.length < 1) continue;
+        context.beginPath();
+        context.strokeStyle = stroke.color;
+        context.lineWidth = Math.max(4, dimensions.width / 180);
+        context.lineCap = 'round';
+        context.lineJoin = 'round';
+        context.moveTo(stroke.points[0].x - sourceX, stroke.points[0].y - sourceY);
+        for (const point of stroke.points.slice(1)) {
+          context.lineTo(point.x - sourceX, point.y - sourceY);
+        }
+        if (stroke.points.length === 1) {
+          context.lineTo(stroke.points[0].x - sourceX + 0.1, stroke.points[0].y - sourceY + 0.1);
+        }
+        context.stroke();
+      }
+      context.restore();
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Hasil edit foto tidak dapat dibuat.'));
+          return;
+        }
+        const editedName = `${fileName.replace(/\.[^.]+$/, '')}-edit.jpg`;
+        resolve(new File([blob], editedName, { type: mimeType }));
+      }, mimeType, 0.92);
+    };
+    image.onerror = () => reject(new Error('Foto tidak dapat dibuka untuk diedit.'));
+    image.src = imageSource;
+  });
+}
 
 interface RepliedMessage {
   id: number;
@@ -39,6 +129,7 @@ interface ChatMessage {
   reply_to?: RepliedMessage | null;
   media_url?: string | null;
   media_type?: string | null;
+  drawing_data?: string | null;
   is_sticker?: boolean | number;
   is_voice_note?: boolean | number;
   audio_duration_seconds?: number;
@@ -113,6 +204,84 @@ function formatAudioTime(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = Math.floor(seconds % 60);
   return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function parseVideoDrawing(value: string | null | undefined): VideoDrawing | null {
+  if (!value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    const candidate = parsed as Record<string, unknown>;
+    if (
+      !Number.isSafeInteger(candidate.width) ||
+      !Number.isSafeInteger(candidate.height) ||
+      !Array.isArray(candidate.strokes)
+    ) {
+      return null;
+    }
+    const width = Number(candidate.width);
+    const height = Number(candidate.height);
+    if (width < 1 || height < 1) return null;
+    const strokes: DrawingStroke[] = [];
+    for (const value of candidate.strokes) {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+      const stroke = value as Record<string, unknown>;
+      if (typeof stroke.color !== 'string' || !Array.isArray(stroke.points)) return null;
+      const points: DrawingPoint[] = [];
+      for (const value of stroke.points) {
+        if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+        const point = value as Record<string, unknown>;
+        if (typeof point.x !== 'number' || typeof point.y !== 'number') return null;
+        points.push({ x: point.x, y: point.y });
+      }
+      strokes.push({ color: stroke.color, points });
+    }
+    return { width, height, strokes };
+  } catch {
+    return null;
+  }
+}
+
+function VideoDrawingOverlay({
+  drawing,
+  className,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: {
+  drawing: VideoDrawing;
+  className?: string;
+  onPointerDown?: React.PointerEventHandler<SVGSVGElement>;
+  onPointerMove?: React.PointerEventHandler<SVGSVGElement>;
+  onPointerUp?: React.PointerEventHandler<SVGSVGElement>;
+  onPointerCancel?: React.PointerEventHandler<SVGSVGElement>;
+}) {
+  return (
+    <svg
+      viewBox={`0 0 ${drawing.width} ${drawing.height}`}
+      preserveAspectRatio="xMidYMid meet"
+      className={className}
+      aria-hidden={onPointerDown ? undefined : true}
+      aria-label={onPointerDown ? 'Coretan video' : undefined}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+    >
+      {drawing.strokes.map((stroke, index) => (
+        <polyline
+          key={index}
+          points={stroke.points.map((point) => `${point.x},${point.y}`).join(' ')}
+          fill="none"
+          stroke={stroke.color}
+          strokeWidth={Math.max(4, drawing.width / 180)}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
+    </svg>
+  );
 }
 
 function readAudioDuration(file: File) {
@@ -419,6 +588,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
   const [attachmentAudioDuration, setAttachmentAudioDuration] = useState(0);
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const [isMediaComposerOpen, setIsMediaComposerOpen] = useState(false);
+  const [isCroppingAttachment, setIsCroppingAttachment] = useState(false);
+  const [isDrawingAttachment, setIsDrawingAttachment] = useState(false);
+  const [isMediaVideoPlaying, setIsMediaVideoPlaying] = useState(false);
+  const [cropArea, setCropArea] = useState<CropArea | null>(null);
+  const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [displayMediaSize, setDisplayMediaSize] = useState<{ width: number; height: number } | null>(null);
+  const [drawingStrokes, setDrawingStrokes] = useState<DrawingStroke[]>([]);
+  const [drawingColor, setDrawingColor] = useState('#ff3b30');
   const [isVoiceNoteAttachment, setIsVoiceNoteAttachment] = useState(false);
   const [isReadingAudioDuration, setIsReadingAudioDuration] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -456,7 +635,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const deletionCursorRef = useRef<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const mediaCaptionRef = useRef<HTMLTextAreaElement>(null);
+  const attachmentMenuRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
   const messageSearchInputRef = useRef<HTMLInputElement>(null);
   const wallpaperInputRef = useRef<HTMLInputElement>(null);
   const pendingSearchJumpMessageIdRef = useRef<number | null>(null);
@@ -469,6 +651,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const voiceElapsedMsRef = useRef(0);
   const voiceSegmentStartedAtRef = useRef<number | null>(null);
   const attachmentPreviewUrlRef = useRef<string | null>(null);
+  const mediaVideoRef = useRef<HTMLVideoElement>(null);
   const audioDurationRequestRef = useRef(0);
   const photoViewerRef = useRef<HTMLDivElement>(null);
   const photoImageRef = useRef<HTMLImageElement>(null);
@@ -489,6 +672,21 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const highlightTimeoutRef = useRef<number | null>(null);
   const messageActionsRef = useRef<HTMLDivElement>(null);
   const messageActionsMenuRef = useRef<HTMLDivElement>(null);
+  const drawingPointerRef = useRef<number | null>(null);
+  const cropInteractionRef = useRef<CropInteraction | null>(null);
+
+  useEffect(() => {
+    if (!isAttachmentMenuOpen) return;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !attachmentMenuRef.current?.contains(event.target)) {
+        setIsAttachmentMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointerDown);
+  }, [isAttachmentMenuOpen]);
 
   const updateAttachment = useCallback((file: File | null) => {
     audioDurationRequestRef.current += 1;
@@ -501,6 +699,72 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     setIsVoiceNoteAttachment(false);
     setIsReadingAudioDuration(false);
   }, []);
+
+  const handleAttachmentFile = (file: File | null) => {
+    if (!file) return;
+    const isVideo = file.type.startsWith('video/');
+    const isAudio = file.type.startsWith('audio/');
+    const isImage = file.type.startsWith('image/');
+    const maxSize = isVideo
+      ? MAX_CHAT_VIDEO_SIZE
+      : isAudio
+        ? MAX_CHAT_AUDIO_SIZE
+        : MAX_CHAT_PHOTO_SIZE;
+    if (file.size > maxSize) {
+      setError(isVideo
+        ? 'Ukuran video maksimal 15 MB.'
+        : isAudio
+          ? 'Ukuran audio maksimal 15 MB.'
+          : 'Ukuran foto maksimal 5 MB.');
+      return;
+    }
+    if (
+      ![
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'video/mp4', 'video/webm',
+        'audio/mp4', 'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/wav', 'audio/aac',
+      ].includes(file.type)
+    ) {
+      setError('Format lampiran tidak didukung.');
+      return;
+    }
+
+    setError(null);
+    setIsAttachmentMenuOpen(false);
+    setDrawingStrokes([]);
+    setImageDimensions(null);
+    setDisplayMediaSize(null);
+    setIsMediaVideoPlaying(false);
+    if (isAudio) {
+      const requestId = ++audioDurationRequestRef.current;
+      setIsReadingAudioDuration(true);
+      void readAudioDuration(file)
+        .then((duration) => {
+          if (requestId !== audioDurationRequestRef.current) return;
+          updateAttachment(file);
+          setAttachmentAudioDuration(duration);
+        })
+        .catch((audioError: unknown) => {
+          if (requestId === audioDurationRequestRef.current) {
+            setError(audioError instanceof Error ? audioError.message : 'Durasi audio tidak dapat dibaca.');
+          }
+        })
+        .finally(() => {
+          if (requestId === audioDurationRequestRef.current) setIsReadingAudioDuration(false);
+        });
+      return;
+    }
+
+    updateAttachment(file);
+    if (isImage || isVideo) {
+      setIsMediaComposerOpen(true);
+      setIsCroppingAttachment(false);
+      setIsDrawingAttachment(false);
+      setCropArea(null);
+      setDrawingStrokes([]);
+      setImageDimensions(null);
+    }
+  };
 
   const loadFavoriteStickers = useCallback(async () => {
     try {
@@ -523,6 +787,31 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   }, []);
 
   useEffect(() => {
+    if (!isMediaComposerOpen || !imageDimensions) {
+      return;
+    }
+
+    const resizeMedia = () => {
+      const scale = Math.min(
+        (window.innerWidth * 0.9) / imageDimensions.width,
+        (window.innerHeight * 0.68) / imageDimensions.height,
+        1,
+      );
+      setDisplayMediaSize({
+        width: Math.max(1, Math.round(imageDimensions.width * scale)),
+        height: Math.max(1, Math.round(imageDimensions.height * scale)),
+      });
+    };
+
+    const resizeFrame = window.requestAnimationFrame(resizeMedia);
+    window.addEventListener('resize', resizeMedia);
+    return () => {
+      window.cancelAnimationFrame(resizeFrame);
+      window.removeEventListener('resize', resizeMedia);
+    };
+  }, [imageDimensions, isMediaComposerOpen]);
+
+  useEffect(() => {
     if (!isRecordingVoice || isVoiceRecordingPaused) return;
     const timer = window.setInterval(() => {
       const segmentStartedAt = voiceSegmentStartedAtRef.current;
@@ -542,6 +831,16 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
   }, [draft]);
+
+  useLayoutEffect(() => {
+    const textarea = mediaCaptionRef.current;
+    if (!isMediaComposerOpen || !textarea) return;
+
+    textarea.style.height = 'auto';
+    const maxHeight = Number.parseFloat(window.getComputedStyle(textarea).maxHeight) || 128;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  }, [draft, isMediaComposerOpen]);
 
   useLayoutEffect(() => {
     if (openMessageActionsId === null) return;
@@ -890,6 +1189,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     setError(null);
     setDraft('');
     updateAttachment(null);
+    setIsMediaComposerOpen(false);
+    setIsCroppingAttachment(false);
+    setIsDrawingAttachment(false);
     const replyToId = replyTarget?.id ?? null;
     setReplyTarget(null);
     try {
@@ -925,12 +1227,17 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       messageCursorRef.current = Math.max(messageCursorRef.current ?? 0, result.data.id);
       if (attachmentInputRef.current) attachmentInputRef.current.value = '';
       setRecordedVoiceDuration(0);
+      setDrawingStrokes([]);
+      setImageDimensions(null);
     } catch (sendError: unknown) {
       setDraft((currentDraft) => currentDraft || draft);
       if (attachment) {
         updateAttachment(attachment);
         setAttachmentAudioDuration(audioDuration);
         setIsVoiceNoteAttachment(Boolean(isVoiceNote));
+        if (attachment.type.startsWith('image/') || attachment.type.startsWith('video/')) {
+          setIsMediaComposerOpen(true);
+        }
       }
       setReplyTarget((currentTarget) => currentTarget || replyTarget);
       setError(sendError instanceof Error ? sendError.message : 'Gagal mengirim pesan.');
@@ -1498,8 +1805,129 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     }
   };
 
+  const handleApplyPhotoEdit = async (cropSelection: CropArea | null, strokes: DrawingStroke[]) => {
+    if (!attachmentPreviewUrl || !attachmentFile || !imageDimensions) return;
+    setError(null);
+    try {
+      const editedFile = await createEditedImage(
+        attachmentPreviewUrl,
+        imageDimensions,
+        cropSelection,
+        strokes,
+        'image/jpeg',
+        attachmentFile.name,
+      );
+      if (editedFile.size < 1 || editedFile.size > MAX_CHAT_PHOTO_SIZE) {
+        throw new Error('Ukuran foto hasil edit maksimal 5 MB.');
+      }
+      setImageDimensions(null);
+      setDisplayMediaSize(null);
+      updateAttachment(editedFile);
+      setIsCroppingAttachment(false);
+      setIsDrawingAttachment(false);
+      setCropArea(null);
+      setDrawingStrokes([]);
+    } catch (editError: unknown) {
+      setError(editError instanceof Error ? editError.message : 'Foto tidak dapat diedit.');
+    }
+  };
+
+  const getDrawingPoint = (event: React.PointerEvent<SVGSVGElement>): DrawingPoint | null => {
+    const svg = event.currentTarget;
+    const bounds = svg.getBoundingClientRect();
+    if (!imageDimensions || bounds.width <= 0 || bounds.height <= 0) return null;
+    return {
+      x: (event.clientX - bounds.left) * imageDimensions.width / bounds.width,
+      y: (event.clientY - bounds.top) * imageDimensions.height / bounds.height,
+    };
+  };
+
+  const handleCropPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!imageDimensions || event.button !== 0) return;
+    event.preventDefault();
+    const point = getDrawingPoint(event);
+    if (!point) return;
+
+    const target = event.target as SVGElement;
+    const requestedMode = target.dataset.cropMode;
+    const mode: CropInteraction['mode'] =
+      requestedMode === 'move' ||
+      requestedMode === 'n' || requestedMode === 's' || requestedMode === 'e' || requestedMode === 'w' ||
+      requestedMode === 'ne' || requestedMode === 'nw' || requestedMode === 'se' || requestedMode === 'sw'
+        ? requestedMode
+        : 'new';
+    const initialArea = mode === 'new' ? null : cropArea;
+    cropInteractionRef.current = { pointerId: event.pointerId, mode, start: point, initialArea };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    if (mode === 'new') {
+      setCropArea({ x: point.x, y: point.y, width: 0, height: 0 });
+    }
+  };
+
+  const handleCropPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const interaction = cropInteractionRef.current;
+    if (!interaction || interaction.pointerId !== event.pointerId || !imageDimensions) return;
+    const point = getDrawingPoint(event);
+    if (!point) return;
+    const imageWidth = imageDimensions.width;
+    const imageHeight = imageDimensions.height;
+
+    if (interaction.mode === 'move' && interaction.initialArea) {
+      const { initialArea } = interaction;
+      setCropArea({
+        ...initialArea,
+        x: Math.min(imageWidth - initialArea.width, Math.max(0, initialArea.x + point.x - interaction.start.x)),
+        y: Math.min(imageHeight - initialArea.height, Math.max(0, initialArea.y + point.y - interaction.start.y)),
+      });
+      return;
+    }
+
+    const initialArea = interaction.initialArea ?? {
+      x: interaction.start.x,
+      y: interaction.start.y,
+      width: 0,
+      height: 0,
+    };
+    let left = initialArea.x;
+    let right = initialArea.x + initialArea.width;
+    let top = initialArea.y;
+    let bottom = initialArea.y + initialArea.height;
+
+    if (interaction.mode === 'new') {
+      left = Math.min(interaction.start.x, point.x);
+      right = Math.max(interaction.start.x, point.x);
+      top = Math.min(interaction.start.y, point.y);
+      bottom = Math.max(interaction.start.y, point.y);
+    } else {
+      if (interaction.mode.includes('w')) left = Math.min(point.x, right - 1);
+      if (interaction.mode.includes('e')) right = Math.max(point.x, left + 1);
+      if (interaction.mode.includes('n')) top = Math.min(point.y, bottom - 1);
+      if (interaction.mode.includes('s')) bottom = Math.max(point.y, top + 1);
+      left = Math.max(0, left);
+      top = Math.max(0, top);
+      right = Math.min(imageWidth, right);
+      bottom = Math.min(imageHeight, bottom);
+    }
+
+    setCropArea({
+      x: Math.max(0, left),
+      y: Math.max(0, top),
+      width: Math.max(0, right - left),
+      height: Math.max(0, bottom - top),
+    });
+  };
+
+  const handleCropPointerEnd = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (cropInteractionRef.current?.pointerId !== event.pointerId) return;
+    cropInteractionRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
   const isShowingSearchResults = isSearchOpen && searchQuery.trim().length > 0;
   const displayedMessages = isShowingSearchResults ? searchResults : messages;
+  const videoViewerDrawing = parseVideoDrawing(videoViewer?.message.drawing_data);
 
   return (
     <section
@@ -1815,6 +2243,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             const isSelected = selectedMessageIds.includes(message.id);
             const senderName = message.username;
             const profileHref = getProfileHref(message);
+            const videoDrawing = parseVideoDrawing(message.drawing_data);
 
             return (
               <div
@@ -1965,6 +2394,12 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                             className="absolute inset-0 h-full w-full object-contain"
                             aria-hidden="true"
                           />
+                          {videoDrawing && (
+                            <VideoDrawingOverlay
+                              drawing={videoDrawing}
+                              className="pointer-events-none absolute inset-0 h-full w-full"
+                            />
+                          )}
                           <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-full bg-black/60 text-white shadow-lg ring-1 ring-white/40 transition group-hover:scale-110 group-hover:bg-black/75">
                             <Play className="ml-1 h-7 w-7 fill-current" />
                           </span>
@@ -2309,20 +2744,28 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             className="flex min-h-0 flex-1 items-center justify-center p-3 sm:p-6"
             onClick={(event) => event.stopPropagation()}
           >
-            <video
-              src={videoViewer.url}
-              controls
-              autoPlay
-              playsInline
-              className="max-h-full max-w-full rounded-lg"
-              aria-label={`Video dari ${videoViewer.senderName}`}
-            />
+            <div className="relative inline-flex max-h-full max-w-full">
+              <video
+                src={videoViewer.url}
+                controls
+                autoPlay
+                playsInline
+                className="max-h-[calc(100dvh-5rem)] max-w-[95vw] rounded-lg"
+                aria-label={`Video dari ${videoViewer.senderName}`}
+              />
+              {videoViewerDrawing && (
+                <VideoDrawingOverlay
+                  drawing={videoViewerDrawing}
+                  className="pointer-events-none absolute inset-0 h-full w-full"
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {!isWallpaperSettingsOpen && (
-      <form onSubmit={handleSubmit} className="z-10 shrink-0 bg-transparent px-2 pb-2 pt-2 sm:px-4 sm:pb-3">
+      <form onSubmit={handleSubmit} className={`${isMediaComposerOpen ? 'z-[200]' : 'z-10'} relative shrink-0 bg-transparent px-2 pb-2 pt-2 sm:px-4 sm:pb-3`}>
         {replyTarget && (
           <div className="mb-3 flex items-center gap-2 rounded-xl border-l-4 border-blue-500 bg-blue-50 px-3 py-2 dark:bg-blue-950/30">
             <div className="min-w-0 flex-1">
@@ -2397,7 +2840,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             )}
           </div>
         )}
-        {attachmentPreviewUrl && attachmentFile && (
+        {attachmentPreviewUrl && attachmentFile && (!isMediaComposerOpen || attachmentFile.type.startsWith('audio/')) && (
           <div className="mb-3 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-700 dark:bg-[#0d1117]">
             {attachmentFile.type.startsWith('audio/') ? (
               <ChatAudioPlayer
@@ -2483,60 +2926,25 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           <input
             ref={attachmentInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm,audio/mp4,audio/webm,audio/ogg,audio/mpeg,audio/wav,audio/aac"
+            accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/webm"
             className="sr-only"
             aria-label="Pilih foto atau video untuk dikirim"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0] ?? null;
               event.currentTarget.value = '';
-              if (!file) return;
-              const isVideo = file.type.startsWith('video/');
-              const isAudio = file.type.startsWith('audio/');
-              const maxSize = isVideo
-                ? MAX_CHAT_VIDEO_SIZE
-                : isAudio
-                  ? MAX_CHAT_AUDIO_SIZE
-                  : MAX_CHAT_PHOTO_SIZE;
-              if (file.size > maxSize) {
-                setError(isVideo
-                  ? 'Ukuran video maksimal 15 MB.'
-                  : isAudio
-                    ? 'Ukuran audio maksimal 15 MB.'
-                    : 'Ukuran foto maksimal 5 MB.');
-                return;
-              }
-              if (
-                ![
-                  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-                  'video/mp4', 'video/webm',
-                  'audio/mp4', 'audio/webm', 'audio/ogg', 'audio/mpeg', 'audio/wav', 'audio/aac',
-                ]
-                  .includes(file.type)
-              ) {
-                setError('Format lampiran tidak didukung.');
-                return;
-              }
-              setError(null);
-              if (isAudio) {
-                const requestId = ++audioDurationRequestRef.current;
-                setIsReadingAudioDuration(true);
-                void readAudioDuration(file)
-                  .then((duration) => {
-                    if (requestId !== audioDurationRequestRef.current) return;
-                    updateAttachment(file);
-                    setAttachmentAudioDuration(duration);
-                  })
-                  .catch((audioError: unknown) => {
-                    if (requestId === audioDurationRequestRef.current) {
-                      setError(audioError instanceof Error ? audioError.message : 'Durasi audio tidak dapat dibaca.');
-                    }
-                  })
-                  .finally(() => {
-                    if (requestId === audioDurationRequestRef.current) setIsReadingAudioDuration(false);
-                  });
-              } else {
-                updateAttachment(file);
-              }
+              handleAttachmentFile(file);
+            }}
+          />
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept="audio/mp4,audio/webm,audio/ogg,audio/mpeg,audio/wav,audio/aac"
+            className="sr-only"
+            aria-label="Pilih audio untuk dikirim"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              event.currentTarget.value = '';
+              handleAttachmentFile(file);
             }}
           />
           <button
@@ -2557,16 +2965,72 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           >
             <Smile className="h-5 w-5" />
           </button>
-          <button
-            type="button"
-            onClick={() => attachmentInputRef.current?.click()}
-            disabled={isSending}
-            aria-label="Kirim foto, video, atau audio"
-            title="Kirim foto, video, atau audio"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300"
-          >
-            <Paperclip className="h-5 w-5" />
-          </button>
+          <div ref={attachmentMenuRef} className="relative shrink-0">
+            {isAttachmentMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Pilihan lampiran"
+                className="absolute bottom-14 left-0 z-40 w-48 rounded-2xl border border-slate-700 bg-[#1b1b1b] p-2 shadow-2xl"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                >
+                  <ImagePlus className="h-4 w-4 text-sky-400" />
+                  Foto &amp; Video
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => audioInputRef.current?.click()}
+                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                >
+                  <Music2 className="h-4 w-4 text-orange-400" />
+                  Audio
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled
+                  title="Polling belum tersedia"
+                  className="flex w-full cursor-not-allowed items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-slate-500"
+                >
+                  <ListChecks className="h-4 w-4 text-amber-400" />
+                  Polling
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsAttachmentMenuOpen(false);
+                    stickerInputRef.current?.click();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                >
+                  <Sticker className="h-4 w-4 text-emerald-400" />
+                  Stiker baru
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsAttachmentMenuOpen((open) => !open)}
+              disabled={isSending}
+              aria-label="Buka pilihan lampiran"
+              aria-expanded={isAttachmentMenuOpen}
+              aria-haspopup="menu"
+              title="Lampirkan"
+              className={`flex h-10 w-10 items-center justify-center rounded-full transition disabled:opacity-50 ${
+                isAttachmentMenuOpen
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300'
+                  : 'text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:text-slate-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'
+              }`}
+            >
+              <Paperclip className="h-5 w-5" />
+            </button>
+          </div>
           <textarea
             ref={composerRef}
             value={draft}
@@ -2623,6 +3087,334 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
           </button>
         </div>
+        {isMediaComposerOpen && attachmentFile && attachmentPreviewUrl && (
+          <div
+            className="fixed inset-0 z-[150] flex select-none flex-col bg-white text-slate-900 dark:bg-[#111111] dark:text-white"
+            role="dialog"
+            aria-modal="true"
+            aria-label={attachmentFile.type.startsWith('video/') ? 'Pratinjau video sebelum dikirim' : 'Edit foto sebelum dikirim'}
+          >
+            <div className="flex h-14 shrink-0 items-center justify-between px-3 sm:px-6">
+              <button
+                type="button"
+                onClick={() => {
+                  updateAttachment(null);
+                  setIsMediaComposerOpen(false);
+                  setIsCroppingAttachment(false);
+                  setIsDrawingAttachment(false);
+                  setDrawingStrokes([]);
+                }}
+                disabled={isSending}
+                aria-label="Batalkan lampiran"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-900 disabled:opacity-50 dark:text-white/80 dark:hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              {attachmentFile.type.startsWith('image/') ? (
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCroppingAttachment((active) => !active);
+                      setIsDrawingAttachment(false);
+                      if (!isCroppingAttachment && imageDimensions && !cropArea) {
+                        setCropArea({ x: 0, y: 0, ...imageDimensions });
+                      }
+                    }}
+                    aria-label={isCroppingAttachment ? 'Tutup alat potong' : 'Potong foto'}
+                    title="Potong"
+                    className={`flex h-10 w-10 items-center justify-center rounded-full transition ${
+                      isCroppingAttachment
+                        ? 'text-blue-600 dark:text-blue-300'
+                        : 'text-slate-600 hover:text-slate-900 dark:text-white/80 dark:hover:text-white'
+                    }`}
+                  >
+                    <Crop className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDrawingAttachment((active) => !active);
+                      setIsCroppingAttachment(false);
+                    }}
+                    aria-label={isDrawingAttachment ? 'Selesai mencoret' : 'Coret foto'}
+                    title="Coret"
+                    className={`flex h-10 w-10 items-center justify-center rounded-full transition ${
+                      isDrawingAttachment
+                        ? 'text-blue-600 dark:text-blue-300'
+                        : 'text-slate-600 hover:text-slate-900 dark:text-white/80 dark:hover:text-white'
+                    }`}
+                  >
+                    <Pencil className="h-5 w-5" />
+                  </button>
+                  {!isCroppingAttachment && !isDrawingAttachment && (
+                    <span className="hidden px-2 text-xs text-slate-500 dark:text-white/60 sm:inline">Edit foto</span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const video = mediaVideoRef.current;
+                      if (!video) return;
+                      if (video.paused) void video.play().catch((playError: unknown) => {
+                        setError(playError instanceof Error ? playError.message : 'Video tidak dapat diputar.');
+                      });
+                      else video.pause();
+                    }}
+                    aria-label={isMediaVideoPlaying ? 'Jeda video' : 'Putar video'}
+                    title={isMediaVideoPlaying ? 'Jeda video' : 'Putar video'}
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:text-slate-900 dark:text-white/80 dark:hover:text-white"
+                  >
+                    {isMediaVideoPlaying
+                      ? <Pause className="h-5 w-5" />
+                      : <Play className="ml-0.5 h-5 w-5 fill-current" />}
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isCroppingAttachment) {
+                    if (imageDimensions) setCropArea({ x: 0, y: 0, ...imageDimensions });
+                  } else if (isDrawingAttachment) {
+                    setDrawingStrokes([]);
+                  } else {
+                    setDraft('');
+                  }
+                }}
+                disabled={isSending || (!isCroppingAttachment && !isDrawingAttachment && !draft)}
+                aria-label={isCroppingAttachment ? 'Atur ulang potongan' : isDrawingAttachment ? 'Hapus semua coretan' : 'Hapus teks'}
+                title={isCroppingAttachment ? 'Atur ulang potongan' : isDrawingAttachment ? 'Hapus coretan' : 'Hapus teks'}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-35 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white"
+              >
+                <RotateCcw className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-visible border-0 bg-transparent px-3 pb-3 shadow-none">
+              {attachmentFile.type.startsWith('video/') ? (
+                <div
+                  className="relative shrink-0"
+                  style={displayMediaSize ? { width: displayMediaSize.width, height: displayMediaSize.height } : undefined}
+                >
+                  <video
+                    ref={mediaVideoRef}
+                    src={attachmentPreviewUrl}
+                    controls
+                    playsInline
+                    onLoadedMetadata={(event) => {
+                      setImageDimensions({
+                        width: event.currentTarget.videoWidth,
+                        height: event.currentTarget.videoHeight,
+                      });
+                    }}
+                    onPlay={() => setIsMediaVideoPlaying(true)}
+                    onPause={() => setIsMediaVideoPlaying(false)}
+                    className="block h-full w-full rounded-sm object-fill"
+                    aria-label="Video yang akan dikirim"
+                  />
+                </div>
+              ) : (
+                <div
+                  className={`relative shrink-0 ${isCroppingAttachment ? 'z-20' : ''} ${displayMediaSize ? '' : 'inline-block max-h-[68dvh] max-w-[90vw]'}`}
+                  style={displayMediaSize ? { width: displayMediaSize.width, height: displayMediaSize.height } : undefined}
+                >
+                  <Image
+                    src={attachmentPreviewUrl}
+                    alt="Foto yang akan dikirim"
+                    width={imageDimensions?.width || 1}
+                    height={imageDimensions?.height || 1}
+                    unoptimized
+                    priority
+                    draggable={false}
+                    onLoad={(event) => {
+                      const dimensions = {
+                        width: event.currentTarget.naturalWidth,
+                        height: event.currentTarget.naturalHeight,
+                      };
+                      setImageDimensions(dimensions);
+                      setCropArea((area) => area ?? { x: 0, y: 0, ...dimensions });
+                    }}
+                    className={displayMediaSize
+                      ? 'absolute inset-0 h-full w-full select-none object-fill'
+                      : 'block max-h-[68dvh] max-w-[90vw] select-none object-contain'}
+                  />
+                  {(isDrawingAttachment || isCroppingAttachment) && imageDimensions && displayMediaSize && (
+                    <svg
+                      viewBox={`0 0 ${imageDimensions.width} ${imageDimensions.height}`}
+                      preserveAspectRatio="none"
+                      className="absolute inset-0 h-full w-full touch-none select-none overflow-visible"
+                      aria-label={isCroppingAttachment ? 'Area potong bebas' : 'Area coretan foto'}
+                      onPointerDown={isCroppingAttachment ? handleCropPointerDown : (event) => {
+                          if (event.button !== 0) return;
+                          event.preventDefault();
+                          const point = getDrawingPoint(event);
+                          if (!point) return;
+                          event.currentTarget.setPointerCapture(event.pointerId);
+                          drawingPointerRef.current = event.pointerId;
+                          setDrawingStrokes((current) => [...current, { color: drawingColor, points: [point] }]);
+                        }}
+                      onPointerMove={isCroppingAttachment ? handleCropPointerMove : (event) => {
+                          if (drawingPointerRef.current !== event.pointerId) return;
+                          const point = getDrawingPoint(event);
+                          if (!point) return;
+                          setDrawingStrokes((current) => {
+                            if (!current.length) return current;
+                            const next = [...current];
+                            const last = next[next.length - 1];
+                            next[next.length - 1] = { ...last, points: [...last.points, point] };
+                            return next;
+                          });
+                        }}
+                      onPointerUp={isCroppingAttachment ? handleCropPointerEnd : (event) => {
+                          if (drawingPointerRef.current !== event.pointerId) return;
+                          drawingPointerRef.current = null;
+                          if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                            event.currentTarget.releasePointerCapture(event.pointerId);
+                          }
+                        }}
+                      onPointerCancel={isCroppingAttachment ? handleCropPointerEnd : () => {
+                          drawingPointerRef.current = null;
+                        }}
+                    >
+                      {isCroppingAttachment && cropArea && (
+                        <>
+                          <path
+                            d={`M0 0H${imageDimensions.width}V${imageDimensions.height}H0Z M${cropArea.x} ${cropArea.y}h${cropArea.width}v${cropArea.height}h-${cropArea.width}Z`}
+                            fill="rgba(0,0,0,0.58)"
+                            fillRule="evenodd"
+                            data-crop-mode="new"
+                          />
+                          {cropArea.width > 0 && cropArea.height > 0 && (
+                            <>
+                              <rect
+                                x={cropArea.x}
+                                y={cropArea.y}
+                                width={cropArea.width}
+                                height={cropArea.height}
+                                fill="rgba(255,255,255,0.05)"
+                                stroke="white"
+                                strokeWidth={Math.max(2, Math.max(imageDimensions.width, imageDimensions.height) / 500)}
+                                data-crop-mode="move"
+                              />
+                              {[
+                                { mode: 'nw', x: cropArea.x, y: cropArea.y },
+                                { mode: 'n', x: cropArea.x + cropArea.width / 2, y: cropArea.y },
+                                { mode: 'ne', x: cropArea.x + cropArea.width, y: cropArea.y },
+                                { mode: 'e', x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height / 2 },
+                                { mode: 'se', x: cropArea.x + cropArea.width, y: cropArea.y + cropArea.height },
+                                { mode: 's', x: cropArea.x + cropArea.width / 2, y: cropArea.y + cropArea.height },
+                                { mode: 'sw', x: cropArea.x, y: cropArea.y + cropArea.height },
+                                { mode: 'w', x: cropArea.x, y: cropArea.y + cropArea.height / 2 },
+                              ].map((handle) => (
+                                <circle
+                                  key={handle.mode}
+                                  cx={handle.x}
+                                  cy={handle.y}
+                                  r={Math.max(8, Math.max(imageDimensions.width, imageDimensions.height) / 70)}
+                                  fill="white"
+                                  stroke="#111111"
+                                  strokeWidth={Math.max(2, Math.max(imageDimensions.width, imageDimensions.height) / 500)}
+                                  data-crop-mode={handle.mode}
+                                  vectorEffect="non-scaling-stroke"
+                                />
+                              ))}
+                            </>
+                          )}
+                        </>
+                      )}
+                      {drawingStrokes.map((stroke, index) => (
+                        <polyline
+                          key={index}
+                          points={stroke.points.map((point) => `${point.x},${point.y}`).join(' ')}
+                          fill="none"
+                          stroke={stroke.color}
+                          strokeWidth={Math.max(4, imageDimensions.width / 180)}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      ))}
+                    </svg>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="relative z-10 -mt-px shrink-0 border-0 bg-white px-3 pb-4 pt-3 shadow-none before:pointer-events-none before:absolute before:inset-x-0 before:-top-px before:h-1 before:bg-inherit before:content-[''] dark:bg-[#111111] sm:px-6">
+              {isCroppingAttachment && (
+                <p className="mx-auto mb-3 max-w-2xl border-0 bg-transparent text-center text-xs text-slate-500 shadow-none dark:text-white/65">
+                  Tarik sisi atau sudut bingkai untuk mengatur ukuran crop. Tarik bagian tengah untuk memindahkannya.
+                </p>
+              )}
+              {isDrawingAttachment && (
+                <div className="mx-auto mb-3 flex max-w-2xl items-center justify-center gap-3">
+                  <span className="text-xs text-slate-500 dark:text-white/65">Warna pena</span>
+                  {['#ff3b30', '#ffd60a', '#34c759', '#0a84ff', '#ffffff'].map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => setDrawingColor(color)}
+                      aria-label={`Pilih warna ${color}`}
+                      aria-pressed={drawingColor === color}
+                      className={`h-6 w-6 rounded-full border-2 ${drawingColor === color ? 'border-slate-900 ring-2 ring-slate-900/25 dark:border-white dark:ring-white/40' : 'border-slate-400 dark:border-white/35'}`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setDrawingStrokes((strokes) => strokes.slice(0, -1))}
+                    disabled={drawingStrokes.length === 0}
+                    className="ml-2 flex h-8 w-8 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 disabled:opacity-35 dark:text-white/80 dark:hover:bg-white/10"
+                    aria-label="Urungkan coretan terakhir"
+                    title="Urungkan"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+              <div className="flex w-full items-center gap-1 rounded-full bg-slate-100 p-1.5 shadow-sm sm:gap-2 dark:bg-[#1c222b]">
+                <textarea
+                  ref={mediaCaptionRef}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                  maxLength={2000}
+                  rows={1}
+                  placeholder="Ketik pesan"
+                  aria-label="Tambahkan keterangan media"
+                  className="max-h-32 min-h-10 min-w-0 flex-1 resize-none !rounded-none !border-0 !bg-transparent px-2 py-2.5 text-sm text-slate-900 outline-none placeholder:!text-slate-500 focus:!border-0 focus:!ring-0 dark:text-slate-100 dark:placeholder:!text-slate-400"
+                />
+                {isCroppingAttachment || (isDrawingAttachment && attachmentFile.type.startsWith('image/')) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isCroppingAttachment) void handleApplyPhotoEdit(cropArea, drawingStrokes);
+                      else void handleApplyPhotoEdit(null, drawingStrokes);
+                    }}
+                    disabled={isSending || (isCroppingAttachment && (!cropArea || cropArea.width < 1 || cropArea.height < 1)) || (isDrawingAttachment && drawingStrokes.length === 0)}
+                    aria-label={isCroppingAttachment ? 'Terapkan potongan foto' : 'Terapkan coretan foto'}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <Check className="h-5 w-5" />
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={(!draft.trim() && !attachmentFile) || isSending || isReadingAudioDuration}
+                    aria-label="Kirim media"
+                    title="Kirim"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5 fill-current" />}
+                  </button>
+                )}
+              </div>
+              {error && <p className="mx-auto mt-2 max-w-2xl text-center text-xs text-rose-300">{error}</p>}
+            </div>
+          </div>
+        )}
       </form>
       )}
       {(pendingDeleteMessage || pendingBulkDelete) && (
