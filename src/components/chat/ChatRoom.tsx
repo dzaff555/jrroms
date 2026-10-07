@@ -654,6 +654,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [pendingSendPreview, setPendingSendPreview] = useState<string | null>(null);
   const isChatNotificationsEnabled = useSyncExternalStore(
     subscribeToChatNotificationPreference,
     () => getChatNotificationPreference(currentUserId),
@@ -1356,6 +1357,14 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     const isVoiceNote = attachment?.type.startsWith('audio/') && isVoiceNoteAttachment;
     if ((!message && !attachment) || isSending || isReadingAudioDuration) return;
 
+    const attachmentPreview = attachment?.type.startsWith('image/')
+      ? 'Foto'
+      : attachment?.type.startsWith('video/')
+        ? 'Video'
+        : attachment?.type.startsWith('audio/')
+          ? isVoiceNote ? 'Pesan suara' : 'Audio'
+          : '';
+    setPendingSendPreview(message || attachmentPreview);
     setIsSending(true);
     setError(null);
     setDraft('');
@@ -1414,6 +1423,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       setError(sendError instanceof Error ? sendError.message : 'Gagal mengirim pesan.');
     } finally {
       setIsSending(false);
+      setPendingSendPreview(null);
     }
   };
 
@@ -1537,6 +1547,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   ) => {
     if (isSending) return;
 
+    setPendingSendPreview('Stiker');
     setIsSending(true);
     setError(null);
     try {
@@ -1568,6 +1579,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       setError(sendError instanceof Error ? sendError.message : 'Gagal mengirim stiker.');
     } finally {
       setIsSending(false);
+      setPendingSendPreview(null);
     }
   };
 
@@ -2137,6 +2149,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const isShowingSearchResults = isSearchOpen && searchQuery.trim().length > 0;
   const displayedMessages = isShowingSearchResults ? searchResults : messages;
   const videoViewerDrawing = parseVideoDrawing(videoViewer?.message.drawing_data);
+  const ownSendingAvatar = messages.slice().reverse().find((message) => message.sender_id === currentUserId);
   const notificationSendersById = new Map<number, { id: number; name: string }>();
   for (const message of messages) {
     if (message.sender_id !== currentUserId) {
@@ -2536,7 +2549,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             <h2 className="font-semibold text-slate-800 dark:text-slate-100">Tidak ada pesan yang cocok</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Coba kata atau kalimat lain.</p>
           </div>
-        ) : displayedMessages.length === 0 ? (
+        ) : displayedMessages.length === 0 && pendingSendPreview === null ? (
           <div className="flex h-full flex-col items-center justify-center px-6 text-center">
             <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
               <MessageCircle className="h-7 w-7" />
@@ -2549,7 +2562,8 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             </p>
           </div>
         ) : (
-          displayedMessages.map((message) => {
+          <>
+          {displayedMessages.map((message) => {
             const ownMessage = isOwnMessage(message);
             const canDelete = canDeleteMessage(message);
             const isSelected = selectedMessageIds.includes(message.id);
@@ -2942,7 +2956,34 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 </div>
               </div>
             );
-          })
+          })}
+          {pendingSendPreview !== null && !isShowingSearchResults && (
+            <div className="flex justify-end rounded-xl" role="status" aria-label="Mengirim pesan">
+              <div className="flex max-w-[92%] flex-row-reverse items-end gap-2 sm:max-w-[80%]">
+                <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-blue-600/30 text-xs font-bold uppercase text-blue-200 ring-1 ring-slate-300 dark:ring-slate-600">
+                  {ownSendingAvatar?.profile_photo ? (
+                    <ProtectedProfilePhoto
+                      src={ownSendingAvatar.profile_photo}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center">
+                      {ownSendingAvatar?.username.charAt(0) || 'S'}
+                    </span>
+                  )}
+                </div>
+                <Loader2
+                  className="mb-2 h-4 w-4 shrink-0 animate-spin text-blue-600 dark:text-blue-300"
+                  aria-hidden="true"
+                />
+                <article className="min-w-0 max-w-full rounded-2xl rounded-br-sm bg-blue-600 px-3.5 py-2.5 text-sm text-white opacity-80 shadow-sm">
+                  <p className="break-words">{pendingSendPreview}</p>
+                </article>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
       {showScrollToBottom && !isLoading && !isShowingSearchResults && (
