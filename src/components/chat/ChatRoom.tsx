@@ -1360,13 +1360,14 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     }
   };
 
-  const handleSendSticker = async (source: { file: File } | { favoriteId: number }) => {
+  const handleSendSticker = async (
+    source: { file: File } | { favoriteId: number },
+    replyToId = replyTarget?.id ?? null,
+  ) => {
     if (isSending) return;
 
     setIsSending(true);
     setError(null);
-    const replyToId = replyTarget?.id ?? null;
-    setReplyTarget(null);
     try {
       let body: BodyInit;
       let headers: HeadersInit | undefined;
@@ -1390,9 +1391,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       shouldScrollRef.current = true;
       mergeMessages([result.data]);
       messageCursorRef.current = Math.max(messageCursorRef.current ?? 0, result.data.id);
+      setReplyTarget((currentTarget) => currentTarget?.id === replyToId ? null : currentTarget);
       setIsStickerPickerOpen(false);
     } catch (sendError: unknown) {
-      setReplyTarget((currentTarget) => currentTarget || replyTarget);
       setError(sendError instanceof Error ? sendError.message : 'Gagal mengirim stiker.');
     } finally {
       setIsSending(false);
@@ -2283,7 +2284,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                 )}
                 <div
                   className={`flex max-w-[92%] items-end gap-2 transition-transform duration-150 sm:max-w-[80%] ${
-                  message.is_sticker ? (ownMessage ? 'flex-row-reverse' : 'flex-row') : ''
+                  message.is_sticker
+                    ? (ownMessage ? 'flex-row-reverse' : 'flex-row')
+                    : ''
                   } ${swipingMessage?.messageId === message.id ? '!transition-none' : ''}`}
                   style={{
                     transform: swipingMessage?.messageId === message.id
@@ -2312,18 +2315,34 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     </Link>
                   )}
                   <article className={message.is_sticker
-                    ? 'min-w-0'
+                    ? `min-w-0 ${
+                        message.reply_to
+                          ? `flex w-[min(18rem,70vw)] flex-col items-center rounded-2xl p-2 shadow-sm ${
+                              ownMessage
+                                ? 'bg-blue-600 text-white'
+                                : 'border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-100'
+                            }`
+                          : ''
+                      }`
                     : `min-w-0 rounded-2xl px-3.5 py-2.5 shadow-sm ${
                         ownMessage
                           ? 'rounded-br-sm bg-blue-600 text-white'
                           : 'rounded-bl-sm border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-[#161b22] dark:text-slate-100'
                       }`}>
-                    {!message.is_sticker && message.reply_to && (
+                    {message.reply_to && (
                       <button
                         type="button"
                         onClick={() => handleQuotedMessageClick(message.reply_to!.id)}
                         disabled={Boolean(message.reply_to.deleted_at)}
-                        className="mb-2 block w-full rounded-lg border-l-2 border-blue-400 bg-black/5 px-2.5 py-1.5 text-left transition hover:bg-black/10 disabled:cursor-default disabled:hover:bg-black/5 dark:bg-white/5 dark:hover:bg-white/10"
+                        className={`mb-2 block w-full rounded-lg border-l-2 border-blue-400 px-2.5 py-1.5 text-left transition disabled:cursor-default ${
+                          message.is_sticker
+                            ? `max-w-72 ${
+                                ownMessage
+                                  ? 'bg-blue-700 hover:bg-blue-800 disabled:hover:bg-blue-700'
+                                  : 'bg-slate-100 hover:bg-slate-200 disabled:hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 dark:disabled:hover:bg-slate-800'
+                              }`
+                            : 'bg-black/5 hover:bg-black/10 disabled:hover:bg-black/5 dark:bg-white/5 dark:hover:bg-white/10 dark:disabled:hover:bg-white/5'
+                        }`}
                         aria-label={`Balasan untuk ${message.reply_to.username || 'pesan yang dihapus'}`}
                       >
                         <span className={`block truncate text-[11px] font-bold ${
@@ -2408,7 +2427,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                     )}
                     {message.media_url && message.media_type?.startsWith('image/') && (
                       message.is_sticker ? (
-                        <div className="relative h-[clamp(7rem,16vw,14rem)] w-[clamp(7rem,16vw,14rem)] max-w-[70vw] overflow-hidden">
+                        <div className={`relative h-[clamp(7rem,16vw,14rem)] w-[clamp(7rem,16vw,14rem)] max-w-[70vw] overflow-hidden ${
+                          message.reply_to ? 'mx-auto' : ''
+                        }`}>
                           <Image
                             src={message.media_url}
                             alt={`Stiker dari ${senderName}`}
@@ -2792,7 +2813,9 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
         {isStickerPickerOpen && (
           <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-[#0d1117]">
             <div className="mb-2 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Stiker favorit</h2>
+              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {replyTarget ? 'Pilih stiker untuk membalas' : 'Stiker favorit'}
+              </h2>
               <button
                 type="button"
                 onClick={() => stickerInputRef.current?.click()}
@@ -2812,7 +2835,10 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                   <div key={sticker.id} className="relative aspect-square">
                     <button
                       type="button"
-                      onClick={() => void handleSendSticker({ favoriteId: sticker.id })}
+                      onClick={() => void handleSendSticker(
+                        { favoriteId: sticker.id },
+                        replyTarget?.id ?? null,
+                      )}
                       disabled={isSending}
                       className="relative h-full w-full overflow-hidden disabled:opacity-50"
                       aria-label="Kirim stiker favorit"
