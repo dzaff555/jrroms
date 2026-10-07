@@ -36,6 +36,38 @@ interface SidebarStaff {
 
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 10_000;
 const SIDEBAR_REFRESH_INTERVAL_MS = 5_000;
+const ATTENDANCE_ROLE_ORDER = [
+  'Pusat Kendali',
+  'PPKA',
+  'Masinis Madya',
+  'Masinis Muda',
+  'Masinis Pertama',
+  'CSOT',
+  'Security',
+  'Magang',
+  'PJL',
+  'Masa Pendidikan',
+  'MASINIS',
+  'PKD',
+];
+
+function compareStaff(left: SidebarStaff, right: SidebarStaff) {
+  const roleOrder = (role: SidebarStaff['role']) =>
+    role === 'ADMIN' ? 0 : role === 'DEVELOPER' ? 1 : 2;
+  const roleComparison = roleOrder(left.role) - roleOrder(right.role);
+  if (roleComparison !== 0) return roleComparison;
+
+  if (left.role === 'USER' && right.role === 'USER') {
+    const leftAttendanceOrder = ATTENDANCE_ROLE_ORDER.indexOf(left.attendance_role);
+    const rightAttendanceOrder = ATTENDANCE_ROLE_ORDER.indexOf(right.attendance_role);
+    const attendanceComparison =
+      (leftAttendanceOrder < 0 ? ATTENDANCE_ROLE_ORDER.length : leftAttendanceOrder) -
+      (rightAttendanceOrder < 0 ? ATTENDANCE_ROLE_ORDER.length : rightAttendanceOrder);
+    if (attendanceComparison !== 0) return attendanceComparison;
+  }
+
+  return left.username.localeCompare(right.username, 'id');
+}
 
 export interface SidebarProps {
   user: AuthSession | null;
@@ -62,6 +94,10 @@ export function Sidebar({
   const isAdmin = user?.role === 'ADMIN';
   const isDeveloper = user?.role === 'DEVELOPER';
   const userId = user?.id;
+  const sortedStaffMembers = React.useMemo(
+    () => [...staffMembers].sort(compareStaff),
+    [staffMembers]
+  );
   const refreshStaff = React.useCallback(async () => {
     if (userId === undefined) return;
 
@@ -283,7 +319,7 @@ export function Sidebar({
                 {staffCount ?? '-'}
               </span>
             </div>
-            {staffMembers.map((staff) => (
+            {sortedStaffMembers.map((staff) => (
               <Link
                 key={staff.id}
                 href={isAdmin ? `/admin/users/${staff.id}` : `/staff/${staff.id}`}
