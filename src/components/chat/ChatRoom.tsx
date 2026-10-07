@@ -2142,7 +2142,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     if (message.sender_id !== currentUserId) {
       notificationSendersById.set(message.sender_id, {
         id: message.sender_id,
-        name: message.real_name || message.username,
+        name: message.username,
       });
     }
   }
