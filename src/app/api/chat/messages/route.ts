@@ -13,9 +13,28 @@ import {
 export const runtime = 'nodejs';
 
 interface ChatAccessUser {
+  id: number;
+  username: string;
+  real_name: string | null;
+  profile_photo: string | null;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string | null;
   status: 'ACTIVE' | 'DISABLED';
+}
+
+interface RepliedMessagePreview {
+  id: number;
+  sender_id: number;
+  username: string;
+  role: 'USER' | 'ADMIN' | 'DEVELOPER';
+  attendance_role: string | null;
+  message: string;
+  deleted_at: Date | null;
+  image_type: string | null;
+  has_media: number | boolean;
+  is_sticker: number | boolean;
+  is_voice_note: number | boolean;
+  audio_duration_seconds: number;
 }
 
 interface ChatMessage {
@@ -25,6 +44,7 @@ interface ChatMessage {
   real_name: string | null;
   profile_photo: string | null;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
+  attendance_role: string | null;
   message: string;
   deleted_at: Date | null;
   created_at: Date;
@@ -121,7 +141,7 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
   if (!session) return { response: NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 }) };
 
   const users = await query<ChatAccessUser[]>(
-    'SELECT role, status FROM users WHERE id = ? LIMIT 1',
+    'SELECT id, username, real_name, profile_photo, role, attendance_role, status FROM users WHERE id = ? LIMIT 1',
     [session.id]
   );
   const user = users[0];
@@ -134,7 +154,7 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
     return { response: NextResponse.json({ success: false, error: 'Akses chat hanya untuk staf dan administrator.' }, { status: 403 }) };
   }
 
-  return { session };
+  return { session, user };
 }
 
 const chatMessageSelect = `
@@ -464,12 +484,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Pesan maksimal 2000 karakter.' }, { status: 400 });
     }
 
+    let repliedMessage: RepliedMessagePreview | null = null;
     if (replyToId !== null) {
-      const repliedMessages = await query<{ id: number }[]>(
-        'SELECT id FROM staff_admin_chat_messages WHERE id = ? AND deleted_at IS NULL LIMIT 1',
+      const repliedMessages = await query<RepliedMessagePreview[]>(
+        `SELECT cm.id, cm.sender_id, u.username, u.role, u.attendance_role,
+          cm.message, cm.deleted_at, cm.image_type,
+          (cm.image_data IS NOT NULL OR cm.image_path IS NOT NULL) AS has_media,
+          cm.is_sticker, cm.is_voice_note, cm.audio_duration_seconds
+         FROM staff_admin_chat_messages cm
+         INNER JOIN users u ON u.id = cm.sender_id
+         WHERE cm.id = ? AND cm.deleted_at IS NULL
+         LIMIT 1`,
         [replyToId]
       );
-      if (!repliedMessages[0]) {
+      repliedMessage = repliedMessages[0] ?? null;
+      if (!repliedMessage) {
         return NextResponse.json({ success: false, error: 'Pesan yang dibalas sudah tidak tersedia.' }, { status: 404 });
       }
     }
@@ -521,15 +550,38 @@ export async function POST(request: Request) {
     if (!messageId) {
       throw new Error('Chat message insert did not return an id.');
     }
-    const messages = await query<ChatMessage[]>(
-      `${chatMessageSelect} WHERE cm.id = ? LIMIT 1`,
-      [messageId]
-    );
-    if (!messages[0]) {
-      throw new Error('Inserted chat message could not be loaded.');
-    }
-
-    const sentMessage = messages[0];
+    const user = access.user;
+    const sentMessage: ChatMessage = {
+      id: messageId,
+      sender_id: user.id,
+      username: user.username,
+      real_name: user.real_name,
+      profile_photo: user.profile_photo,
+      role: user.role,
+      attendance_role: user.attendance_role,
+      message,
+      deleted_at: null,
+      created_at: new Date(),
+      reply_to_id: replyToId,
+      reply_to_sender_id: repliedMessage?.sender_id ?? null,
+      reply_to_username: repliedMessage?.username ?? null,
+      reply_to_role: repliedMessage?.role ?? null,
+      reply_to_attendance_role: repliedMessage?.attendance_role ?? null,
+      reply_to_message: repliedMessage?.message ?? null,
+      reply_to_deleted_at: repliedMessage?.deleted_at ?? null,
+      reply_to_image_type: repliedMessage?.image_type ?? null,
+      reply_to_has_media: repliedMessage?.has_media ?? false,
+      reply_to_is_sticker: repliedMessage?.is_sticker ?? false,
+      reply_to_is_voice_note: repliedMessage?.is_voice_note ?? false,
+      reply_to_audio_duration_seconds: repliedMessage?.audio_duration_seconds ?? 0,
+      image_path: null,
+      image_type: imageType,
+      drawing_data: videoDrawing ? JSON.stringify(videoDrawing) : null,
+      has_image: imageData !== null,
+      is_sticker: isSticker,
+      is_voice_note: isVoiceNote,
+      audio_duration_seconds: isAudioAttachment ? audioDurationSeconds : 0,
+    };
     return NextResponse.json({
       success: true,
       data: {
