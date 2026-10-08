@@ -339,6 +339,17 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS chat_call_settings (
+        setting_key VARCHAR(64) PRIMARY KEY,
+        setting_value VARCHAR(16) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await dbPool.query(
+      `INSERT INTO chat_call_settings (setting_key, setting_value)
+       VALUES ('feature_enabled', 'true')
+       ON DUPLICATE KEY UPDATE setting_key = VALUES(setting_key)`
+    );
+    await dbPool.query(`
       CREATE TABLE IF NOT EXISTS chat_call_participants (
         session_id CHAR(36) NOT NULL,
         user_id INT NOT NULL,

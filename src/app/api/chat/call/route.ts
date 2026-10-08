@@ -57,6 +57,14 @@ async function getParticipants(callId: string) {
   );
 }
 
+async function isCallFeatureEnabled() {
+  const settings = await query<{ setting_value: string }[]>(
+    `SELECT setting_value FROM chat_call_settings
+     WHERE setting_key = 'feature_enabled' LIMIT 1`
+  );
+  return settings[0]?.setting_value !== 'false';
+}
+
 export async function GET(request: Request) {
   try {
     const user = await getActiveCaller();
@@ -66,8 +74,12 @@ export async function GET(request: Request) {
 
     const searchParams = new URL(request.url).searchParams;
     const callId = searchParams.get('callId');
+    const featureEnabled = await isCallFeatureEnabled();
 
     if (!callId) {
+      if (!featureEnabled) {
+        return NextResponse.json({ success: true, data: { call: null, featureEnabled } }, { headers: { 'Cache-Control': 'no-store' } });
+      }
       const restoreCallId = searchParams.get('restoreCallId');
       if (restoreCallId && /^[0-9a-f-]{36}$/i.test(restoreCallId)) {
         const previousMembership = await query<{ kicked_at: Date | null }[]>(
@@ -86,7 +98,7 @@ export async function GET(request: Request) {
         'SELECT id, started_by, started_at FROM chat_call_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1'
       );
       const call = activeCalls[0];
-      if (!call) return NextResponse.json({ success: true, data: { call: null } });
+      if (!call) return NextResponse.json({ success: true, data: { call: null, featureEnabled } });
 
       const viewerMembership = await query<{ kicked_at: Date | null }[]>(
         'SELECT kicked_at FROM chat_call_participants WHERE session_id = ? AND user_id = ? LIMIT 1',
@@ -108,6 +120,7 @@ export async function GET(request: Request) {
           success: true,
           data: {
             call: null,
+            featureEnabled,
             ...(viewerMembership[0]?.kicked_at !== null && viewerMembership[0]?.kicked_at !== undefined
               ? { kicked: true }
               : {}),
@@ -119,6 +132,7 @@ export async function GET(request: Request) {
         success: true,
         data: {
           call: { ...call, participants },
+          featureEnabled,
           ...(viewerMembership[0]?.kicked_at !== null && viewerMembership[0]?.kicked_at !== undefined
             ? { kicked: true }
             : {}),
@@ -146,13 +160,13 @@ export async function GET(request: Request) {
     if (membership[0].kicked_at !== null) {
       return NextResponse.json({
         success: true,
-        data: { kicked: true, ended: false, participants: [], signals: [] },
+        data: { kicked: true, ended: false, featureEnabled, participants: [], signals: [] },
       }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (membership[0].ended_at !== null || membership[0].left_at !== null) {
       return NextResponse.json({
         success: true,
-        data: { ended: true, participants: [], signals: [] },
+        data: { ended: true, featureEnabled, participants: [], signals: [] },
       }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
@@ -172,7 +186,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       data: {
-        ended: membership[0].ended_at !== null,
+        ended: membership[0].ended_at !== null || !featureEnabled,
+        featureEnabled,
         participants,
         signals: signals.map((signal) => ({
           id: Number(signal.id),
@@ -206,7 +221,26 @@ export async function POST(request: Request) {
     }
     const input = body as Record<string, unknown>;
 
+    if (input.action === 'toggle-feature') {
+      if (user.role !== 'ADMIN' || typeof input.enabled !== 'boolean') {
+        return NextResponse.json({ success: false, error: 'Hanya admin yang dapat mengubah fitur telepon.' }, { status: 403 });
+      }
+      await query(
+        `INSERT INTO chat_call_settings (setting_key, setting_value)
+         VALUES ('feature_enabled', ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+        [input.enabled ? 'true' : 'false']
+      );
+      if (!input.enabled) {
+        await query('UPDATE chat_call_sessions SET ended_at = NOW() WHERE ended_at IS NULL');
+      }
+      return NextResponse.json({ success: true, data: { featureEnabled: input.enabled } });
+    }
+
     if (input.action === 'start') {
+      if (!await isCallFeatureEnabled()) {
+        return NextResponse.json({ success: false, error: 'Fitur telepon sedang dimatikan oleh admin.' }, { status: 403 });
+      }
       await query(
         'DELETE FROM chat_call_sessions WHERE ended_at IS NOT NULL AND ended_at < DATE_SUB(NOW(), INTERVAL 1 DAY)'
       );
@@ -242,6 +276,9 @@ export async function POST(request: Request) {
       }
       const callId = input.callId;
       if (input.action === 'join') {
+        if (!await isCallFeatureEnabled()) {
+          return NextResponse.json({ success: false, error: 'Fitur telepon sedang dimatikan oleh admin.' }, { status: 403 });
+        }
         const calls = await query<{ id: string }[]>(
           'SELECT id FROM chat_call_sessions WHERE id = ? AND ended_at IS NULL LIMIT 1',
           [callId]

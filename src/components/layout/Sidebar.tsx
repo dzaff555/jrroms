@@ -98,6 +98,10 @@ export function Sidebar({
     () => [...staffMembers].sort(compareStaff),
     [staffMembers]
   );
+  const onlineStaffCount = React.useMemo(
+    () => staffMembers.filter((staff) => staff.is_online === true || Number(staff.is_online) === 1).length,
+    [staffMembers]
+  );
   const refreshStaff = React.useCallback(async () => {
     if (userId === undefined) return;
 
@@ -315,8 +319,22 @@ export function Sidebar({
                   Daftar Staf
                 </div>
               )}
-              <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-bold text-blue-200">
-                {staffCount ?? '-'}
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-bold text-blue-200"
+                  aria-label={`${staffCount ?? '-'} total staf`}
+                  title={`${staffCount ?? '-'} total staf`}
+                >
+                  {staffCount ?? '-'}
+                </span>
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-bold text-emerald-300"
+                  aria-label={`${onlineStaffCount} staf sedang online`}
+                  title={`${onlineStaffCount} staf sedang online`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
+                  {onlineStaffCount}
+                </span>
               </span>
             </div>
             {sortedStaffMembers.map((staff) => (
