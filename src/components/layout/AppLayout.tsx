@@ -8,6 +8,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { useToast } from '../ui/Toast';
 import { AutoRefresh } from '@/components/profile/AutoRefresh';
 import { ChatNotificationWatcher } from '@/components/chat/ChatNotificationWatcher';
+import { GroupCallControls } from '@/components/chat/GroupCallControls';
 
 export interface AppLayoutProps {
   children: React.ReactNode;
@@ -42,6 +43,12 @@ export function AppLayout({ children, user, showSidebar = true, showUserMenu = t
     <div className={`${isChatPage ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex flex-col bg-[#F5F8FC] antialiased`}>
       <AutoRefresh />
       <ChatNotificationWatcher user={user} />
+      {user && (
+        <GroupCallControls
+          currentUserId={user.id}
+          isAdmin={user.role === 'ADMIN'}
+        />
+      )}
       <Suspense fallback={null}>
         <AccessDeniedAlert />
       </Suspense>

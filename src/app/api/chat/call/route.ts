@@ -46,7 +46,8 @@ async function getActiveCaller() {
 
 async function getParticipants(callId: string) {
   return query<CallParticipant[]>(
-    `SELECT u.id, u.username, u.profile_photo, u.role, u.attendance_role, p.joined_at, p.connection_version, p.is_muted
+    `SELECT u.id, u.username, u.profile_photo, u.role, u.attendance_role, p.joined_at, p.connection_version,
+       CASE WHEN p.is_muted = 1 THEN TRUE ELSE FALSE END AS is_muted
      FROM chat_call_participants p
      INNER JOIN users u ON u.id = p.user_id AND u.status = 'ACTIVE'
      WHERE p.session_id = ? AND p.left_at IS NULL

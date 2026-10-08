@@ -1,6 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { ArrowLeft, Camera, CameraOff, LoaderCircle, Mic, MicOff, MoreVertical, Phone, PhoneOff, Video } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
@@ -65,8 +66,98 @@ interface PeerConnectionState {
 interface GroupCallControlsProps {
   currentUserId: number;
   isAdmin: boolean;
-  isCallMinimized: boolean;
-  onCallMinimizedChange: (minimized: boolean) => void;
+}
+
+interface GroupCallUiStatus {
+  hasCheckedCallState: boolean;
+  isLoading: boolean;
+  isJoined: boolean;
+  isMinimized: boolean;
+  joinPrompt: boolean;
+  participantCount: number;
+  hasCall: boolean;
+}
+
+type GroupCallAction = 'audio' | 'video' | 'return';
+
+const GROUP_CALL_ACTION_EVENT = 'jrroms:group-call-action';
+const GROUP_CALL_STATUS_EVENT = 'jrroms:group-call-status';
+const GROUP_CALL_STATUS_REQUEST_EVENT = 'jrroms:group-call-status-request';
+
+export function GroupCallHeaderControls({ mode }: { mode: 'controls' | 'status' }) {
+  const [status, setStatus] = useState<GroupCallUiStatus>({
+    hasCheckedCallState: false,
+    isLoading: false,
+    isJoined: false,
+    isMinimized: false,
+    joinPrompt: false,
+    participantCount: 0,
+    hasCall: false,
+  });
+
+  useEffect(() => {
+    const handleStatus = (event: Event) => {
+      setStatus((event as CustomEvent<GroupCallUiStatus>).detail);
+    };
+    window.addEventListener(GROUP_CALL_STATUS_EVENT, handleStatus);
+    window.dispatchEvent(new Event(GROUP_CALL_STATUS_REQUEST_EVENT));
+    return () => window.removeEventListener(GROUP_CALL_STATUS_EVENT, handleStatus);
+  }, []);
+
+  const trigger = (action: GroupCallAction) => {
+    window.dispatchEvent(new CustomEvent<GroupCallAction>(GROUP_CALL_ACTION_EVENT, { detail: action }));
+  };
+
+  if (mode === 'status') {
+    return status.isJoined && status.isMinimized ? (
+      <button
+        type="button"
+        onClick={() => trigger('return')}
+        className="mt-0.5 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300"
+      >
+        Anda dalam panggilan · Kembali
+      </button>
+    ) : null;
+  }
+
+  if (status.isJoined) return null;
+
+  return status.joinPrompt ? (
+    <button
+      type="button"
+      onClick={() => trigger('audio')}
+      disabled={status.isLoading || !status.hasCheckedCallState}
+      aria-label="Gabung panggilan grup"
+      title="Gabung panggilan grup"
+      className="inline-flex h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-3 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+    >
+      {status.isLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
+      Gabung · {status.participantCount}
+    </button>
+  ) : (
+    <>
+      <button
+        type="button"
+        onClick={() => trigger('audio')}
+        disabled={status.isLoading || !status.hasCheckedCallState}
+        aria-label={status.hasCall ? 'Gabung panggilan grup' : 'Mulai telepon grup'}
+        title={status.hasCall ? 'Gabung panggilan grup' : 'Mulai telepon grup'}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300"
+      >
+        {status.isLoading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Phone className="h-5 w-5" />}
+      </button>
+      <button
+        type="button"
+        onClick={() => trigger('video')}
+        disabled={status.isLoading || !status.hasCheckedCallState}
+        aria-label={status.hasCall ? 'Gabung panggilan video grup' : 'Mulai panggilan video grup'}
+        title={status.hasCall ? 'Gabung panggilan video grup' : 'Mulai panggilan video grup'}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
+      >
+        {status.isLoading ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Video className="h-5 w-5" />}
+      </button>
+    </>
+  );
 }
 
 interface CallRestoreState {
@@ -363,8 +454,15 @@ const ParticipantTile = memo(function ParticipantTile({
       )}
       <span className="absolute bottom-2 left-2 inline-flex max-w-[calc(100%-1rem)] items-center gap-1.5 truncate rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold sm:bottom-3 sm:left-3 sm:px-3">
         <span className="truncate">{name}</span>
-        {isMuted && (
-          <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-300" aria-label="Mikrofon mati" />
+        {isMuted === true && (
+          <span
+            className="inline-flex shrink-0"
+            role="img"
+            aria-label="Mikrofon mati"
+            title="Mikrofon mati"
+          >
+            <MicOff className="h-3.5 w-3.5 text-rose-300" />
+          </span>
         )}
       </span>
       {isSpeaking && (
@@ -457,12 +555,10 @@ function getMediaSectionCount(sdp: string | undefined) {
   return sdp?.match(/^m=/gm)?.length ?? 0;
 }
 
-export function GroupCallControls({
-  currentUserId,
-  isAdmin,
-  isCallMinimized,
-  onCallMinimizedChange,
-}: GroupCallControlsProps) {
+export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsProps) {
+  const pathname = usePathname();
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const previousPathnameRef = useRef(pathname);
   const [restoreState] = useState<CallRestoreState | null>(() =>
     typeof window === 'undefined' ? null : getCallRestoreState(currentUserId)
   );
@@ -493,6 +589,13 @@ export function GroupCallControls({
   const remoteStreamsRef = useRef(new Map<number, RemoteStream>());
   const speakingUsers = useSpeakingUsers(localStream, remoteStreams, isMuted);
 
+  useEffect(() => {
+    if (previousPathnameRef.current !== pathname && isJoined && call) {
+      setIsCallMinimized(true);
+    }
+    previousPathnameRef.current = pathname;
+  }, [call, isJoined, pathname]);
+
   const closePeerConnections = useCallback(() => {
     for (const peer of peersRef.current.values()) {
       if (peer.negotiationTimer !== null) window.clearTimeout(peer.negotiationTimer);
@@ -514,8 +617,11 @@ export function GroupCallControls({
   const leaveCall = useCallback(async (notifyServer = true) => {
     const activeCall = callRef.current;
     joinedRef.current = false;
+    callRef.current = null;
     setIsJoined(false);
-    onCallMinimizedChange(false);
+    setIsCallMinimized(false);
+    setCall(null);
+    setParticipants([]);
     closePeerConnections();
     stopLocalMedia();
     setIsMuted(true);
@@ -529,9 +635,7 @@ export function GroupCallControls({
         setError(leaveError instanceof Error ? leaveError.message : 'Gagal keluar dari panggilan.');
       }
     }
-    callRef.current = null;
-    setCall(null);
-  }, [closePeerConnections, currentUserId, onCallMinimizedChange, stopLocalMedia]);
+  }, [closePeerConnections, currentUserId, stopLocalMedia]);
 
   const ensurePeerConnection = useCallback((peer: CallParticipant, activeCall: CallSession) => {
     const existing = peersRef.current.get(peer.id);
@@ -773,6 +877,7 @@ export function GroupCallControls({
         if (result.data?.kicked) {
           setKickNotice(true);
           clearCallRestoreState(currentUserId, restoreState?.callId ?? null);
+          setIsCallMinimized(false);
           setCall(null);
           setParticipants([]);
           return;
@@ -881,9 +986,14 @@ export function GroupCallControls({
     if (!hasLoadedRestoreState) return;
     const timer = window.setTimeout(() => void pollCall(), 0);
     const interval = window.setInterval(() => void pollCall(), 2000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void pollCall();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.clearTimeout(timer);
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [hasLoadedRestoreState, pollCall]);
 
@@ -950,7 +1060,7 @@ export function GroupCallControls({
       setIsMuted(true);
       setIsCameraEnabled(joinedWithVideo);
       setIsJoined(true);
-      onCallMinimizedChange(false);
+      setIsCallMinimized(false);
       await pollCall();
     } catch (joinError) {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -960,7 +1070,7 @@ export function GroupCallControls({
     } finally {
       setIsStarting(false);
     }
-  }, [currentUserId, isStarting, onCallMinimizedChange, pollCall, restoreState]);
+  }, [currentUserId, isStarting, pollCall, restoreState]);
 
   const startCall = useCallback(async (video: boolean) => {
     if (isStarting) return;
@@ -995,7 +1105,7 @@ export function GroupCallControls({
       setIsMuted(true);
       setIsCameraEnabled(video);
       setIsJoined(true);
-      onCallMinimizedChange(false);
+      setIsCallMinimized(false);
       await pollCall();
     } catch (startError) {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -1005,7 +1115,7 @@ export function GroupCallControls({
     } finally {
       setIsStarting(false);
     }
-  }, [currentUserId, isStarting, onCallMinimizedChange, pollCall]);
+  }, [currentUserId, isStarting, pollCall]);
 
   useEffect(() => {
     if (!hasCheckedCallState || !call || isJoined || !restoreState) return;
@@ -1116,6 +1226,49 @@ export function GroupCallControls({
   const callInProgress = Boolean(call);
   const isCallParticipant = participants.some((participant) => participant.id === currentUserId);
   const joinPrompt = callInProgress && !isJoined && !isCallParticipant;
+  useEffect(() => {
+    const currentStatus: GroupCallUiStatus = {
+      hasCheckedCallState,
+      isLoading: isStarting || isRestoringCall,
+      isJoined,
+      isMinimized: isCallMinimized,
+      joinPrompt,
+      participantCount: participants.length,
+      hasCall: Boolean(call),
+    };
+    const publishStatus = () => {
+      window.dispatchEvent(new CustomEvent<GroupCallUiStatus>(GROUP_CALL_STATUS_EVENT, { detail: currentStatus }));
+    };
+    const handleAction = (event: Event) => {
+      const action = (event as CustomEvent<GroupCallAction>).detail;
+      if (action === 'return') {
+        setIsCallMinimized(false);
+        return;
+      }
+      const video = action === 'video';
+      const activeCall = callRef.current;
+      if (activeCall) void joinCall(activeCall, video);
+      else void startCall(video);
+    };
+    window.addEventListener(GROUP_CALL_ACTION_EVENT, handleAction);
+    window.addEventListener(GROUP_CALL_STATUS_REQUEST_EVENT, publishStatus);
+    publishStatus();
+    return () => {
+      window.removeEventListener(GROUP_CALL_ACTION_EVENT, handleAction);
+      window.removeEventListener(GROUP_CALL_STATUS_REQUEST_EVENT, publishStatus);
+    };
+  }, [
+    call,
+    hasCheckedCallState,
+    isCallMinimized,
+    isJoined,
+    isRestoringCall,
+    isStarting,
+    joinCall,
+    joinPrompt,
+    participants.length,
+    startCall,
+  ]);
   const participantsConnecting = isJoined
     ? participants.filter((participant) => {
         if (participant.id === currentUserId) return false;
@@ -1146,44 +1299,21 @@ export function GroupCallControls({
           </button>
         </div>
       )}
-      {!isJoined && (
-        <div className="flex items-center gap-1">
-          {joinPrompt ? (
-            <button
-              type="button"
-              onClick={() => void joinCall(call!, false)}
-              disabled={isStarting || isRestoringCall || !hasCheckedCallState}
-              aria-label="Gabung panggilan grup"
-              title="Gabung panggilan grup"
-              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-3 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
-            >
-              {isStarting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
-              Gabung · {participants.length}
-            </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => call ? void joinCall(call, false) : void startCall(false)}
-                disabled={isStarting || isRestoringCall || !hasCheckedCallState}
-                aria-label={call ? 'Gabung panggilan grup' : 'Mulai telepon grup'}
-                title={call ? 'Gabung panggilan grup' : 'Mulai telepon grup'}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300"
-              >
-                {isStarting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Phone className="h-5 w-5" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => call ? void joinCall(call, true) : void startCall(true)}
-                disabled={isStarting || isRestoringCall || !hasCheckedCallState}
-                aria-label={call ? 'Gabung panggilan video grup' : 'Mulai panggilan video grup'}
-                title={call ? 'Gabung panggilan video grup' : 'Mulai panggilan video grup'}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
-              >
-                {isStarting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Video className="h-5 w-5" />}
-              </button>
-            </>
-          )}
+      {isJoined && call && isCallMinimized &&
+        pathname !== '/chat' && pathname !== '/admin/chat' && pathname !== '/developer/chat' && (
+        <div className="fixed bottom-4 right-4 z-[190] flex items-center gap-3 rounded-full border border-emerald-200 bg-white px-4 py-2 shadow-xl dark:border-emerald-800 dark:bg-slate-900">
+          <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+            Anda dalam panggilan · {participants.length} anggota
+          </span>
+          <button
+            type="button"
+            onClick={() => setIsCallMinimized(false)}
+            aria-label="Kembali ke panggilan"
+            title="Kembali ke panggilan"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-600 text-white transition hover:bg-emerald-700"
+          >
+            <Phone className="h-4 w-4" />
+          </button>
         </div>
       )}
 
@@ -1198,8 +1328,10 @@ export function GroupCallControls({
         </div>
       )}
 
-      {isJoined && call && !isCallMinimized && (
-        <div className="fixed inset-0 z-[200] flex flex-col bg-slate-950 text-white">
+      {isJoined && call && (
+        <div className={`fixed inset-0 z-[200] flex flex-col bg-slate-950 text-white ${
+          isCallMinimized ? 'invisible pointer-events-none' : ''
+        }`}>
           {participantsConnecting.length > 0 && (
             <div
               role="status"
@@ -1219,7 +1351,7 @@ export function GroupCallControls({
             <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={() => onCallMinimizedChange(true)}
+                onClick={() => setIsCallMinimized(true)}
                 aria-label="Kembali ke chat tanpa menutup telepon"
                 title="Kembali ke chat tanpa menutup telepon"
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-200 transition hover:bg-white/10"
