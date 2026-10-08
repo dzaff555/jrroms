@@ -343,9 +343,11 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
         session_id CHAR(36) NOT NULL,
         user_id INT NOT NULL,
         connection_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
+        is_muted BOOLEAN NOT NULL DEFAULT TRUE,
         joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         left_at TIMESTAMP NULL DEFAULT NULL,
+        kicked_at TIMESTAMP NULL DEFAULT NULL,
         PRIMARY KEY (session_id, user_id),
         CONSTRAINT fk_chat_call_participant_session FOREIGN KEY (session_id) REFERENCES chat_call_sessions(id) ON DELETE CASCADE,
         CONSTRAINT fk_chat_call_participant_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -437,6 +439,8 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
 
     await ensureColumns(dbPool, [
       { table: 'chat_call_participants', column: 'connection_version', definition: 'BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER user_id' },
+      { table: 'chat_call_participants', column: 'is_muted', definition: 'BOOLEAN NOT NULL DEFAULT TRUE AFTER connection_version' },
+      { table: 'chat_call_participants', column: 'kicked_at', definition: 'TIMESTAMP NULL DEFAULT NULL AFTER left_at' },
       { table: 'users', column: 'attendance_role', definition: "ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'" },
       { table: 'users', column: 'real_name', definition: 'VARCHAR(100) NULL AFTER username' },
       { table: 'users', column: 'nip', definition: 'VARCHAR(50) NULL AFTER real_name' },

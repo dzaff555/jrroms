@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Camera, CameraOff, LoaderCircle, Mic, MicOff, Phone, PhoneOff, Video } from 'lucide-react';
+import { ArrowLeft, Camera, CameraOff, LoaderCircle, Mic, MicOff, MoreVertical, Phone, PhoneOff, Video } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
 interface CallParticipant {
@@ -12,6 +12,7 @@ interface CallParticipant {
   attendance_role: string | null;
   joined_at: string;
   connection_version: number;
+  is_muted: boolean;
 }
 
 interface CallSession {
@@ -33,6 +34,7 @@ interface CallApiResponse {
   data?: {
     call?: (CallSession & { participants: CallParticipant[] }) | null;
     ended?: boolean;
+    kicked?: boolean;
     participants?: CallParticipant[];
     signals?: CallSignal[];
   };
@@ -62,6 +64,7 @@ interface PeerConnectionState {
 
 interface GroupCallControlsProps {
   currentUserId: number;
+  isAdmin: boolean;
   isCallMinimized: boolean;
   onCallMinimizedChange: (minimized: boolean) => void;
 }
@@ -117,7 +120,8 @@ function participantsAreEqual(left: CallParticipant[], right: CallParticipant[])
     participant.role === right[index].role &&
     participant.attendance_role === right[index].attendance_role &&
     participant.joined_at === right[index].joined_at &&
-    participant.connection_version === right[index].connection_version
+    participant.connection_version === right[index].connection_version &&
+    Boolean(participant.is_muted) === Boolean(right[index].is_muted)
   ));
 }
 
@@ -210,6 +214,9 @@ const ParticipantTile = memo(function ParticipantTile({
   isSpeaking,
   isMuted = false,
   isLocal = false,
+  isAdmin = false,
+  onModerate,
+  isModerating = false,
 }: {
   name: string;
   profilePhoto: string | null;
@@ -219,11 +226,15 @@ const ParticipantTile = memo(function ParticipantTile({
   isSpeaking: boolean;
   isMuted?: boolean;
   isLocal?: boolean;
+  isAdmin?: boolean;
+  onModerate?: (action: 'mute' | 'unmute' | 'kick') => void;
+  isModerating?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [hasLiveVideo, setHasLiveVideo] = useState(false);
   const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -352,7 +363,7 @@ const ParticipantTile = memo(function ParticipantTile({
       )}
       <span className="absolute bottom-2 left-2 inline-flex max-w-[calc(100%-1rem)] items-center gap-1.5 truncate rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold sm:bottom-3 sm:left-3 sm:px-3">
         <span className="truncate">{name}</span>
-        {isLocal && isMuted && (
+        {isMuted && (
           <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-300" aria-label="Mikrofon mati" />
         )}
       </span>
@@ -360,6 +371,46 @@ const ParticipantTile = memo(function ParticipantTile({
         <span className="absolute right-2 top-2 rounded-full bg-emerald-500/90 px-2 py-1 text-[10px] font-bold text-white sm:right-3 sm:top-3">
           Berbicara
         </span>
+      )}
+      {isAdmin && !isLocal && onModerate && (
+        <div className="absolute bottom-2 right-2 z-20 sm:bottom-3 sm:right-3">
+          <button
+            type="button"
+            onClick={() => setIsActionsOpen((open) => !open)}
+            aria-label={`Opsi peserta ${name}`}
+            aria-expanded={isActionsOpen}
+            disabled={isModerating}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white transition hover:bg-black disabled:opacity-50"
+          >
+            {isModerating ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+          </button>
+          {isActionsOpen && (
+            <div className="absolute bottom-10 right-0 w-36 overflow-hidden rounded-xl border border-slate-700 bg-slate-900 py-1 shadow-xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsActionsOpen(false);
+                  onModerate(isMuted ? 'unmute' : 'mute');
+                }}
+                disabled={isModerating}
+                className="w-full px-3 py-2 text-left text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                {isMuted ? 'Nyalakan mikrofon' : 'Mute'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsActionsOpen(false);
+                  onModerate('kick');
+                }}
+                disabled={isModerating}
+                className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-300 transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                Keluarkan
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -408,6 +459,7 @@ function getMediaSectionCount(sdp: string | undefined) {
 
 export function GroupCallControls({
   currentUserId,
+  isAdmin,
   isCallMinimized,
   onCallMinimizedChange,
 }: GroupCallControlsProps) {
@@ -419,12 +471,15 @@ export function GroupCallControls({
   const [participants, setParticipants] = useState<CallParticipant[]>([]);
   const [hasCheckedCallState, setHasCheckedCallState] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
+  const [peerConnectionStates, setPeerConnectionStates] = useState<Record<number, RTCPeerConnectionState>>({});
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isJoined, setIsJoined] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isCameraEnabled, setIsCameraEnabled] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRestoringCall, setIsRestoringCall] = useState(false);
+  const [moderatingParticipantId, setModeratingParticipantId] = useState<number | null>(null);
+  const [kickNotice, setKickNotice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const peersRef = useRef(new Map<number, PeerConnectionState>());
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -445,6 +500,7 @@ export function GroupCallControls({
       peer.connection.close();
     }
     peersRef.current.clear();
+    setPeerConnectionStates({});
     setRemoteStreams([]);
     remoteStreamsRef.current.clear();
   }, []);
@@ -507,6 +563,7 @@ export function GroupCallControls({
       restartAttempts: 0,
     };
     peersRef.current.set(peer.id, peerState);
+    setPeerConnectionStates((current) => ({ ...current, [peer.id]: connection.connectionState }));
 
     for (const track of localStreamRef.current?.getTracks() || []) {
       const sender = connection.addTrack(track, localStreamRef.current!);
@@ -608,6 +665,7 @@ export function GroupCallControls({
     };
 
     connection.onconnectionstatechange = () => {
+      setPeerConnectionStates((current) => ({ ...current, [peer.id]: connection.connectionState }));
       if (connection.connectionState === 'connected') {
         peerState.restartAttempts = 0;
         if (peerState.restartTimer !== null) {
@@ -712,6 +770,13 @@ export function GroupCallControls({
       if (!activeCall) {
         hasCheckedCallStateRef.current = true;
         setHasCheckedCallState(true);
+        if (result.data?.kicked) {
+          setKickNotice(true);
+          clearCallRestoreState(currentUserId, restoreState?.callId ?? null);
+          setCall(null);
+          setParticipants([]);
+          return;
+        }
         const discoveredCall = result.data?.call;
         if (discoveredCall) {
           setCall((current) => current?.id === discoveredCall.id ? current : discoveredCall);
@@ -725,6 +790,12 @@ export function GroupCallControls({
         return;
       }
 
+      if (result.data?.kicked) {
+        setKickNotice(true);
+        await leaveCall(false);
+        return;
+      }
+
       if (result.data?.ended) {
         await leaveCall(false);
         return;
@@ -732,6 +803,14 @@ export function GroupCallControls({
 
       const nextParticipants = result.data?.participants || [];
       setParticipants((current) => participantsAreEqual(current, nextParticipants) ? current : nextParticipants);
+      const currentParticipant = nextParticipants.find((participant) => participant.id === currentUserId);
+      if (currentParticipant && Boolean(currentParticipant.is_muted) !== isMuted) {
+        const shouldMute = Boolean(currentParticipant.is_muted);
+        localStreamRef.current?.getAudioTracks().forEach((track) => {
+          track.enabled = !shouldMute;
+        });
+        setIsMuted(shouldMute);
+      }
       const activeParticipantIds = new Set(nextParticipants.map((participant) => participant.id));
       let removedParticipant = false;
       for (const [participantId, peerState] of peersRef.current) {
@@ -743,7 +822,12 @@ export function GroupCallControls({
         remoteStreamsRef.current.delete(participantId);
         removedParticipant = true;
       }
-      if (removedParticipant) setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
+      if (removedParticipant) {
+        setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
+        setPeerConnectionStates((current) => Object.fromEntries(
+          Object.entries(current).filter(([participantId]) => activeParticipantIds.has(Number(participantId)))
+        ));
+      }
       for (const participant of nextParticipants) {
         if (participant.id !== currentUserId) ensurePeerConnection(participant, activeCall);
       }
@@ -791,7 +875,7 @@ export function GroupCallControls({
     } finally {
       pollingRef.current = false;
     }
-  }, [currentUserId, ensurePeerConnection, handleSignal, leaveCall, restoreState]);
+  }, [currentUserId, ensurePeerConnection, handleSignal, isMuted, leaveCall, restoreState]);
 
   useEffect(() => {
     if (!hasLoadedRestoreState) return;
@@ -946,6 +1030,54 @@ export function GroupCallControls({
       track.enabled = !nextMuted;
     });
     setIsMuted(nextMuted);
+    const activeCall = callRef.current;
+    if (activeCall) {
+      void postCallAction({ action: 'set-mute', callId: activeCall.id, isMuted: nextMuted }).catch((muteError: unknown) => {
+        console.error('Failed to update group-call microphone status:', muteError);
+        setError(muteError instanceof Error ? muteError.message : 'Gagal memperbarui status mikrofon.');
+      });
+    }
+  };
+
+  const moderateParticipant = async (participant: CallParticipant, moderation: 'mute' | 'unmute' | 'kick') => {
+    const activeCall = callRef.current;
+    if (!activeCall || !isAdmin || participant.id === currentUserId) return;
+    setModeratingParticipantId(participant.id);
+    try {
+      await postCallAction({
+        action: 'moderate',
+        callId: activeCall.id,
+        targetId: participant.id,
+        moderation: moderation === 'unmute' ? 'mute' : moderation,
+        ...(moderation !== 'kick' ? { isMuted: moderation === 'mute' } : {}),
+      });
+      if (moderation === 'kick') {
+        const peer = peersRef.current.get(participant.id);
+        if (peer) {
+          if (peer.negotiationTimer !== null) window.clearTimeout(peer.negotiationTimer);
+          if (peer.restartTimer !== null) window.clearTimeout(peer.restartTimer);
+          peer.connection.close();
+          peersRef.current.delete(participant.id);
+        }
+        remoteStreamsRef.current.delete(participant.id);
+        setParticipants((current) => current.filter((item) => item.id !== participant.id));
+        setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
+        setPeerConnectionStates((current) => {
+          const next = { ...current };
+          delete next[participant.id];
+          return next;
+        });
+      } else {
+        setParticipants((current) => current.map((item) => (
+          item.id === participant.id ? { ...item, is_muted: moderation === 'mute' } : item
+        )));
+      }
+    } catch (moderationError) {
+      console.error('Failed to moderate group-call participant:', moderationError);
+      setError(moderationError instanceof Error ? moderationError.message : 'Gagal memperbarui peserta panggilan.');
+    } finally {
+      setModeratingParticipantId(null);
+    }
   };
 
   const toggleCamera = async () => {
@@ -984,9 +1116,36 @@ export function GroupCallControls({
   const callInProgress = Boolean(call);
   const isCallParticipant = participants.some((participant) => participant.id === currentUserId);
   const joinPrompt = callInProgress && !isJoined && !isCallParticipant;
+  const participantsConnecting = isJoined
+    ? participants.filter((participant) => {
+        if (participant.id === currentUserId) return false;
+        const hasRemoteAudio = remoteStreams
+          .find((remote) => remote.userId === participant.id)
+          ?.stream.getAudioTracks()
+          .some((track) => track.readyState === 'live');
+        return peerConnectionStates[participant.id] !== 'connected' || !hasRemoteAudio;
+      })
+    : [];
 
   return (
     <>
+      {kickNotice && (
+        <div
+          role="status"
+          aria-live="assertive"
+          className="fixed right-4 top-4 z-[240] flex max-w-[min(24rem,calc(100vw-2rem))] items-center gap-3 rounded-xl border border-amber-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-2xl dark:border-amber-700 dark:bg-slate-900 dark:text-white"
+        >
+          <span className="min-w-0 flex-1">Anda dikeluarkan dari sesi telepon.</span>
+          <button
+            type="button"
+            onClick={() => setKickNotice(false)}
+            aria-label="Tutup notifikasi"
+            className="shrink-0 text-lg leading-none text-slate-500 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {!isJoined && (
         <div className="flex items-center gap-1">
           {joinPrompt ? (
@@ -1041,6 +1200,21 @@ export function GroupCallControls({
 
       {isJoined && call && !isCallMinimized && (
         <div className="fixed inset-0 z-[200] flex flex-col bg-slate-950 text-white">
+          {participantsConnecting.length > 0 && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="pointer-events-none fixed left-1/2 top-20 z-[210] flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-blue-400/30 bg-slate-900/95 px-4 py-3 text-white shadow-2xl backdrop-blur"
+            >
+              <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-blue-300" />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold">Menghubungkan suara...</span>
+                <span className="block truncate text-xs text-slate-300">
+                  Menunggu {participantsConnecting.map((participant) => participant.username).join(', ')}
+                </span>
+              </span>
+            </div>
+          )}
           <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 sm:px-6">
             <div className="flex items-center gap-3">
               <button
@@ -1081,6 +1255,13 @@ export function GroupCallControls({
                 trackRevision={remote.trackRevision}
                 cameraEnabled={remote.stream.getVideoTracks().length > 0}
                 isSpeaking={speakingUsers.includes(remote.userId)}
+                isMuted={Boolean(participants.find((participant) => participant.id === remote.userId)?.is_muted)}
+                isAdmin={isAdmin && remote.userId !== currentUserId}
+                isModerating={moderatingParticipantId === remote.userId}
+                onModerate={(action) => {
+                  const participant = participants.find((item) => item.id === remote.userId);
+                  if (participant) void moderateParticipant(participant, action);
+                }}
               />
             ))}
             {participants.filter((participant) =>
@@ -1093,6 +1274,10 @@ export function GroupCallControls({
                 stream={null}
                 cameraEnabled={false}
                 isSpeaking={speakingUsers.includes(participant.id)}
+                isMuted={Boolean(participant.is_muted)}
+                isAdmin={isAdmin && participant.id !== currentUserId}
+                isModerating={moderatingParticipantId === participant.id}
+                onModerate={(action) => void moderateParticipant(participant, action)}
               />
             ))}
           </div>

@@ -2330,6 +2330,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             </button>
             <GroupCallControls
               currentUserId={currentUserId}
+              isAdmin={currentUserRole === 'ADMIN'}
               isCallMinimized={isCallMinimized}
               onCallMinimizedChange={setIsCallMinimized}
             />

@@ -15,6 +15,7 @@ interface CallParticipant {
   attendance_role: string | null;
   joined_at: string;
   connection_version: number;
+  is_muted: boolean;
 }
 
 interface CallSession {
@@ -45,7 +46,7 @@ async function getActiveCaller() {
 
 async function getParticipants(callId: string) {
   return query<CallParticipant[]>(
-    `SELECT u.id, u.username, u.profile_photo, u.role, u.attendance_role, p.joined_at, p.connection_version
+    `SELECT u.id, u.username, u.profile_photo, u.role, u.attendance_role, p.joined_at, p.connection_version, p.is_muted
      FROM chat_call_participants p
      INNER JOIN users u ON u.id = p.user_id AND u.status = 'ACTIVE'
      WHERE p.session_id = ? AND p.left_at IS NULL
@@ -66,14 +67,31 @@ export async function GET(request: Request) {
     const callId = searchParams.get('callId');
 
     if (!callId) {
+      const restoreCallId = searchParams.get('restoreCallId');
+      if (restoreCallId && /^[0-9a-f-]{36}$/i.test(restoreCallId)) {
+        const previousMembership = await query<{ kicked_at: Date | null }[]>(
+          'SELECT kicked_at FROM chat_call_participants WHERE session_id = ? AND user_id = ? LIMIT 1',
+          [restoreCallId, user.id]
+        );
+        if (previousMembership[0]?.kicked_at !== null && previousMembership[0]?.kicked_at !== undefined) {
+          return NextResponse.json({
+            success: true,
+            data: { call: null, kicked: true },
+          }, { headers: { 'Cache-Control': 'no-store' } });
+        }
+      }
+
       const activeCalls = await query<CallSession[]>(
         'SELECT id, started_by, started_at FROM chat_call_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1'
       );
       const call = activeCalls[0];
       if (!call) return NextResponse.json({ success: true, data: { call: null } });
 
-      const restoreCallId = searchParams.get('restoreCallId');
-      if (restoreCallId === call.id) {
+      const viewerMembership = await query<{ kicked_at: Date | null }[]>(
+        'SELECT kicked_at FROM chat_call_participants WHERE session_id = ? AND user_id = ? LIMIT 1',
+        [call.id, user.id]
+      );
+      if (restoreCallId === call.id && viewerMembership[0]?.kicked_at === null) {
         await query(
           `UPDATE chat_call_participants
            SET last_seen_at = NOW()
@@ -85,12 +103,25 @@ export async function GET(request: Request) {
       const participants = await getParticipants(call.id);
       if (participants.length === 0) {
         await query('UPDATE chat_call_sessions SET ended_at = NOW() WHERE id = ? AND ended_at IS NULL', [call.id]);
-        return NextResponse.json({ success: true, data: { call: null } });
+        return NextResponse.json({
+          success: true,
+          data: {
+            call: null,
+            ...(viewerMembership[0]?.kicked_at !== null && viewerMembership[0]?.kicked_at !== undefined
+              ? { kicked: true }
+              : {}),
+          },
+        }, { headers: { 'Cache-Control': 'no-store' } });
       }
 
       return NextResponse.json({
         success: true,
-        data: { call: { ...call, participants } },
+        data: {
+          call: { ...call, participants },
+          ...(viewerMembership[0]?.kicked_at !== null && viewerMembership[0]?.kicked_at !== undefined
+            ? { kicked: true }
+            : {}),
+        },
       }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
@@ -102,14 +133,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Posisi sinyal tidak valid.' }, { status: 400 });
     }
 
-    const membership = await query<{ ended_at: Date | null; left_at: Date | null }[]>(
-      `SELECT s.ended_at, p.left_at FROM chat_call_sessions s
+    const membership = await query<{ ended_at: Date | null; left_at: Date | null; kicked_at: Date | null }[]>(
+      `SELECT s.ended_at, p.left_at, p.kicked_at FROM chat_call_sessions s
        INNER JOIN chat_call_participants p ON p.session_id = s.id
        WHERE s.id = ? AND p.user_id = ? LIMIT 1`,
       [callId, user.id]
     );
     if (!membership[0]) {
       return NextResponse.json({ success: false, error: 'Anda tidak tergabung dalam panggilan ini.' }, { status: 403 });
+    }
+    if (membership[0].kicked_at !== null) {
+      return NextResponse.json({
+        success: true,
+        data: { kicked: true, ended: false, participants: [], signals: [] },
+      }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (membership[0].ended_at !== null || membership[0].left_at !== null) {
       return NextResponse.json({
@@ -179,11 +216,19 @@ export async function POST(request: Request) {
       if (!existingCalls[0]) {
         await query('INSERT INTO chat_call_sessions (id, started_by) VALUES (?, ?)', [call.id, user.id]);
       }
+      const existingMembership = await query<{ kicked_at: Date | null }[]>(
+        'SELECT kicked_at FROM chat_call_participants WHERE session_id = ? AND user_id = ? LIMIT 1',
+        [call.id, user.id]
+      );
+      if (existingMembership[0]?.kicked_at !== null && existingMembership[0]?.kicked_at !== undefined) {
+        return NextResponse.json({ success: false, error: 'Anda dikeluarkan dari sesi telepon ini.' }, { status: 403 });
+      }
       await query(
-        `INSERT INTO chat_call_participants (session_id, user_id, last_seen_at)
-         VALUES (?, ?, NOW())
+        `INSERT INTO chat_call_participants (session_id, user_id, is_muted, last_seen_at)
+         VALUES (?, ?, TRUE, NOW())
          ON DUPLICATE KEY UPDATE
            connection_version = connection_version + 1,
+           is_muted = TRUE,
            joined_at = NOW(), left_at = NULL, last_seen_at = NOW()`,
         [call.id, user.id]
       );
@@ -203,11 +248,19 @@ export async function POST(request: Request) {
         if (!calls[0]) {
           return NextResponse.json({ success: false, error: 'Panggilan ini sudah berakhir.' }, { status: 410 });
         }
+        const existingMembership = await query<{ kicked_at: Date | null }[]>(
+          'SELECT kicked_at FROM chat_call_participants WHERE session_id = ? AND user_id = ? LIMIT 1',
+          [callId, user.id]
+        );
+        if (existingMembership[0]?.kicked_at !== null && existingMembership[0]?.kicked_at !== undefined) {
+          return NextResponse.json({ success: false, error: 'Anda dikeluarkan dari sesi telepon ini.' }, { status: 403 });
+        }
         await query(
-          `INSERT INTO chat_call_participants (session_id, user_id, last_seen_at)
-           VALUES (?, ?, NOW())
+          `INSERT INTO chat_call_participants (session_id, user_id, is_muted, last_seen_at)
+           VALUES (?, ?, TRUE, NOW())
            ON DUPLICATE KEY UPDATE
              connection_version = connection_version + 1,
+             is_muted = TRUE,
              joined_at = NOW(), left_at = NULL, last_seen_at = NOW()`,
           [callId, user.id]
         );
@@ -224,6 +277,91 @@ export async function POST(request: Request) {
           );
         }
       }
+      return NextResponse.json({ success: true });
+    }
+
+    if (input.action === 'moderate') {
+      if (
+        user.role !== 'ADMIN' ||
+        typeof input.callId !== 'string' ||
+        !/^[0-9a-f-]{36}$/i.test(input.callId) ||
+        typeof input.targetId !== 'number' ||
+        !Number.isSafeInteger(input.targetId) ||
+        input.targetId === user.id ||
+        !['mute', 'kick'].includes(String(input.moderation))
+      ) {
+        return NextResponse.json({ success: false, error: 'Aksi moderasi panggilan tidak valid.' }, { status: 403 });
+      }
+
+      const moderatorMembership = await query<{ user_id: number }[]>(
+        `SELECT user_id FROM chat_call_participants
+         WHERE session_id = ? AND user_id = ? AND left_at IS NULL
+           AND last_seen_at >= DATE_SUB(NOW(), INTERVAL ${PARTICIPANT_TIMEOUT_SECONDS} SECOND)
+         LIMIT 1`,
+        [input.callId, user.id]
+      );
+      if (!moderatorMembership[0]) {
+        return NextResponse.json({ success: false, error: 'Admin harus bergabung ke panggilan untuk memoderasi.' }, { status: 403 });
+      }
+
+      const target = await query<{ user_id: number; kicked_at: Date | null }[]>(
+        `SELECT p.user_id, p.kicked_at FROM chat_call_participants p
+         INNER JOIN chat_call_sessions s ON s.id = p.session_id AND s.ended_at IS NULL
+         WHERE p.session_id = ? AND p.user_id = ? AND p.left_at IS NULL
+           AND p.last_seen_at >= DATE_SUB(NOW(), INTERVAL ${PARTICIPANT_TIMEOUT_SECONDS} SECOND)
+         LIMIT 1`,
+        [input.callId, input.targetId]
+      );
+      if (!target[0] || target[0].kicked_at !== null) {
+        return NextResponse.json({ success: false, error: 'Peserta tidak lagi aktif di panggilan ini.' }, { status: 404 });
+      }
+
+      if (input.moderation === 'mute') {
+        if (typeof input.isMuted !== 'boolean') {
+          return NextResponse.json({ success: false, error: 'Status mute tidak valid.' }, { status: 400 });
+        }
+        await query(
+          'UPDATE chat_call_participants SET is_muted = ? WHERE session_id = ? AND user_id = ? AND left_at IS NULL',
+          [input.isMuted, input.callId, input.targetId]
+        );
+      } else {
+        await query(
+          'UPDATE chat_call_participants SET left_at = NOW(), kicked_at = NOW() WHERE session_id = ? AND user_id = ? AND left_at IS NULL',
+          [input.callId, input.targetId]
+        );
+        const participants = await getParticipants(input.callId);
+        if (participants.length === 0) {
+          await query(
+            'UPDATE chat_call_sessions SET ended_at = NOW() WHERE id = ? AND ended_at IS NULL',
+            [input.callId]
+          );
+        }
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    if (input.action === 'set-mute') {
+      if (
+        typeof input.callId !== 'string' ||
+        !/^[0-9a-f-]{36}$/i.test(input.callId) ||
+        typeof input.isMuted !== 'boolean'
+      ) {
+        return NextResponse.json({ success: false, error: 'Status mikrofon tidak valid.' }, { status: 400 });
+      }
+      const membership = await query<{ user_id: number }[]>(
+        `SELECT p.user_id FROM chat_call_participants p
+         INNER JOIN chat_call_sessions s ON s.id = p.session_id AND s.ended_at IS NULL
+         WHERE p.session_id = ? AND p.user_id = ? AND p.left_at IS NULL
+         LIMIT 1`,
+        [input.callId, user.id]
+      );
+      if (!membership[0]) {
+        return NextResponse.json({ success: false, error: 'Anda tidak sedang tergabung dalam panggilan.' }, { status: 403 });
+      }
+      await query(
+        'UPDATE chat_call_participants SET is_muted = ?, last_seen_at = NOW() WHERE session_id = ? AND user_id = ? AND left_at IS NULL',
+        [input.isMuted, input.callId, user.id]
+      );
       return NextResponse.json({ success: true });
     }
 
