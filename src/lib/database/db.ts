@@ -46,7 +46,7 @@ function getDatabaseConfigurationError(): string | null {
 async function ensureColumns(
   dbPool: mysql.Pool,
   migrations: {
-    table: 'users' | 'attendance' | 'staff_warnings' | 'staff_admin_chat_messages';
+    table: 'users' | 'attendance' | 'staff_warnings' | 'staff_admin_chat_messages' | 'chat_call_participants';
     column: string;
     definition: string;
   }[]
@@ -342,6 +342,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       CREATE TABLE IF NOT EXISTS chat_call_participants (
         session_id CHAR(36) NOT NULL,
         user_id INT NOT NULL,
+        connection_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
         joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         left_at TIMESTAMP NULL DEFAULT NULL,
@@ -435,6 +436,7 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
     `);
 
     await ensureColumns(dbPool, [
+      { table: 'chat_call_participants', column: 'connection_version', definition: 'BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER user_id' },
       { table: 'users', column: 'attendance_role', definition: "ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'" },
       { table: 'users', column: 'real_name', definition: 'VARCHAR(100) NULL AFTER username' },
       { table: 'users', column: 'nip', definition: 'VARCHAR(50) NULL AFTER real_name' },

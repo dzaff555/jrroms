@@ -10,6 +10,8 @@ interface CallParticipant {
   profile_photo: string | null;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string | null;
+  joined_at: string;
+  connection_version: number;
 }
 
 interface CallSession {
@@ -41,10 +43,13 @@ interface RemoteStream {
   username: string;
   profilePhoto: string | null;
   stream: MediaStream;
+  trackRevision: number;
+  trackIds: string[];
 }
 
 interface PeerConnectionState {
   connection: RTCPeerConnection;
+  remoteConnectionVersion: number;
   remoteStream: MediaStream | null;
   polite: boolean;
   makingOffer: boolean;
@@ -110,7 +115,9 @@ function participantsAreEqual(left: CallParticipant[], right: CallParticipant[])
     participant.username === right[index].username &&
     participant.profile_photo === right[index].profile_photo &&
     participant.role === right[index].role &&
-    participant.attendance_role === right[index].attendance_role
+    participant.attendance_role === right[index].attendance_role &&
+    participant.joined_at === right[index].joined_at &&
+    participant.connection_version === right[index].connection_version
   ));
 }
 
@@ -198,15 +205,19 @@ const ParticipantTile = memo(function ParticipantTile({
   name,
   profilePhoto,
   stream,
+  trackRevision = 0,
   cameraEnabled,
   isSpeaking,
+  isMuted = false,
   isLocal = false,
 }: {
   name: string;
   profilePhoto: string | null;
   stream: MediaStream | null;
+  trackRevision?: number;
   cameraEnabled: boolean;
   isSpeaking: boolean;
+  isMuted?: boolean;
   isLocal?: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -219,7 +230,8 @@ const ParticipantTile = memo(function ParticipantTile({
     if (!audio || isLocal || !stream?.getAudioTracks().length) return;
 
     audio.srcObject = stream;
-    const playAudio = () => {
+    const attemptPlayback = () => {
+      if (!audio.paused) return;
       void audio.play().then(() => {
         setAudioPlaybackBlocked(false);
       }).catch((playError: unknown) => {
@@ -232,16 +244,23 @@ const ParticipantTile = memo(function ParticipantTile({
         }
       });
     };
+    const playAudio = () => {
+      attemptPlayback();
+    };
     const tracks = stream.getAudioTracks();
     tracks.forEach((track) => track.addEventListener('unmute', playAudio));
+    window.addEventListener('pointerdown', attemptPlayback);
+    window.addEventListener('keydown', attemptPlayback);
     playAudio();
 
     return () => {
       tracks.forEach((track) => track.removeEventListener('unmute', playAudio));
+      window.removeEventListener('pointerdown', attemptPlayback);
+      window.removeEventListener('keydown', attemptPlayback);
       audio.pause();
       audio.srcObject = null;
     };
-  }, [isLocal, stream]);
+  }, [isLocal, stream, trackRevision]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -273,7 +292,7 @@ const ParticipantTile = memo(function ParticipantTile({
       });
       video.srcObject = null;
     };
-  }, [cameraEnabled, stream]);
+  }, [cameraEnabled, stream, trackRevision]);
 
   const hasVideo = Boolean(stream && cameraEnabled && hasLiveVideo);
 
@@ -333,7 +352,7 @@ const ParticipantTile = memo(function ParticipantTile({
       )}
       <span className="absolute bottom-2 left-2 inline-flex max-w-[calc(100%-1rem)] items-center gap-1.5 truncate rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold sm:bottom-3 sm:left-3 sm:px-3">
         <span className="truncate">{name}</span>
-        {isLocal && isMutedLabel(stream) && (
+        {isLocal && isMuted && (
           <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-300" aria-label="Mikrofon mati" />
         )}
       </span>
@@ -345,10 +364,6 @@ const ParticipantTile = memo(function ParticipantTile({
     </div>
   );
 });
-
-function isMutedLabel(stream: MediaStream | null) {
-  return stream?.getAudioTracks().every((track) => !track.enabled) ?? false;
-}
 
 async function postCallAction(body: Record<string, unknown>) {
   const response = await fetch('/api/chat/call', {
@@ -406,7 +421,7 @@ export function GroupCallControls({
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isJoined, setIsJoined] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [isCameraEnabled, setIsCameraEnabled] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isRestoringCall, setIsRestoringCall] = useState(false);
@@ -447,7 +462,7 @@ export function GroupCallControls({
     onCallMinimizedChange(false);
     closePeerConnections();
     stopLocalMedia();
-    setIsMuted(false);
+    setIsMuted(true);
     setIsCameraEnabled(false);
     clearCallRestoreState(currentUserId, activeCall?.id ?? null);
     if (notifyServer && activeCall) {
@@ -464,7 +479,15 @@ export function GroupCallControls({
 
   const ensurePeerConnection = useCallback((peer: CallParticipant, activeCall: CallSession) => {
     const existing = peersRef.current.get(peer.id);
-    if (existing) return existing;
+    if (existing?.remoteConnectionVersion === peer.connection_version) return existing;
+    if (existing) {
+      if (existing.negotiationTimer !== null) window.clearTimeout(existing.negotiationTimer);
+      if (existing.restartTimer !== null) window.clearTimeout(existing.restartTimer);
+      existing.connection.close();
+      peersRef.current.delete(peer.id);
+      remoteStreamsRef.current.delete(peer.id);
+      setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
+    }
 
     const connection = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -473,6 +496,7 @@ export function GroupCallControls({
     });
     const peerState: PeerConnectionState = {
       connection,
+      remoteConnectionVersion: peer.connection_version,
       remoteStream: null,
       polite: currentUserId > peer.id,
       makingOffer: false,
@@ -504,7 +528,18 @@ export function GroupCallControls({
       if (!stream.getTracks().some((track) => track.id === event.track.id)) {
         stream.addTrack(event.track);
       }
-      const remote = { userId: peer.id, username: peer.username, profilePhoto: peer.profile_photo, stream };
+      const previousRemote = remoteStreamsRef.current.get(peer.id);
+      const trackIds = stream.getTracks().map((track) => track.id);
+      const isNewTrack = !previousRemote?.trackIds.includes(event.track.id);
+      if (!isNewTrack && previousRemote) return;
+      const remote = {
+        userId: peer.id,
+        username: peer.username,
+        profilePhoto: peer.profile_photo,
+        stream,
+        trackRevision: (previousRemote?.trackRevision ?? 0) + 1,
+        trackIds,
+      };
       remoteStreamsRef.current.set(peer.id, remote);
       setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
     };
@@ -541,6 +576,7 @@ export function GroupCallControls({
     const restartIce = async () => {
       peerState.restartTimer = null;
       if (!joinedRef.current || connection.connectionState === 'closed') return;
+      if (currentUserId > peer.id) return;
       if (peerState.restartAttempts >= 3) {
         setError(`Koneksi audio dengan ${peer.username} gagal. Coba keluar lalu bergabung kembali.`);
         return;
@@ -696,6 +732,18 @@ export function GroupCallControls({
 
       const nextParticipants = result.data?.participants || [];
       setParticipants((current) => participantsAreEqual(current, nextParticipants) ? current : nextParticipants);
+      const activeParticipantIds = new Set(nextParticipants.map((participant) => participant.id));
+      let removedParticipant = false;
+      for (const [participantId, peerState] of peersRef.current) {
+        if (activeParticipantIds.has(participantId)) continue;
+        if (peerState.negotiationTimer !== null) window.clearTimeout(peerState.negotiationTimer);
+        if (peerState.restartTimer !== null) window.clearTimeout(peerState.restartTimer);
+        peerState.connection.close();
+        peersRef.current.delete(participantId);
+        remoteStreamsRef.current.delete(participantId);
+        removedParticipant = true;
+      }
+      if (removedParticipant) setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
       for (const participant of nextParticipants) {
         if (participant.id !== currentUserId) ensurePeerConnection(participant, activeCall);
       }
@@ -798,6 +846,9 @@ export function GroupCallControls({
         joinedWithVideo = false;
         setError('Kamera tidak tersedia; Anda bergabung kembali dengan audio saja.');
       }
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
       const joining = await postCallAction({ action: 'join', callId: callToJoin.id });
       if (!joining.success) throw new Error(joining.error || 'Tidak dapat bergabung ke panggilan.');
       callVideoRef.current = joinedWithVideo;
@@ -812,6 +863,7 @@ export function GroupCallControls({
       lastSignalIdRef.current = restoreState?.callId === callToJoin.id ? restoreState.signalCursor : 0;
       setLocalStream(stream);
       setCall(callToJoin);
+      setIsMuted(true);
       setIsCameraEnabled(joinedWithVideo);
       setIsJoined(true);
       onCallMinimizedChange(false);
@@ -842,6 +894,9 @@ export function GroupCallControls({
           frameRate: { ideal: 20, max: 24 },
         } : false,
       });
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
       localStreamRef.current = stream;
       setLocalStream(stream);
       const result = await postCallAction({ action: 'start' });
@@ -853,6 +908,7 @@ export function GroupCallControls({
       joinedRef.current = true;
       lastSignalIdRef.current = 0;
       setCall(startedCall);
+      setIsMuted(true);
       setIsCameraEnabled(video);
       setIsJoined(true);
       onCallMinimizedChange(false);
@@ -1008,11 +1064,12 @@ export function GroupCallControls({
 
           <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] content-start gap-3 overflow-y-auto overscroll-contain p-3 sm:gap-4 sm:p-6">
             <ParticipantTile
-              name="Anda"
+              name={participants.find((participant) => participant.id === currentUserId)?.username ?? 'Anda'}
               profilePhoto={participants.find((participant) => participant.id === currentUserId)?.profile_photo ?? null}
               stream={localStream}
               cameraEnabled={isCameraEnabled}
               isSpeaking={speakingUsers.includes(0)}
+              isMuted={isMuted}
               isLocal
             />
             {remoteStreams.map((remote) => (
@@ -1021,6 +1078,7 @@ export function GroupCallControls({
                 name={remote.username}
                 profilePhoto={remote.profilePhoto}
                 stream={remote.stream}
+                trackRevision={remote.trackRevision}
                 cameraEnabled={remote.stream.getVideoTracks().length > 0}
                 isSpeaking={speakingUsers.includes(remote.userId)}
               />

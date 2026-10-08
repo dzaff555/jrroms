@@ -13,6 +13,8 @@ interface CallParticipant {
   profile_photo: string | null;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string | null;
+  joined_at: string;
+  connection_version: number;
 }
 
 interface CallSession {
@@ -43,7 +45,7 @@ async function getActiveCaller() {
 
 async function getParticipants(callId: string) {
   return query<CallParticipant[]>(
-    `SELECT u.id, u.username, u.profile_photo, u.role, u.attendance_role
+    `SELECT u.id, u.username, u.profile_photo, u.role, u.attendance_role, p.joined_at, p.connection_version
      FROM chat_call_participants p
      INNER JOIN users u ON u.id = p.user_id AND u.status = 'ACTIVE'
      WHERE p.session_id = ? AND p.left_at IS NULL
@@ -180,7 +182,9 @@ export async function POST(request: Request) {
       await query(
         `INSERT INTO chat_call_participants (session_id, user_id, last_seen_at)
          VALUES (?, ?, NOW())
-         ON DUPLICATE KEY UPDATE left_at = NULL, last_seen_at = NOW()`,
+         ON DUPLICATE KEY UPDATE
+           connection_version = connection_version + 1,
+           joined_at = NOW(), left_at = NULL, last_seen_at = NOW()`,
         [call.id, user.id]
       );
       return NextResponse.json({ success: true, data: { call } });
@@ -202,7 +206,9 @@ export async function POST(request: Request) {
         await query(
           `INSERT INTO chat_call_participants (session_id, user_id, last_seen_at)
            VALUES (?, ?, NOW())
-           ON DUPLICATE KEY UPDATE left_at = NULL, last_seen_at = NOW()`,
+           ON DUPLICATE KEY UPDATE
+             connection_version = connection_version + 1,
+             joined_at = NOW(), left_at = NULL, last_seen_at = NOW()`,
           [callId, user.id]
         );
       } else {
