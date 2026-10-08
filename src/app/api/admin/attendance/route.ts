@@ -55,6 +55,7 @@ export async function GET(request: Request) {
       SELECT 
         u.id as user_id,
         u.username,
+        u.profile_photo,
         COALESCE(a.name, u.username) as name,
         COALESCE(a.discord_username, '-') as discord_username,
         COALESCE(a.roblox_username, '-') as roblox_username,

@@ -29,6 +29,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { AttendanceBarChart } from '@/components/charts/AttendanceBarChart';
 import { AttendanceDonutChart } from '@/components/charts/AttendanceDonutChart';
 import { formatIndonesianDate, formatIndonesianTime } from '@/lib/utils/date';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 import { DashboardStats } from '@/types';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 
@@ -456,7 +457,24 @@ export default function AdminDashboardPage() {
                               {r.name}
                             </td>
                             <td className="py-3.5 px-4 text-slate-600 font-medium">
-                              @{r.username}
+                              <Link
+                                href={`/admin/users/${r.user_id}`}
+                                className="inline-flex items-center gap-2.5 rounded-lg text-slate-600 transition-colors hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                                aria-label={`Lihat profil ${r.username}`}
+                              >
+                                {r.profile_photo ? (
+                                  <ProtectedProfilePhoto
+                                    src={r.profile_photo}
+                                    alt={`Foto profil ${r.username}`}
+                                    className="h-8 w-8 shrink-0 rounded-lg border border-slate-200 object-cover"
+                                  />
+                                ) : (
+                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-xs font-bold text-blue-600">
+                                    {r.username.charAt(0).toUpperCase()}
+                                  </span>
+                                )}
+                                <span>@{r.username}</span>
+                              </Link>
                             </td>
                             <td className="py-3.5 px-4 font-mono text-indigo-600">
                               {r.discord_username}
@@ -520,6 +538,8 @@ export default function AdminDashboardPage() {
           title="Detail Kehadiran Karyawan"
           description="Informasi absensi hari ini yang tercatat di database."
           maxWidth="md"
+          scrollable
+          portal
         >
           {selectedRecord && (
             <div className="space-y-4">
