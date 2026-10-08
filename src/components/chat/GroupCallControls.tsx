@@ -1,0 +1,1079 @@
+'use client';
+
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Camera, CameraOff, LoaderCircle, Mic, MicOff, Phone, PhoneOff, Video } from 'lucide-react';
+import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
+
+interface CallParticipant {
+  id: number;
+  username: string;
+  profile_photo: string | null;
+  role: 'USER' | 'ADMIN' | 'DEVELOPER';
+  attendance_role: string | null;
+}
+
+interface CallSession {
+  id: string;
+  started_by: number;
+  started_at: string;
+}
+
+interface CallSignal {
+  id: number;
+  sender_id: number;
+  type: 'offer' | 'answer' | 'candidate';
+  payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
+}
+
+interface CallApiResponse {
+  success: boolean;
+  error?: string;
+  data?: {
+    call?: (CallSession & { participants: CallParticipant[] }) | null;
+    ended?: boolean;
+    participants?: CallParticipant[];
+    signals?: CallSignal[];
+  };
+}
+
+interface RemoteStream {
+  userId: number;
+  username: string;
+  profilePhoto: string | null;
+  stream: MediaStream;
+}
+
+interface PeerConnectionState {
+  connection: RTCPeerConnection;
+  remoteStream: MediaStream | null;
+  polite: boolean;
+  makingOffer: boolean;
+  ignoreOffer: boolean;
+  pendingCandidates: RTCIceCandidateInit[];
+  negotiationTimer: number | null;
+  restartTimer: number | null;
+  restartAttempts: number;
+}
+
+interface GroupCallControlsProps {
+  currentUserId: number;
+  isCallMinimized: boolean;
+  onCallMinimizedChange: (minimized: boolean) => void;
+}
+
+interface CallRestoreState {
+  callId: string;
+  video: boolean;
+  signalCursor: number;
+}
+
+function getCallRestoreState(userId: number): CallRestoreState | null {
+  try {
+    const saved = sessionStorage.getItem(`group-call:${userId}`);
+    if (!saved) return null;
+    const state = JSON.parse(saved) as Partial<CallRestoreState>;
+    return typeof state.callId === 'string' &&
+      typeof state.video === 'boolean' &&
+      typeof state.signalCursor === 'number' &&
+      Number.isSafeInteger(state.signalCursor) &&
+      state.signalCursor >= 0
+      ? { callId: state.callId, video: state.video, signalCursor: state.signalCursor }
+      : null;
+  } catch (error) {
+    console.error('Failed to restore the previous group call:', error);
+    return null;
+  }
+}
+
+function saveCallRestoreState(userId: number, state: CallRestoreState) {
+  try {
+    sessionStorage.setItem(`group-call:${userId}`, JSON.stringify(state));
+  } catch (error) {
+    console.error('Failed to save the group call for refresh recovery:', error);
+  }
+}
+
+function clearCallRestoreState(userId: number, callId: string | null) {
+  if (!callId) return;
+  try {
+    const key = `group-call:${userId}`;
+    const saved = getCallRestoreState(userId);
+    if (saved?.callId === callId) sessionStorage.removeItem(key);
+  } catch (error) {
+    console.error('Failed to clear the restored group call state:', error);
+  }
+}
+
+function participantsAreEqual(left: CallParticipant[], right: CallParticipant[]) {
+  return left.length === right.length && left.every((participant, index) => (
+    participant.id === right[index].id &&
+    participant.username === right[index].username &&
+    participant.profile_photo === right[index].profile_photo &&
+    participant.role === right[index].role &&
+    participant.attendance_role === right[index].attendance_role
+  ));
+}
+
+function useSpeakingUsers(
+  localStream: MediaStream | null,
+  remoteStreams: RemoteStream[],
+  isMuted: boolean
+) {
+  const [speakingUserIds, setSpeakingUserIds] = useState<number[]>([]);
+
+  useEffect(() => {
+    const sources = [
+      ...(localStream && !isMuted ? [{ userId: 0, stream: localStream }] : []),
+      ...remoteStreams.map(({ userId, stream }) => ({ userId, stream })),
+    ].filter(({ stream }) => stream.getAudioTracks().some((track) => track.readyState === 'live' && track.enabled));
+
+    if (sources.length === 0) {
+      const frameId = requestAnimationFrame(() => {
+        setSpeakingUserIds((previous) => previous.length ? [] : previous);
+      });
+      return () => cancelAnimationFrame(frameId);
+    }
+
+    let audioContext: AudioContext;
+    try {
+      audioContext = new AudioContext({ latencyHint: 'interactive' });
+    } catch (audioError) {
+      console.error('Failed to initialize group-call audio activity detection:', audioError);
+      return;
+    }
+
+    const analysers = sources.map(({ userId, stream }) => {
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.65;
+      audioContext.createMediaStreamSource(stream).connect(analyser);
+      return { userId, analyser, samples: new Uint8Array(analyser.fftSize) };
+    });
+    void audioContext.resume().catch((audioError: unknown) => {
+      console.error('Failed to activate call audio activity detection:', audioError);
+    });
+
+    let frameId = 0;
+    let lastUpdate = 0;
+    const detectSpeaking = (timestamp: number) => {
+      if (timestamp - lastUpdate >= 100) {
+        lastUpdate = timestamp;
+        const activeUsers = analysers
+          .filter(({ analyser, samples }) => {
+            analyser.getByteTimeDomainData(samples);
+            let sum = 0;
+            for (const sample of samples) {
+              const amplitude = (sample - 128) / 128;
+              sum += amplitude * amplitude;
+            }
+            return Math.sqrt(sum / samples.length) > 0.055;
+          })
+          .map(({ userId }) => userId)
+          .sort((left, right) => left - right);
+
+        setSpeakingUserIds((previous) => (
+          previous.length === activeUsers.length &&
+          previous.every((userId, index) => userId === activeUsers[index])
+            ? previous
+            : activeUsers
+        ));
+      }
+      frameId = requestAnimationFrame(detectSpeaking);
+    };
+    frameId = requestAnimationFrame(detectSpeaking);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      analysers.forEach(({ analyser }) => analyser.disconnect());
+      void audioContext.close().catch((audioError: unknown) => {
+        console.error('Failed to close call audio activity detection:', audioError);
+      });
+    };
+  }, [isMuted, localStream, remoteStreams]);
+
+  return speakingUserIds;
+}
+
+const ParticipantTile = memo(function ParticipantTile({
+  name,
+  profilePhoto,
+  stream,
+  cameraEnabled,
+  isSpeaking,
+  isLocal = false,
+}: {
+  name: string;
+  profilePhoto: string | null;
+  stream: MediaStream | null;
+  cameraEnabled: boolean;
+  isSpeaking: boolean;
+  isLocal?: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [hasLiveVideo, setHasLiveVideo] = useState(false);
+  const [audioPlaybackBlocked, setAudioPlaybackBlocked] = useState(false);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || isLocal || !stream?.getAudioTracks().length) return;
+
+    audio.srcObject = stream;
+    const playAudio = () => {
+      void audio.play().then(() => {
+        setAudioPlaybackBlocked(false);
+      }).catch((playError: unknown) => {
+        if (playError instanceof DOMException && playError.name === 'NotAllowedError') {
+          setAudioPlaybackBlocked(true);
+          return;
+        }
+        if (!(playError instanceof DOMException && playError.name === 'AbortError')) {
+          console.error('Failed to play remote group-call audio:', playError);
+        }
+      });
+    };
+    const tracks = stream.getAudioTracks();
+    tracks.forEach((track) => track.addEventListener('unmute', playAudio));
+    playAudio();
+
+    return () => {
+      tracks.forEach((track) => track.removeEventListener('unmute', playAudio));
+      audio.pause();
+      audio.srcObject = null;
+    };
+  }, [isLocal, stream]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !stream) return;
+    video.srcObject = stream;
+    const tracks = stream.getVideoTracks();
+    const updateVideoState = () => {
+      const hasLiveTrack = cameraEnabled && tracks.some((track) => track.readyState === 'live' && !track.muted);
+      setHasLiveVideo((current) => current === hasLiveTrack ? current : hasLiveTrack);
+    };
+    tracks.forEach((track) => {
+      track.addEventListener('unmute', updateVideoState);
+      track.addEventListener('mute', updateVideoState);
+      track.addEventListener('ended', updateVideoState);
+    });
+    const frameId = requestAnimationFrame(updateVideoState);
+    void video.play().catch((playError: unknown) => {
+      if (!(playError instanceof DOMException && playError.name === 'AbortError')) {
+        console.error('Failed to play group-call video:', playError);
+      }
+    });
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      tracks.forEach((track) => {
+        track.removeEventListener('unmute', updateVideoState);
+        track.removeEventListener('mute', updateVideoState);
+        track.removeEventListener('ended', updateVideoState);
+      });
+      video.srcObject = null;
+    };
+  }, [cameraEnabled, stream]);
+
+  const hasVideo = Boolean(stream && cameraEnabled && hasLiveVideo);
+
+  return (
+    <div
+      className={`relative aspect-video min-h-48 overflow-hidden rounded-2xl border bg-slate-900 transition-[border-color,box-shadow] duration-150 sm:min-h-0 ${
+        isSpeaking
+          ? 'border-emerald-400 ring-2 ring-emerald-400/80 shadow-[0_0_22px_rgba(52,211,153,0.3)]'
+          : 'border-white/10'
+      }`}
+      aria-label={`${name}${isSpeaking ? ' sedang berbicara' : ''}`}
+    >
+      {!isLocal && stream?.getAudioTracks().length ? (
+        <>
+          <audio ref={audioRef} autoPlay playsInline className="sr-only" />
+          {audioPlaybackBlocked && (
+            <button
+              type="button"
+              onClick={() => {
+                const audio = audioRef.current;
+                if (!audio) return;
+                void audio.play().then(() => setAudioPlaybackBlocked(false)).catch((playError: unknown) => {
+                  console.error('Failed to enable remote group-call audio:', playError);
+                });
+              }}
+              className="absolute right-2 top-2 z-10 rounded-full bg-amber-500 px-2.5 py-1.5 text-xs font-bold text-slate-950 shadow-lg"
+            >
+              Aktifkan suara {name}
+            </button>
+          )}
+        </>
+      ) : null}
+      {stream && cameraEnabled && (
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          disablePictureInPicture
+          disableRemotePlayback
+          controls={false}
+          className={`absolute inset-0 h-full w-full object-cover ${hasVideo ? 'visible' : 'invisible'}`}
+        />
+      )}
+      {!hasVideo && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+          <div className={`flex h-16 w-16 items-center justify-center rounded-full text-xl font-bold sm:h-20 sm:w-20 sm:text-2xl ${
+            isSpeaking ? 'bg-emerald-600' : 'bg-slate-700'
+          }`}>
+            {profilePhoto ? (
+              <ProtectedProfilePhoto src={profilePhoto} alt="" className="h-full w-full rounded-full object-cover" />
+            ) : (
+              name.charAt(0).toUpperCase()
+            )}
+          </div>
+        </div>
+      )}
+      <span className="absolute bottom-2 left-2 inline-flex max-w-[calc(100%-1rem)] items-center gap-1.5 truncate rounded-full bg-black/65 px-2.5 py-1 text-xs font-semibold sm:bottom-3 sm:left-3 sm:px-3">
+        <span className="truncate">{name}</span>
+        {isLocal && isMutedLabel(stream) && (
+          <MicOff className="h-3.5 w-3.5 shrink-0 text-rose-300" aria-label="Mikrofon mati" />
+        )}
+      </span>
+      {isSpeaking && (
+        <span className="absolute right-2 top-2 rounded-full bg-emerald-500/90 px-2 py-1 text-[10px] font-bold text-white sm:right-3 sm:top-3">
+          Berbicara
+        </span>
+      )}
+    </div>
+  );
+});
+
+function isMutedLabel(stream: MediaStream | null) {
+  return stream?.getAudioTracks().every((track) => !track.enabled) ?? false;
+}
+
+async function postCallAction(body: Record<string, unknown>) {
+  const response = await fetch('/api/chat/call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json() as CallApiResponse;
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || 'Panggilan tidak dapat diperbarui.');
+  }
+  return result;
+}
+
+async function postSignal(
+  callId: string,
+  targetId: number,
+  type: CallSignal['type'],
+  payload: RTCSessionDescriptionInit | RTCIceCandidateInit
+) {
+  await postCallAction({ action: 'signal', callId, targetId, type, payload });
+}
+
+function tuneVideoSender(sender: RTCRtpSender) {
+  const parameters = sender.getParameters();
+  const encoding = parameters.encodings?.[0] || {};
+  encoding.maxBitrate = 350_000;
+  encoding.scaleResolutionDownBy = 1.25;
+  parameters.encodings = [encoding, ...(parameters.encodings?.slice(1) || [])];
+  void sender.setParameters(parameters).catch((error: unknown) => {
+    console.error('Failed to apply group-call video limits:', error);
+  });
+}
+
+function hasLocalOffer(connection: RTCPeerConnection) {
+  return connection.signalingState === 'have-local-offer';
+}
+
+function getMediaSectionCount(sdp: string | undefined) {
+  return sdp?.match(/^m=/gm)?.length ?? 0;
+}
+
+export function GroupCallControls({
+  currentUserId,
+  isCallMinimized,
+  onCallMinimizedChange,
+}: GroupCallControlsProps) {
+  const [restoreState] = useState<CallRestoreState | null>(() =>
+    typeof window === 'undefined' ? null : getCallRestoreState(currentUserId)
+  );
+  const [hasLoadedRestoreState] = useState(() => typeof window !== 'undefined');
+  const [call, setCall] = useState<CallSession | null>(null);
+  const [participants, setParticipants] = useState<CallParticipant[]>([]);
+  const [hasCheckedCallState, setHasCheckedCallState] = useState(false);
+  const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isJoined, setIsJoined] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraEnabled, setIsCameraEnabled] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isRestoringCall, setIsRestoringCall] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const peersRef = useRef(new Map<number, PeerConnectionState>());
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const callRef = useRef<CallSession | null>(null);
+  const callVideoRef = useRef(restoreState?.video ?? false);
+  const joinedRef = useRef(false);
+  const lastSignalIdRef = useRef(0);
+  const pollingRef = useRef(false);
+  const hasCheckedCallStateRef = useRef(false);
+  const restoreAttemptCallIdRef = useRef<string | null>(null);
+  const remoteStreamsRef = useRef(new Map<number, RemoteStream>());
+  const speakingUsers = useSpeakingUsers(localStream, remoteStreams, isMuted);
+
+  const closePeerConnections = useCallback(() => {
+    for (const peer of peersRef.current.values()) {
+      if (peer.negotiationTimer !== null) window.clearTimeout(peer.negotiationTimer);
+      if (peer.restartTimer !== null) window.clearTimeout(peer.restartTimer);
+      peer.connection.close();
+    }
+    peersRef.current.clear();
+    setRemoteStreams([]);
+    remoteStreamsRef.current.clear();
+  }, []);
+
+  const stopLocalMedia = useCallback(() => {
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    localStreamRef.current = null;
+    setLocalStream(null);
+  }, []);
+
+  const leaveCall = useCallback(async (notifyServer = true) => {
+    const activeCall = callRef.current;
+    joinedRef.current = false;
+    setIsJoined(false);
+    onCallMinimizedChange(false);
+    closePeerConnections();
+    stopLocalMedia();
+    setIsMuted(false);
+    setIsCameraEnabled(false);
+    clearCallRestoreState(currentUserId, activeCall?.id ?? null);
+    if (notifyServer && activeCall) {
+      try {
+        await postCallAction({ action: 'leave', callId: activeCall.id });
+      } catch (leaveError) {
+        console.error('Failed to leave group call:', leaveError);
+        setError(leaveError instanceof Error ? leaveError.message : 'Gagal keluar dari panggilan.');
+      }
+    }
+    callRef.current = null;
+    setCall(null);
+  }, [closePeerConnections, currentUserId, onCallMinimizedChange, stopLocalMedia]);
+
+  const ensurePeerConnection = useCallback((peer: CallParticipant, activeCall: CallSession) => {
+    const existing = peersRef.current.get(peer.id);
+    if (existing) return existing;
+
+    const connection = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      bundlePolicy: 'max-bundle',
+      iceCandidatePoolSize: 4,
+    });
+    const peerState: PeerConnectionState = {
+      connection,
+      remoteStream: null,
+      polite: currentUserId > peer.id,
+      makingOffer: false,
+      ignoreOffer: false,
+      pendingCandidates: [],
+      negotiationTimer: null,
+      restartTimer: null,
+      restartAttempts: 0,
+    };
+    peersRef.current.set(peer.id, peerState);
+
+    for (const track of localStreamRef.current?.getTracks() || []) {
+      const sender = connection.addTrack(track, localStreamRef.current!);
+      if (track.kind === 'video') tuneVideoSender(sender);
+    }
+
+    connection.onicecandidate = (event) => {
+      if (event.candidate && joinedRef.current) {
+        void postSignal(activeCall.id, peer.id, 'candidate', event.candidate.toJSON()).catch((signalError: unknown) => {
+          console.error('Failed to send call network candidate:', signalError);
+          setError(signalError instanceof Error ? signalError.message : 'Koneksi panggilan gagal.');
+        });
+      }
+    };
+
+    connection.ontrack = (event) => {
+      const stream = event.streams[0] || peerState.remoteStream || new MediaStream();
+      peerState.remoteStream = stream;
+      if (!stream.getTracks().some((track) => track.id === event.track.id)) {
+        stream.addTrack(event.track);
+      }
+      const remote = { userId: peer.id, username: peer.username, profilePhoto: peer.profile_photo, stream };
+      remoteStreamsRef.current.set(peer.id, remote);
+      setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
+    };
+
+    const negotiate = async () => {
+      peerState.negotiationTimer = null;
+      if (!joinedRef.current || connection.connectionState === 'closed') return;
+      if (!connection.remoteDescription && currentUserId > peer.id) return;
+      if (connection.signalingState !== 'stable' || peerState.makingOffer) {
+        peerState.negotiationTimer = window.setTimeout(() => void negotiate(), 300);
+        return;
+      }
+      try {
+        peerState.makingOffer = true;
+        await connection.setLocalDescription();
+        if (connection.localDescription) {
+          await postSignal(activeCall.id, peer.id, 'offer', connection.localDescription.toJSON());
+        }
+      } catch (negotiationError) {
+        console.error('Failed to negotiate group call:', negotiationError);
+        setError(`Tidak dapat menghubungkan audio dengan ${peer.username}. Mencoba kembali...`);
+        if (hasLocalOffer(connection)) {
+          await connection.setLocalDescription({ type: 'rollback' }).catch((rollbackError: unknown) => {
+            console.error('Failed to roll back the unsent group-call offer:', rollbackError);
+          });
+        }
+        peerState.negotiationTimer = window.setTimeout(() => void negotiate(), 1500);
+      } finally {
+        peerState.makingOffer = false;
+      }
+    };
+    connection.onnegotiationneeded = () => void negotiate();
+
+    const restartIce = async () => {
+      peerState.restartTimer = null;
+      if (!joinedRef.current || connection.connectionState === 'closed') return;
+      if (peerState.restartAttempts >= 3) {
+        setError(`Koneksi audio dengan ${peer.username} gagal. Coba keluar lalu bergabung kembali.`);
+        return;
+      }
+      if (connection.signalingState !== 'stable' || peerState.makingOffer) {
+        peerState.restartTimer = window.setTimeout(() => void restartIce(), 1000);
+        return;
+      }
+
+      peerState.restartAttempts += 1;
+      peerState.makingOffer = true;
+      try {
+        const offer = await connection.createOffer({ iceRestart: true });
+        await connection.setLocalDescription(offer);
+        if (connection.localDescription) {
+          await postSignal(activeCall.id, peer.id, 'offer', connection.localDescription.toJSON());
+        }
+      } catch (restartError) {
+        console.error(`Failed to restart group-call connection with ${peer.username}:`, restartError);
+        if (hasLocalOffer(connection)) {
+          await connection.setLocalDescription({ type: 'rollback' }).catch((rollbackError: unknown) => {
+            console.error('Failed to roll back the unsent ICE restart offer:', rollbackError);
+          });
+        }
+        peerState.restartTimer = window.setTimeout(() => void restartIce(), 1500 * peerState.restartAttempts);
+      } finally {
+        peerState.makingOffer = false;
+      }
+    };
+
+    connection.onconnectionstatechange = () => {
+      if (connection.connectionState === 'connected') {
+        peerState.restartAttempts = 0;
+        if (peerState.restartTimer !== null) {
+          window.clearTimeout(peerState.restartTimer);
+          peerState.restartTimer = null;
+        }
+      } else if (connection.connectionState === 'failed') {
+        if (peerState.restartTimer !== null) window.clearTimeout(peerState.restartTimer);
+        void restartIce();
+      } else if (connection.connectionState === 'disconnected') {
+        if (peerState.restartTimer !== null) window.clearTimeout(peerState.restartTimer);
+        peerState.restartTimer = window.setTimeout(() => {
+          peerState.restartTimer = null;
+          if (connection.connectionState === 'disconnected') void restartIce();
+        }, 3500);
+      } else if (connection.connectionState === 'closed') {
+        if (peerState.negotiationTimer !== null) window.clearTimeout(peerState.negotiationTimer);
+        if (peerState.restartTimer !== null) window.clearTimeout(peerState.restartTimer);
+        remoteStreamsRef.current.delete(peer.id);
+        setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
+      }
+    };
+    return peerState;
+  }, [currentUserId]);
+
+  const handleSignal = useCallback(async (signal: CallSignal, peer: CallParticipant, activeCall: CallSession) => {
+    const peerState = ensurePeerConnection(peer, activeCall);
+    const { connection } = peerState;
+
+    if (signal.type === 'candidate') {
+      const candidate = signal.payload as RTCIceCandidateInit;
+      if (connection.remoteDescription) await connection.addIceCandidate(candidate);
+      else peerState.pendingCandidates.push(candidate);
+      return;
+    }
+
+    const description = signal.payload as RTCSessionDescriptionInit;
+    const previousRemoteDescription = connection.remoteDescription;
+    if (
+      description.type === 'offer' &&
+      previousRemoteDescription &&
+      getMediaSectionCount(description.sdp) < getMediaSectionCount(previousRemoteDescription.sdp)
+    ) {
+      console.warn('Ignoring a stale group-call offer with fewer media sections.');
+      return;
+    }
+
+    const isRepeatedOffer = description.type === 'offer' &&
+      previousRemoteDescription?.type === 'offer' &&
+      previousRemoteDescription.sdp === description.sdp &&
+      connection.signalingState === 'have-remote-offer';
+    const collision = description.type === 'offer' && !isRepeatedOffer &&
+      (peerState.makingOffer || connection.signalingState === 'have-local-offer');
+    peerState.ignoreOffer = !peerState.polite && collision;
+    if (peerState.ignoreOffer) return;
+
+    if (description.type === 'answer' && connection.signalingState !== 'have-local-offer') return;
+    if (description.type === 'offer' && !isRepeatedOffer) {
+      if (collision && connection.signalingState === 'have-local-offer') {
+        await connection.setLocalDescription({ type: 'rollback' });
+      }
+      await connection.setRemoteDescription(description);
+    } else if (description.type === 'answer') {
+      if (connection.signalingState !== 'have-local-offer') return;
+      await connection.setRemoteDescription(description);
+    }
+
+    while (peerState.pendingCandidates.length) {
+      const candidate = peerState.pendingCandidates[0];
+      try {
+        await connection.addIceCandidate(candidate);
+      } catch (candidateError) {
+        console.warn('Discarding an invalid queued group-call candidate:', candidateError);
+      }
+      peerState.pendingCandidates.shift();
+    }
+
+    if (description.type === 'offer') {
+      await connection.setLocalDescription();
+      if (connection.localDescription) {
+        await postSignal(activeCall.id, peer.id, 'answer', connection.localDescription.toJSON());
+      }
+    }
+  }, [ensurePeerConnection]);
+
+  const pollCall = useCallback(async () => {
+    if (pollingRef.current) return;
+    pollingRef.current = true;
+    try {
+      const activeCall = callRef.current;
+      const params = new URLSearchParams();
+      if (activeCall) {
+        params.set('callId', activeCall.id);
+        params.set('after', String(lastSignalIdRef.current));
+      } else if (!hasCheckedCallStateRef.current) {
+        if (restoreState) params.set('restoreCallId', restoreState.callId);
+      }
+      const response = await fetch(`/api/chat/call?${params.toString()}`, { cache: 'no-store' });
+      const result = await response.json() as CallApiResponse;
+      if (!response.ok || !result.success) throw new Error(result.error || 'Gagal memeriksa panggilan.');
+
+      if (!activeCall) {
+        hasCheckedCallStateRef.current = true;
+        setHasCheckedCallState(true);
+        const discoveredCall = result.data?.call;
+        if (discoveredCall) {
+          setCall((current) => current?.id === discoveredCall.id ? current : discoveredCall);
+          setParticipants((current) => participantsAreEqual(current, discoveredCall.participants)
+            ? current
+            : discoveredCall.participants);
+        } else {
+          setCall((current) => current === null ? current : null);
+          setParticipants((current) => current.length === 0 ? current : []);
+        }
+        return;
+      }
+
+      if (result.data?.ended) {
+        await leaveCall(false);
+        return;
+      }
+
+      const nextParticipants = result.data?.participants || [];
+      setParticipants((current) => participantsAreEqual(current, nextParticipants) ? current : nextParticipants);
+      for (const participant of nextParticipants) {
+        if (participant.id !== currentUserId) ensurePeerConnection(participant, activeCall);
+      }
+
+      for (const signal of result.data?.signals || []) {
+        const peer = nextParticipants.find((participant) => participant.id === signal.sender_id);
+        if (!peer) {
+          lastSignalIdRef.current = Math.max(lastSignalIdRef.current, signal.id);
+          saveCallRestoreState(currentUserId, {
+            callId: activeCall.id,
+            video: callVideoRef.current,
+            signalCursor: lastSignalIdRef.current,
+          });
+          continue;
+        }
+        try {
+          await handleSignal(signal, peer, activeCall);
+          lastSignalIdRef.current = Math.max(lastSignalIdRef.current, signal.id);
+          saveCallRestoreState(currentUserId, {
+            callId: activeCall.id,
+            video: callVideoRef.current,
+            signalCursor: lastSignalIdRef.current,
+          });
+        } catch (signalError) {
+          if (signal.type === 'candidate') {
+            console.warn('Discarding an invalid group-call network candidate:', signalError);
+            lastSignalIdRef.current = Math.max(lastSignalIdRef.current, signal.id);
+            saveCallRestoreState(currentUserId, {
+              callId: activeCall.id,
+              video: callVideoRef.current,
+              signalCursor: lastSignalIdRef.current,
+            });
+          } else {
+            console.error('Failed to process group call signal; it will be retried:', signalError);
+            setError(`Menyambungkan audio dengan ${peer.username}...`);
+            break;
+          }
+        }
+      }
+    } catch (pollError) {
+      if (joinedRef.current) {
+        console.error('Failed to poll group call:', pollError);
+        setError(pollError instanceof Error ? pollError.message : 'Gagal menyinkronkan panggilan.');
+      }
+    } finally {
+      pollingRef.current = false;
+    }
+  }, [currentUserId, ensurePeerConnection, handleSignal, leaveCall, restoreState]);
+
+  useEffect(() => {
+    if (!hasLoadedRestoreState) return;
+    const timer = window.setTimeout(() => void pollCall(), 0);
+    const interval = window.setInterval(() => void pollCall(), 2000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+    };
+  }, [hasLoadedRestoreState, pollCall]);
+
+  useEffect(() => {
+    const peers = peersRef.current;
+    return () => {
+      joinedRef.current = false;
+      for (const peer of peers.values()) {
+        if (peer.negotiationTimer !== null) window.clearTimeout(peer.negotiationTimer);
+        if (peer.restartTimer !== null) window.clearTimeout(peer.restartTimer);
+        peer.connection.close();
+      }
+      peers.clear();
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
+  const joinCall = useCallback(async (callToJoin: CallSession, video: boolean) => {
+    if (isStarting) return;
+    setIsStarting(true);
+    setError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Browser ini tidak mendukung akses mikrofon dan kamera.');
+      }
+      let joinedWithVideo = video;
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: video ? {
+            width: { ideal: 640, max: 960 },
+            height: { ideal: 360, max: 540 },
+            frameRate: { ideal: 20, max: 24 },
+          } : false,
+        });
+      } catch (mediaError) {
+        if (!video) throw mediaError;
+        console.warn('Could not restore group-call camera; reconnecting with audio only:', mediaError);
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: false,
+        });
+        joinedWithVideo = false;
+        setError('Kamera tidak tersedia; Anda bergabung kembali dengan audio saja.');
+      }
+      const joining = await postCallAction({ action: 'join', callId: callToJoin.id });
+      if (!joining.success) throw new Error(joining.error || 'Tidak dapat bergabung ke panggilan.');
+      callVideoRef.current = joinedWithVideo;
+      saveCallRestoreState(currentUserId, {
+        callId: callToJoin.id,
+        video: joinedWithVideo,
+        signalCursor: restoreState?.callId === callToJoin.id ? restoreState.signalCursor : 0,
+      });
+      localStreamRef.current = stream;
+      callRef.current = callToJoin;
+      joinedRef.current = true;
+      lastSignalIdRef.current = restoreState?.callId === callToJoin.id ? restoreState.signalCursor : 0;
+      setLocalStream(stream);
+      setCall(callToJoin);
+      setIsCameraEnabled(joinedWithVideo);
+      setIsJoined(true);
+      onCallMinimizedChange(false);
+      await pollCall();
+    } catch (joinError) {
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+      setLocalStream(null);
+      setError(joinError instanceof Error ? joinError.message : 'Tidak dapat memulai panggilan.');
+    } finally {
+      setIsStarting(false);
+    }
+  }, [currentUserId, isStarting, onCallMinimizedChange, pollCall, restoreState]);
+
+  const startCall = useCallback(async (video: boolean) => {
+    if (isStarting) return;
+    setIsStarting(true);
+    setError(null);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Browser ini tidak mendukung akses mikrofon dan kamera.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: video ? {
+          width: { ideal: 640, max: 960 },
+          height: { ideal: 360, max: 540 },
+          frameRate: { ideal: 20, max: 24 },
+        } : false,
+      });
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+      const result = await postCallAction({ action: 'start' });
+      const startedCall = result.data?.call;
+      if (!startedCall) throw new Error(result.error || 'Server tidak mengembalikan sesi panggilan.');
+      callVideoRef.current = video;
+      saveCallRestoreState(currentUserId, { callId: startedCall.id, video, signalCursor: 0 });
+      callRef.current = startedCall;
+      joinedRef.current = true;
+      lastSignalIdRef.current = 0;
+      setCall(startedCall);
+      setIsCameraEnabled(video);
+      setIsJoined(true);
+      onCallMinimizedChange(false);
+      await pollCall();
+    } catch (startError) {
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+      setLocalStream(null);
+      setError(startError instanceof Error ? startError.message : 'Tidak dapat memulai panggilan.');
+    } finally {
+      setIsStarting(false);
+    }
+  }, [currentUserId, isStarting, onCallMinimizedChange, pollCall]);
+
+  useEffect(() => {
+    if (!hasCheckedCallState || !call || isJoined || !restoreState) return;
+    if (restoreState.callId !== call.id) return;
+    if (!participants.some((participant) => participant.id === currentUserId)) return;
+    if (restoreAttemptCallIdRef.current === call.id) return;
+
+    restoreAttemptCallIdRef.current = call.id;
+    setIsRestoringCall(true);
+    void joinCall(call, restoreState.video).finally(() => setIsRestoringCall(false));
+  }, [call, currentUserId, hasCheckedCallState, isJoined, joinCall, participants, restoreState]);
+
+  useEffect(() => {
+    if (hasCheckedCallState && !call && restoreState) {
+      clearCallRestoreState(currentUserId, restoreState.callId);
+    }
+  }, [call, currentUserId, hasCheckedCallState, restoreState]);
+
+  const toggleMute = () => {
+    const nextMuted = !isMuted;
+    localStreamRef.current?.getAudioTracks().forEach((track) => {
+      track.enabled = !nextMuted;
+    });
+    setIsMuted(nextMuted);
+  };
+
+  const toggleCamera = async () => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const videoTrack = stream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.enabled = !videoTrack.enabled;
+      setIsCameraEnabled(videoTrack.enabled);
+      return;
+    }
+
+    try {
+      const cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 640, max: 960 },
+          height: { ideal: 360, max: 540 },
+          frameRate: { ideal: 20, max: 24 },
+        },
+      });
+      const newTrack = cameraStream.getVideoTracks()[0];
+      if (!newTrack) throw new Error('Kamera tidak memberikan video.');
+      stream.addTrack(newTrack);
+      for (const peer of peersRef.current.values()) {
+        const sender = peer.connection.addTrack(newTrack, stream);
+        tuneVideoSender(sender);
+      }
+      setIsCameraEnabled(true);
+      setLocalStream(new MediaStream(stream.getTracks()));
+    } catch (cameraError) {
+      console.error('Failed to enable camera:', cameraError);
+      setError(cameraError instanceof Error ? cameraError.message : 'Tidak dapat mengaktifkan kamera.');
+    }
+  };
+
+  const callInProgress = Boolean(call);
+  const isCallParticipant = participants.some((participant) => participant.id === currentUserId);
+  const joinPrompt = callInProgress && !isJoined && !isCallParticipant;
+
+  return (
+    <>
+      {!isJoined && (
+        <div className="flex items-center gap-1">
+          {joinPrompt ? (
+            <button
+              type="button"
+              onClick={() => void joinCall(call!, false)}
+              disabled={isStarting || isRestoringCall || !hasCheckedCallState}
+              aria-label="Gabung panggilan grup"
+              title="Gabung panggilan grup"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-emerald-600 px-3 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {isStarting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Phone className="h-4 w-4" />}
+              Gabung · {participants.length}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => call ? void joinCall(call, false) : void startCall(false)}
+                disabled={isStarting || isRestoringCall || !hasCheckedCallState}
+                aria-label={call ? 'Gabung panggilan grup' : 'Mulai telepon grup'}
+                title={call ? 'Gabung panggilan grup' : 'Mulai telepon grup'}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-emerald-50 hover:text-emerald-700 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300"
+              >
+                {isStarting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Phone className="h-5 w-5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => call ? void joinCall(call, true) : void startCall(true)}
+                disabled={isStarting || isRestoringCall || !hasCheckedCallState}
+                aria-label={call ? 'Gabung panggilan video grup' : 'Mulai panggilan video grup'}
+                title={call ? 'Gabung panggilan video grup' : 'Mulai panggilan video grup'}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-blue-900/30 dark:hover:text-blue-300"
+              >
+                {isStarting ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Video className="h-5 w-5" />}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div className="fixed bottom-24 left-1/2 z-[220] w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-rose-200 bg-white p-3 text-sm text-rose-700 shadow-xl dark:border-rose-900 dark:bg-[#161b22] dark:text-rose-300">
+          <div className="flex items-start justify-between gap-3">
+            <span>{error}</span>
+            <button type="button" onClick={() => setError(null)} aria-label="Tutup pesan error" className="shrink-0">
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isJoined && call && !isCallMinimized && (
+        <div className="fixed inset-0 z-[200] flex flex-col bg-slate-950 text-white">
+          <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3 sm:px-6">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => onCallMinimizedChange(true)}
+                aria-label="Kembali ke chat tanpa menutup telepon"
+                title="Kembali ke chat tanpa menutup telepon"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-200 transition hover:bg-white/10"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div>
+                <h2 className="text-sm font-bold sm:text-base">Telepon grup</h2>
+                <p className="text-xs text-slate-400">{participants.length} anggota terhubung</p>
+              </div>
+            </div>
+            <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-300">
+              Panggilan aktif
+            </span>
+          </header>
+
+          <div className="grid min-h-0 flex-1 auto-rows-max grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] content-start gap-3 overflow-y-auto overscroll-contain p-3 sm:gap-4 sm:p-6">
+            <ParticipantTile
+              name="Anda"
+              profilePhoto={participants.find((participant) => participant.id === currentUserId)?.profile_photo ?? null}
+              stream={localStream}
+              cameraEnabled={isCameraEnabled}
+              isSpeaking={speakingUsers.includes(0)}
+              isLocal
+            />
+            {remoteStreams.map((remote) => (
+              <ParticipantTile
+                key={remote.userId}
+                name={remote.username}
+                profilePhoto={remote.profilePhoto}
+                stream={remote.stream}
+                cameraEnabled={remote.stream.getVideoTracks().length > 0}
+                isSpeaking={speakingUsers.includes(remote.userId)}
+              />
+            ))}
+            {participants.filter((participant) =>
+              participant.id !== currentUserId && !remoteStreams.some((remote) => remote.userId === participant.id)
+            ).map((participant) => (
+              <ParticipantTile
+                key={participant.id}
+                name={participant.username}
+                profilePhoto={participant.profile_photo}
+                stream={null}
+                cameraEnabled={false}
+                isSpeaking={speakingUsers.includes(participant.id)}
+              />
+            ))}
+          </div>
+
+          <footer className="flex shrink-0 items-center justify-center gap-3 border-t border-white/10 px-4 py-4">
+            <button
+              type="button"
+              onClick={toggleMute}
+              aria-label={isMuted ? 'Nyalakan mikrofon' : 'Matikan mikrofon'}
+              aria-pressed={isMuted}
+              className={`flex h-12 w-12 items-center justify-center rounded-full transition ${
+                isMuted ? 'bg-rose-600 text-white' : 'bg-slate-800 text-white hover:bg-slate-700'
+              }`}
+            >
+              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => void toggleCamera()}
+              aria-label={isCameraEnabled ? 'Matikan kamera' : 'Nyalakan kamera'}
+              aria-pressed={isCameraEnabled}
+              className={`flex h-12 w-12 items-center justify-center rounded-full transition ${
+                isCameraEnabled ? 'bg-blue-600 text-white' : 'bg-slate-800 text-white hover:bg-slate-700'
+              }`}
+            >
+              {isCameraEnabled ? <Camera className="h-5 w-5" /> : <CameraOff className="h-5 w-5" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => void leaveCall()}
+              aria-label="Tutup telepon"
+              title="Tutup telepon"
+              className="flex h-12 w-16 items-center justify-center rounded-full bg-rose-600 text-white transition hover:bg-rose-700"
+            >
+              <PhoneOff className="h-5 w-5" />
+            </button>
+          </footer>
+        </div>
+      )}
+    </>
+  );
+}

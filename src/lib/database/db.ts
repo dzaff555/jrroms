@@ -329,6 +329,44 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS chat_call_sessions (
+        id CHAR(36) PRIMARY KEY,
+        started_by INT NOT NULL,
+        started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        ended_at TIMESTAMP NULL DEFAULT NULL,
+        CONSTRAINT fk_chat_call_session_starter FOREIGN KEY (started_by) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_chat_call_sessions_active (ended_at, started_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS chat_call_participants (
+        session_id CHAR(36) NOT NULL,
+        user_id INT NOT NULL,
+        joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        left_at TIMESTAMP NULL DEFAULT NULL,
+        PRIMARY KEY (session_id, user_id),
+        CONSTRAINT fk_chat_call_participant_session FOREIGN KEY (session_id) REFERENCES chat_call_sessions(id) ON DELETE CASCADE,
+        CONSTRAINT fk_chat_call_participant_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_chat_call_participant_presence (session_id, left_at, last_seen_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS chat_call_signals (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        session_id CHAR(36) NOT NULL,
+        sender_id INT NOT NULL,
+        target_id INT NOT NULL,
+        signal_type ENUM('offer', 'answer', 'candidate') NOT NULL,
+        payload LONGTEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_chat_call_signal_session FOREIGN KEY (session_id) REFERENCES chat_call_sessions(id) ON DELETE CASCADE,
+        CONSTRAINT fk_chat_call_signal_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_chat_call_signal_target FOREIGN KEY (target_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_chat_call_signals_target (session_id, target_id, id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    await dbPool.query(`
       INSERT IGNORE INTO chat_user_chat_reads (user_id, last_read_message_id)
       SELECT id, COALESCE((SELECT MAX(id) FROM staff_admin_chat_messages), 0)
       FROM users

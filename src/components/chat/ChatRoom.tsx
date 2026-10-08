@@ -6,6 +6,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Bell, BellOff, Check, ChevronDown, ChevronUp, Copy, Crop, Download, Headphones, ImagePlus, ListChecks, Loader2, MessageCircle, Mic, MoreVertical, Music2, Paperclip, Pause, Pencil, Play, Reply, RotateCcw, Search, Send, ShieldCheck, Smile, Star, Sticker, Trash2, Upload, Users, Volume2, VolumeX, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
+import { GroupCallControls } from '@/components/chat/GroupCallControls';
 import { MAX_CHAT_AUDIO_SIZE, MAX_CHAT_PHOTO_SIZE, MAX_CHAT_VIDEO_SIZE } from '@/lib/chat/constants';
 import {
   CHAT_NOTIFICATION_PREFERENCE_EVENT,
@@ -606,6 +607,7 @@ function renderMessageWithLinks(message: string, ownMessage: boolean, composer =
 
 export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   const isDeveloper = currentUserRole === 'DEVELOPER';
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [searchResults, setSearchResults] = useState<ChatMessage[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -2197,9 +2199,20 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
           <h1 className="truncate text-base font-bold text-slate-900 dark:text-white">
             {isWallpaperSettingsOpen ? 'Pengaturan wallpaper' : 'Chat Staf & Admin'}
           </h1>
-          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-            {isWallpaperSettingsOpen ? 'Wallpaper ini hanya terlihat oleh akun Anda' : 'Grup bersama untuk staf dan administrator JRR'}
-          </p>
+          <div className="min-w-0">
+            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+              {isWallpaperSettingsOpen ? 'Wallpaper ini hanya terlihat oleh akun Anda' : 'Grup bersama untuk staf dan administrator JRR'}
+            </p>
+            {isCallMinimized && !isWallpaperSettingsOpen && (
+              <button
+                type="button"
+                onClick={() => setIsCallMinimized(false)}
+                className="mt-0.5 text-xs font-semibold text-emerald-700 hover:underline dark:text-emerald-300"
+              >
+                Anda dalam panggilan · Kembali
+              </button>
+            )}
+          </div>
         </div>
         {!isWallpaperSettingsOpen && (
           <>
@@ -2315,6 +2328,11 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
             >
               <ImagePlus className="h-5 w-5" />
             </button>
+            <GroupCallControls
+              currentUserId={currentUserId}
+              isCallMinimized={isCallMinimized}
+              onCallMinimizedChange={setIsCallMinimized}
+            />
             <div className="hidden items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:flex dark:bg-emerald-900/30 dark:text-emerald-300">
               <ShieldCheck className="h-3.5 w-3.5" />
               Grup internal
