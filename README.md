@@ -2,7 +2,7 @@
 
 ## Production deployment: Railway
 
-- **Railway** runs the Next.js app and MySQL database.
+- **Railway** runs the Next.js app; the MySQL database can be hosted by a separate provider.
 - The browser calls same-origin `/api/*` endpoints, so no separate API URL or CORS setup is needed.
 
 ### Railway setup
@@ -11,7 +11,8 @@ Configure the following variables in the Railway app service:
 
 | Variable | Value |
 | --- | --- |
-| `DATABASE_URL` | Railway MySQL connection URL; prefer Railway's private/internal connection when both services are in the same project |
+| `DATABASE_URL` | MySQL connection URL, including host, port, username, password, and database name |
+| `DB_SSL_CA` | The database provider's CA certificate in PEM format; keep it server-side |
 | `JWT_SECRET` | A long, random secret unique to this deployment |
 | `JWT_EXPIRES_IN` | `7d` |
 | `NEXT_PUBLIC_APP_NAME` | `Daily Attendance` |
@@ -26,11 +27,13 @@ Without it, uploaded files on the container filesystem may be lost. Keep
 `DATABASE_URL`, `JWT_SECRET`, and passwords server-side; never prefix them with
 `NEXT_PUBLIC_`.
 
-Set `DATABASE_URL` to the Railway MySQL service connection URL. Use Railway's
-private/internal host when the app and database are in the same project. Use a newly
-rotated password; never commit the URL to Git. The app uses the database name in the
-URL. On first initialization, it creates the database and tables if needed, so the
-MySQL account must have permission to create databases.
+Set `DATABASE_URL` to the database provider's connection URL and URL-encode any
+reserved characters in the username or password. For providers that require SSL,
+add `?ssl-mode=REQUIRED` to `DATABASE_URL` and provide the provider CA certificate
+as `DB_SSL_CA`. The app verifies the database certificate and uses the database
+name in the URL.
+On first initialization, it creates the tables if needed; it only attempts to create
+the database when the URL does not already select one.
 
 The **Lupa Password** form does not send email. It verifies the username and current
 password, then saves the new password after confirmation. `NEXT_PUBLIC_APP_URL` is
@@ -69,10 +72,12 @@ in attendance statistics or absence reports. They can see tasks published from
 
 ## Local development
 
-Make a local `.env` file with MySQL connection settings (`DATABASE_URL`, or
-`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME`), plus the JWT and
-admin settings above. For local Developer task uploads, set `UPLOAD_DIR` to a
-local directory. Do not commit `.env` or share its secrets.
+Make a local `.env` file with MySQL connection settings (`DATABASE_URL`, and
+`DB_SSL_CA` when the provider requires SSL), plus the JWT and admin settings
+above. For local Developer task uploads, set `UPLOAD_DIR` to a local directory.
+Do not commit `.env` or share its secrets. `npm run db:setup` imports the bundled
+SQL dump by dropping existing tables, so set `DB_ALLOW_RESET=true` only when you
+intentionally want to replace the selected database contents.
 
 Make sure MySQL is reachable, then run:
 

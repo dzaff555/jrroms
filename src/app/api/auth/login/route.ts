@@ -16,7 +16,9 @@ export async function POST(request: Request) {
         ? connCheck.error
         : connCheck.error?.startsWith('Production MySQL is configured to use localhost')
           ? connCheck.error
-          : 'Koneksi database MySQL gagal. Periksa DATABASE_URL dan pastikan memakai Railway public host dan port di environment Production Vercel.';
+          : connCheck.error?.startsWith('DB_SSL_MODE=required')
+            ? connCheck.error
+            : 'Koneksi database MySQL gagal. Periksa DATABASE_URL, sertifikat DB_SSL_CA, dan konfigurasi SSL pada environment server.';
 
       return NextResponse.json(
         {

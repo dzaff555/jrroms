@@ -4,39 +4,66 @@ const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 
 async function setup() {
-  const DB_HOST = process.env.DB_HOST || 'localhost';
-  const DB_PORT = parseInt(process.env.DB_PORT || '3306', 10);
-  const DB_USER = process.env.DB_USER || 'root';
-  const DB_PASSWORD = process.env.DB_PASSWORD || '';
-  const DB_NAME = process.env.DB_NAME || 'heidiq';
+  const databaseUrl = process.env.DATABASE_URL?.trim();
+  const parsedDatabaseUrl = databaseUrl ? new URL(databaseUrl) : null;
+  if (parsedDatabaseUrl && parsedDatabaseUrl.protocol !== 'mysql:') {
+    throw new Error('DATABASE_URL must use the mysql:// protocol.');
+  }
 
-  console.log('🔄 Connecting to MySQL at', `${DB_HOST}:${DB_PORT}...`);
+  const sslMode = (parsedDatabaseUrl?.searchParams.get('ssl-mode') || process.env.DB_SSL_MODE || '').trim().toLowerCase();
+  const sslCa = process.env.DB_SSL_CA?.replace(/\\n/g, '\n').trim();
+  if (sslMode === 'required' && !sslCa) {
+    throw new Error('DB_SSL_MODE=required needs DB_SSL_CA with the MySQL provider CA certificate.');
+  }
+
+  const DB_CONFIG = {
+    ...(parsedDatabaseUrl
+      ? {
+          host: parsedDatabaseUrl.hostname,
+          port: Number(parsedDatabaseUrl.port || 3306),
+          user: decodeURIComponent(parsedDatabaseUrl.username),
+          password: decodeURIComponent(parsedDatabaseUrl.password),
+          database: decodeURIComponent(parsedDatabaseUrl.pathname.replace(/^\/+/, '')),
+        }
+      : {
+          host: process.env.DB_HOST || 'localhost',
+          port: parseInt(process.env.DB_PORT || '3306', 10),
+          user: process.env.DB_USER || 'root',
+          password: process.env.DB_PASSWORD || '',
+        }),
+    ...(sslCa ? { ssl: { ca: sslCa, rejectUnauthorized: true } } : {}),
+  };
+  const DB_NAME = DB_CONFIG.database || process.env.DB_NAME || 'defaultdb';
+  const preferredSqlFiles = ['heidiq.sql', 'daily_attendance.sql'];
+  const sqlPath =
+    preferredSqlFiles.map((fileName) => path.join(__dirname, fileName)).find((candidate) => fs.existsSync(candidate)) ||
+    path.join(__dirname, 'heidiq.sql');
+
+  console.log('🔄 Connecting to MySQL at', `${DB_CONFIG.host}:${DB_CONFIG.port}...`);
 
   try {
-    const adminConn = await mysql.createConnection({
-      host: DB_HOST,
-      port: DB_PORT,
-      user: DB_USER,
-      password: DB_PASSWORD,
-    });
-
-    console.log('✅ Connected to MySQL server.');
-    console.log(`📦 Creating database ${DB_NAME} if not exists...`);
-    await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-    await adminConn.end();
+    if (!DB_CONFIG.database) {
+      const adminConn = await mysql.createConnection({ ...DB_CONFIG, database: undefined });
+      try {
+        console.log(`📦 Creating database ${DB_NAME} if not exists...`);
+        await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+      } finally {
+        await adminConn.end();
+      }
+    }
 
     const db = await mysql.createConnection({
-      host: DB_HOST,
-      port: DB_PORT,
-      user: DB_USER,
-      password: DB_PASSWORD,
+      ...DB_CONFIG,
       database: DB_NAME,
       multipleStatements: true,
     });
 
-    const preferredSqlFiles = ['heidiq.sql', 'daily_attendance.sql'];
-    const sqlPath = preferredSqlFiles.map((fileName) => path.join(__dirname, fileName)).find((candidate) => fs.existsSync(candidate)) || path.join(__dirname, 'heidiq.sql');
     if (fs.existsSync(sqlPath)) {
+      if (process.env.DB_ALLOW_RESET !== 'true') {
+        await db.end();
+        throw new Error('Importing the SQL dump drops existing tables. Set DB_ALLOW_RESET=true only if you intend to replace the database contents.');
+      }
+
       const sqlDump = fs.readFileSync(sqlPath, 'utf8');
       console.log(`📝 Importing SQL dump from ${path.relative(process.cwd(), sqlPath)}...`);
       const tablesToDrop = ['chat_messages', 'chat_group_members', 'chat_groups', 'staff_warnings', 'attendance', 'password_reset_tokens', 'users'];

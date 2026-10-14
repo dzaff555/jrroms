@@ -507,6 +507,19 @@ function getMediaSectionCount(sdp: string | undefined) {
   return sdp?.match(/^m=/gm)?.length ?? 0;
 }
 
+function supportsVoiceIsolation() {
+  return navigator.mediaDevices.getSupportedConstraints().noiseSuppression === true;
+}
+
+function getCallAudioConstraints(voiceIsolationEnabled = true): MediaTrackConstraints {
+  const supported = navigator.mediaDevices.getSupportedConstraints();
+  const constraints: MediaTrackConstraints = {};
+  if (supported.echoCancellation) constraints.echoCancellation = true;
+  if (supported.noiseSuppression) constraints.noiseSuppression = voiceIsolationEnabled;
+  if (supported.autoGainControl) constraints.autoGainControl = !voiceIsolationEnabled;
+  return constraints;
+}
+
 export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsProps) {
   const pathname = usePathname();
   const [isCallMinimized, setIsCallMinimized] = useState(false);
@@ -999,9 +1012,12 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
         throw new Error('Browser ini tidak mendukung akses mikrofon dan kamera.');
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: getCallAudioConstraints(),
         video: false,
       });
+      setIsVoiceIsolationEnabled(
+        Boolean(stream.getAudioTracks()[0]?.getSettings().noiseSuppression ?? supportsVoiceIsolation())
+      );
       stream.getAudioTracks().forEach((track) => {
         track.enabled = false;
       });
@@ -1040,9 +1056,12 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
         throw new Error('Browser ini tidak mendukung akses mikrofon dan kamera.');
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: getCallAudioConstraints(),
         video: false,
       });
+      setIsVoiceIsolationEnabled(
+        Boolean(stream.getAudioTracks()[0]?.getSettings().noiseSuppression ?? supportsVoiceIsolation())
+      );
       stream.getAudioTracks().forEach((track) => {
         track.enabled = false;
       });
@@ -1108,12 +1127,17 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       setError('Mikrofon tidak tersedia untuk mengubah Voice Isolation.');
       return;
     }
-    if (!audioTrack.getCapabilities().noiseSuppression) {
-      setError('Browser ini tidak mendukung Voice Isolation untuk mikrofon.');
+    if (!supportsVoiceIsolation()) {
+      setIsVoiceIsolationEnabled(false);
+      setError('Browser atau mikrofon ini tidak mendukung peredam kebisingan latar.');
       return;
     }
     try {
-      await audioTrack.applyConstraints({ noiseSuppression: enabled });
+      await audioTrack.applyConstraints(getCallAudioConstraints(enabled));
+      const appliedSetting = audioTrack.getSettings().noiseSuppression;
+      if (appliedSetting !== undefined && appliedSetting !== enabled) {
+        throw new Error('Browser atau mikrofon tidak dapat menerapkan pengaturan peredam kebisingan.');
+      }
       setIsVoiceIsolationEnabled(enabled);
     } catch (isolationError) {
       console.error('Failed to update group-call voice isolation:', isolationError);
@@ -1472,7 +1496,7 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
                 >
                   <p className="text-sm font-semibold">Voice Isolation</p>
                   <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    Mengurangi suara latar pada mikrofon Anda.
+                    On memakai peredam kebisingan bawaan browser dan mengurangi penguatan suara latar. Hasil bergantung pada browser dan mikrofon.
                   </p>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button

@@ -3,11 +3,11 @@
 -- MySQL 8.0+ / MariaDB
 -- ========================================================
 
-CREATE DATABASE IF NOT EXISTS daily_attendance 
+CREATE DATABASE IF NOT EXISTS defaultdb
 CHARACTER SET utf8mb4 
 COLLATE utf8mb4_unicode_ci;
 
-USE daily_attendance;
+USE defaultdb;
 
 -- Table: users
 CREATE TABLE IF NOT EXISTS users (

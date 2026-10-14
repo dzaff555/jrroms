@@ -3,27 +3,34 @@ import bcrypt from 'bcryptjs';
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 const parsedDatabaseUrl = DATABASE_URL ? new URL(DATABASE_URL) : null;
+const DB_SSL_MODE = (
+  parsedDatabaseUrl?.searchParams.get('ssl-mode') || process.env.DB_SSL_MODE || ''
+).trim().toLowerCase();
+const DB_SSL_CA = process.env.DB_SSL_CA?.replace(/\\n/g, '\n').trim();
 
 if (parsedDatabaseUrl && parsedDatabaseUrl.protocol !== 'mysql:') {
   throw new Error('DATABASE_URL must use the mysql:// protocol.');
 }
 
-const DB_CONFIG: mysql.ConnectionOptions = parsedDatabaseUrl
-  ? {
+const DB_CONFIG: mysql.ConnectionOptions = {
+  ...(parsedDatabaseUrl
+    ? {
       host: parsedDatabaseUrl.hostname,
       port: Number(parsedDatabaseUrl.port || 3306),
       user: decodeURIComponent(parsedDatabaseUrl.username),
       password: decodeURIComponent(parsedDatabaseUrl.password),
       database: decodeURIComponent(parsedDatabaseUrl.pathname.replace(/^\/+/, '')),
     }
-  : {
+    : {
       host: process.env.DB_HOST || (process.env.NODE_ENV === 'production' ? '' : 'localhost'),
       port: parseInt(process.env.DB_PORT || '3306', 10),
       user: process.env.DB_USER || (process.env.NODE_ENV === 'production' ? '' : 'root'),
       password: process.env.DB_PASSWORD || '',
-    };
+    }),
+  ...(DB_SSL_CA ? { ssl: { ca: DB_SSL_CA, rejectUnauthorized: true } } : {}),
+};
 
-const DB_NAME = DB_CONFIG.database || process.env.DB_NAME || 'daily_attendance';
+const DB_NAME = DB_CONFIG.database || process.env.DB_NAME || 'defaultdb';
 
 let pool: mysql.Pool | null = null;
 let isInitialized = false;
@@ -33,11 +40,19 @@ function getDatabaseConfigurationError(): string | null {
   const isLoopbackHost = ['localhost', '127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(host);
 
   if (process.env.NODE_ENV === 'production' && !parsedDatabaseUrl) {
-    return 'Production requires DATABASE_URL. Set the Railway MySQL public URL in Vercel Project Settings → Environment Variables, then redeploy.';
+    return 'Production requires DATABASE_URL. Set your remote MySQL connection URL in the hosting provider environment settings, then redeploy.';
   }
 
   if (process.env.NODE_ENV === 'production' && isLoopbackHost) {
-    return 'Production MySQL is configured to use localhost. Set DATABASE_URL to the Railway public MySQL connection URL in Vercel Project Settings → Environment Variables, then redeploy.';
+    return 'Production MySQL is configured to use localhost. Set DATABASE_URL to your remote MySQL connection URL in your hosting provider environment settings, then redeploy.';
+  }
+
+  if (DB_SSL_MODE === 'required' && !DB_SSL_CA) {
+    return 'DB_SSL_MODE=required needs DB_SSL_CA. Set the MySQL provider CA certificate in the server environment.';
+  }
+
+  if (DB_SSL_MODE === 'required' && !DB_CONFIG.ssl) {
+    return 'DB_SSL_MODE=required needs a valid DB_SSL_CA certificate.';
   }
 
   return null;
@@ -185,10 +200,14 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
       return { success: false, message: configurationError };
     }
 
-    const adminConn = await mysql.createConnection({ ...DB_CONFIG, database: undefined });
-
-    await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-    await adminConn.end();
+    if (!DB_CONFIG.database) {
+      const adminConn = await mysql.createConnection({ ...DB_CONFIG, database: undefined });
+      try {
+        await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+      } finally {
+        await adminConn.end();
+      }
+    }
 
     const dbPool = getDbPool();
 
@@ -546,7 +565,7 @@ export async function testConnection(): Promise<{ connected: boolean; error?: st
       return { connected: false, error: configurationError };
     }
 
-    connection = await mysql.createConnection({ ...DB_CONFIG, database: undefined });
+    connection = await mysql.createConnection({ ...DB_CONFIG, database: DB_NAME });
     await connection.ping();
     return { connected: true };
   } catch (err: unknown) {
