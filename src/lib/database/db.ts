@@ -179,6 +179,8 @@ export function getDbPool(): mysql.Pool {
       database: DB_NAME,
       waitForConnections: true,
       connectionLimit: process.env.VERCEL ? 1 : 2,
+      maxIdle: process.env.VERCEL ? 0 : 2,
+      idleTimeout: process.env.VERCEL ? 1000 : 60000,
       queueLimit: 0,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
