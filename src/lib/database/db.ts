@@ -1,12 +1,13 @@
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
+import aivenCa from './aiven-ca.json' with { type: 'json' };
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 const parsedDatabaseUrl = DATABASE_URL ? new URL(DATABASE_URL) : null;
 const DB_SSL_MODE = (
   parsedDatabaseUrl?.searchParams.get('ssl-mode') || process.env.DB_SSL_MODE || ''
 ).trim().toLowerCase();
-const DB_SSL_CA = process.env.DB_SSL_CA?.replace(/\\n/g, '\n').trim();
+const DB_SSL_CA = aivenCa.certificate;
 
 if (parsedDatabaseUrl && parsedDatabaseUrl.protocol !== 'mysql:') {
   throw new Error('DATABASE_URL must use the mysql:// protocol.');
@@ -27,7 +28,9 @@ const DB_CONFIG: mysql.ConnectionOptions = {
       user: process.env.DB_USER || (process.env.NODE_ENV === 'production' ? '' : 'root'),
       password: process.env.DB_PASSWORD || '',
     }),
-  ...(DB_SSL_CA ? { ssl: { ca: DB_SSL_CA, rejectUnauthorized: true } } : {}),
+  ...(DB_SSL_MODE === 'required'
+    ? { ssl: { ca: DB_SSL_CA, rejectUnauthorized: true } }
+    : {}),
 };
 
 const DB_NAME = DB_CONFIG.database || process.env.DB_NAME || 'defaultdb';
@@ -47,12 +50,8 @@ function getDatabaseConfigurationError(): string | null {
     return 'Production MySQL is configured to use localhost. Set DATABASE_URL to your remote MySQL connection URL in your hosting provider environment settings, then redeploy.';
   }
 
-  if (DB_SSL_MODE === 'required' && !DB_SSL_CA) {
-    return 'DB_SSL_MODE=required needs DB_SSL_CA. Set the MySQL provider CA certificate in the server environment.';
-  }
-
   if (DB_SSL_MODE === 'required' && !DB_CONFIG.ssl) {
-    return 'DB_SSL_MODE=required needs a valid DB_SSL_CA certificate.';
+    return 'DATABASE_URL requests required SSL, but the trusted database CA is unavailable.';
   }
 
   return null;

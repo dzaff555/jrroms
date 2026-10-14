@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
+const { certificate: aivenCa } = require('../src/lib/database/aiven-ca.json');
 
 async function setup() {
   const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -11,11 +12,6 @@ async function setup() {
   }
 
   const sslMode = (parsedDatabaseUrl?.searchParams.get('ssl-mode') || process.env.DB_SSL_MODE || '').trim().toLowerCase();
-  const sslCa = process.env.DB_SSL_CA?.replace(/\\n/g, '\n').trim();
-  if (sslMode === 'required' && !sslCa) {
-    throw new Error('DB_SSL_MODE=required needs DB_SSL_CA with the MySQL provider CA certificate.');
-  }
-
   const DB_CONFIG = {
     ...(parsedDatabaseUrl
       ? {
@@ -31,7 +27,7 @@ async function setup() {
           user: process.env.DB_USER || 'root',
           password: process.env.DB_PASSWORD || '',
         }),
-    ...(sslCa ? { ssl: { ca: sslCa, rejectUnauthorized: true } } : {}),
+    ...(sslMode === 'required' ? { ssl: { ca: aivenCa, rejectUnauthorized: true } } : {}),
   };
   const DB_NAME = DB_CONFIG.database || process.env.DB_NAME || 'defaultdb';
   const preferredSqlFiles = ['heidiq.sql', 'daily_attendance.sql'];

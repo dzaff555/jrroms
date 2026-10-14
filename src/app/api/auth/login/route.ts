@@ -18,7 +18,7 @@ export async function POST(request: Request) {
           ? connCheck.error
           : connCheck.error?.startsWith('DB_SSL_MODE=required')
             ? connCheck.error
-            : 'Koneksi database MySQL gagal. Periksa DATABASE_URL, sertifikat DB_SSL_CA, dan konfigurasi SSL pada environment server.';
+            : 'Koneksi database MySQL gagal. Periksa DATABASE_URL dan konfigurasi SSL database pada environment server.';
 
       return NextResponse.json(
         {

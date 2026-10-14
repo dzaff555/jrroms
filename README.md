@@ -12,7 +12,6 @@ Configure the following variables in the Railway app service:
 | Variable | Value |
 | --- | --- |
 | `DATABASE_URL` | MySQL connection URL, including host, port, username, password, and database name |
-| `DB_SSL_CA` | The database provider's CA certificate in PEM format; keep it server-side |
 | `JWT_SECRET` | A long, random secret unique to this deployment |
 | `JWT_EXPIRES_IN` | `7d` |
 | `NEXT_PUBLIC_APP_NAME` | `Daily Attendance` |
@@ -29,9 +28,10 @@ Without it, uploaded files on the container filesystem may be lost. Keep
 
 Set `DATABASE_URL` to the database provider's connection URL and URL-encode any
 reserved characters in the username or password. For providers that require SSL,
-add `?ssl-mode=REQUIRED` to `DATABASE_URL` and provide the provider CA certificate
-as `DB_SSL_CA`. The app verifies the database certificate and uses the database
-name in the URL.
+add `?ssl-mode=REQUIRED` to `DATABASE_URL`. The trusted provider CA certificate
+is bundled with the server-side app, so it does not need a separate environment
+variable. The app verifies the database certificate and uses the database name
+in the URL.
 On first initialization, it creates the tables if needed; it only attempts to create
 the database when the URL does not already select one.
 
@@ -72,9 +72,9 @@ in attendance statistics or absence reports. They can see tasks published from
 
 ## Local development
 
-Make a local `.env` file with MySQL connection settings (`DATABASE_URL`, and
-`DB_SSL_CA` when the provider requires SSL), plus the JWT and admin settings
-above. For local Developer task uploads, set `UPLOAD_DIR` to a local directory.
+Make a local `.env` file with MySQL connection settings in `DATABASE_URL`, plus
+the JWT and admin settings above. For local Developer task uploads, set
+`UPLOAD_DIR` to a local directory.
 Do not commit `.env` or share its secrets. `npm run db:setup` imports the bundled
 SQL dump by dropping existing tables, so set `DB_ALLOW_RESET=true` only when you
 intentionally want to replace the selected database contents.
