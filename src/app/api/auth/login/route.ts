@@ -18,7 +18,9 @@ export async function POST(request: Request) {
           ? connCheck.error
           : connCheck.error?.startsWith('DB_SSL_MODE=required')
             ? connCheck.error
-            : 'Koneksi database MySQL gagal. Periksa DATABASE_URL dan konfigurasi SSL database pada environment server.';
+            : connCheck.error?.toLowerCase().includes('too many connections')
+              ? 'Server database sedang mencapai batas koneksi. Coba lagi sebentar; jika masih gagal, restart deployment aplikasi.'
+              : 'Koneksi database MySQL gagal. Periksa DATABASE_URL dan konfigurasi SSL database pada environment server.';
 
       return NextResponse.json(
         {

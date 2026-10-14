@@ -178,7 +178,7 @@ export function getDbPool(): mysql.Pool {
       ...DB_CONFIG,
       database: DB_NAME,
       waitForConnections: true,
-      connectionLimit: 15,
+      connectionLimit: process.env.VERCEL ? 1 : 2,
       queueLimit: 0,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
@@ -555,8 +555,6 @@ export async function query<T = unknown>(sql: string, params: unknown[] = []): P
 }
 
 export async function testConnection(): Promise<{ connected: boolean; error?: string }> {
-  let connection: mysql.Connection | undefined;
-
   try {
     const configurationError = getDatabaseConfigurationError();
     if (configurationError) {
@@ -564,8 +562,7 @@ export async function testConnection(): Promise<{ connected: boolean; error?: st
       return { connected: false, error: configurationError };
     }
 
-    connection = await mysql.createConnection({ ...DB_CONFIG, database: DB_NAME });
-    await connection.ping();
+    await getDbPool().query('SELECT 1');
     return { connected: true };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'MySQL connection failed. Ensure MySQL service is started (e.g., via Laragon or XAMPP).';
@@ -575,7 +572,5 @@ export async function testConnection(): Promise<{ connected: boolean; error?: st
         : 'UNKNOWN';
     console.error(`[MySQL Connection Error] ${code}: ${message}`);
     return { connected: false, error: message };
-  } finally {
-    await connection?.end();
   }
 }
