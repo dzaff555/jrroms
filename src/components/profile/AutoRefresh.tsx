@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 
-const REFRESH_INTERVAL_MS = 1_000;
+const REFRESH_INTERVAL_MS = 30_000;
 export const AUTO_REFRESH_EVENT = 'app:auto-refresh';
 
 type UserRole = 'USER' | 'ADMIN' | 'DEVELOPER';

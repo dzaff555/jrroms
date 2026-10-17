@@ -362,21 +362,40 @@ function ChatAudioPlayer({
   ownMessage: boolean;
   knownDuration?: number;
 }) {
+  const playerContainerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasPlaybackError, setHasPlaybackError] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(knownDuration || 0);
   const [waveformHeights, setWaveformHeights] = useState<number[]>([]);
+  const [isNearViewport, setIsNearViewport] = useState(false);
   const progress = duration > 0 ? currentTime / duration : 0;
 
   useEffect(() => {
+    const container = playerContainerRef.current;
+    if (!container) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+      setIsNearViewport(true);
+      observer.disconnect();
+    }, { rootMargin: '200px' });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isNearViewport) return;
+
     let cancelled = false;
+    const controller = new AbortController();
     let audioContext: AudioContext | null = null;
 
     const loadWaveform = async () => {
       try {
-        const response = await fetch(src, { cache: 'no-store' });
+        const response = await fetch(src, { cache: 'no-store', signal: controller.signal });
         if (!response.ok) throw new Error(`Gagal memuat audio untuk waveform (${response.status}).`);
 
         const audioData = await response.arrayBuffer();
@@ -407,7 +426,10 @@ function ChatAudioPlayer({
         ));
         setDuration((currentDuration) => currentDuration || decodedAudio.duration);
       } catch (waveformError: unknown) {
-        if (!cancelled) {
+        if (
+          !cancelled &&
+          !(waveformError instanceof DOMException && waveformError.name === 'AbortError')
+        ) {
           console.error('[Chat audio waveform Error]:', waveformError);
         }
       } finally {
@@ -420,11 +442,12 @@ function ChatAudioPlayer({
     void loadWaveform();
     return () => {
       cancelled = true;
+      controller.abort();
       if (audioContext && audioContext.state !== 'closed') {
         void audioContext.close();
       }
     };
-  }, [src]);
+  }, [isNearViewport, src]);
 
   const togglePlayback = () => {
     const audio = audioRef.current;
@@ -441,7 +464,7 @@ function ChatAudioPlayer({
   };
 
   return (
-    <div className={`flex w-72 max-w-full items-center gap-2 rounded-2xl p-2 ${
+    <div ref={playerContainerRef} className={`flex w-72 max-w-full items-center gap-2 rounded-2xl p-2 ${
       ownMessage
         ? 'bg-white/10'
         : 'bg-slate-100 dark:bg-slate-800/80'
@@ -449,7 +472,7 @@ function ChatAudioPlayer({
       <audio
         ref={audioRef}
         src={src}
-        preload="metadata"
+        preload="none"
         controls={hasPlaybackError}
         className={hasPlaybackError ? 'mt-1 h-8 w-full' : 'hidden'}
         onError={() => setHasPlaybackError(true)}
@@ -1223,7 +1246,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     const initialLoad = window.setTimeout(() => {
       void loadMessages(controller.signal, true);
     }, 0);
-    const interval = window.setInterval(() => void loadMessages(controller.signal), 4000);
+    const interval = window.setInterval(() => void loadMessages(controller.signal), 6000);
 
     return () => {
       controller.abort();
@@ -2726,6 +2749,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
                         profilePhoto={message.profile_photo}
                         onDownload={() => void handleDownloadAudio(message)}
                         ownMessage={ownMessage}
+                        knownDuration={message.audio_duration_seconds}
                       />
                     )}
                     {message.media_url && message.media_type?.startsWith('video/') && (

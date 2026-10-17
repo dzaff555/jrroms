@@ -19,8 +19,12 @@ export async function GET(request: Request) {
     const role = searchParams.get('role')?.trim() || 'ALL';
     const attendanceRole = searchParams.get('attendanceRole')?.trim() || 'ALL';
     const status = searchParams.get('status')?.trim() || 'ALL';
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '10', 10);
+    const requestedPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const requestedLimit = Number.parseInt(searchParams.get('limit') || '10', 10);
+    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 50)
+      : 10;
     const offset = (page - 1) * limit;
 
     const whereConditions: string[] = ['1=1'];

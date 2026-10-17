@@ -86,6 +86,8 @@ type GroupCallAction = 'audio' | 'return' | 'toggle-feature';
 const GROUP_CALL_ACTION_EVENT = 'jrroms:group-call-action';
 const GROUP_CALL_STATUS_EVENT = 'jrroms:group-call-status';
 const GROUP_CALL_STATUS_REQUEST_EVENT = 'jrroms:group-call-status-request';
+const IDLE_CALL_POLL_INTERVAL_MS = 15_000;
+const ACTIVE_CALL_POLL_INTERVAL_MS = 2_000;
 
 export function GroupCallHeaderControls({ mode }: { mode: 'controls' | 'status' }) {
   const [isOpen, setOpen] = useState(false);
@@ -977,7 +979,10 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
   useEffect(() => {
     if (!hasLoadedRestoreState) return;
     const timer = window.setTimeout(() => void pollCall(), 0);
-    const interval = window.setInterval(() => void pollCall(), 2000);
+    const interval = window.setInterval(
+      () => void pollCall(),
+      isJoined ? ACTIVE_CALL_POLL_INTERVAL_MS : IDLE_CALL_POLL_INTERVAL_MS
+    );
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') void pollCall();
     };
@@ -987,7 +992,7 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [hasLoadedRestoreState, pollCall]);
+  }, [hasLoadedRestoreState, isJoined, pollCall]);
 
   useEffect(() => {
     const peers = peersRef.current;

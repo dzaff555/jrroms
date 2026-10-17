@@ -34,8 +34,8 @@ interface SidebarStaff {
   is_online: boolean | number;
 }
 
-const PRESENCE_HEARTBEAT_INTERVAL_MS = 10_000;
-const SIDEBAR_REFRESH_INTERVAL_MS = 5_000;
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 15_000;
+const SIDEBAR_REFRESH_INTERVAL_MS = 15_000;
 const ATTENDANCE_ROLE_ORDER = [
   'Pusat Kendali',
   'PPKA',
@@ -102,15 +102,26 @@ export function Sidebar({
     () => staffMembers.filter((staff) => staff.is_online === true || Number(staff.is_online) === 1).length,
     [staffMembers]
   );
-  const refreshStaff = React.useCallback(async () => {
+  const refreshStaff = React.useCallback(async (includePhotos = false) => {
     if (userId === undefined) return;
 
     try {
-      const response = await fetch('/api/staff?all=true', { cache: 'no-store' });
+      const response = await fetch(
+        `/api/staff?all=true&includePhotos=${includePhotos}`,
+        { cache: 'no-store' }
+      );
       const data = await response.json();
       if (data.success) {
         setStaffCount(data.data.totalStaff);
-        setStaffMembers(data.data.records);
+        setStaffMembers((current) => {
+          const currentPhotos = new Map(current.map((staff) => [staff.id, staff.profile_photo]));
+          return data.data.records.map((staff: SidebarStaff) => ({
+            ...staff,
+            profile_photo: includePhotos
+              ? staff.profile_photo
+              : currentPhotos.get(staff.id) ?? null,
+          }));
+        });
       }
     } catch {
       setStaffCount(null);
@@ -133,13 +144,13 @@ export function Sidebar({
   const isCurrentStaff = (staff: SidebarStaff) =>
     staff.id === user?.id || staff.username === user?.username;
 
-  useAutoRefresh(() => void refreshStaff());
+  useAutoRefresh(() => void refreshStaff(true));
   useAutoRefresh(() => void refreshChatUnread());
 
   React.useEffect(() => {
     if (userId === undefined) return;
 
-    const timer = window.setTimeout(() => void refreshStaff(), 0);
+    const timer = window.setTimeout(() => void refreshStaff(true), 0);
     return () => window.clearTimeout(timer);
   }, [refreshStaff, userId]);
 

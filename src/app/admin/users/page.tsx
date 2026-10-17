@@ -131,9 +131,9 @@ export default function AdminUsersPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void fetchUsers();
-    }, 0);
+    }, search ? 300 : 0);
     return () => window.clearTimeout(timer);
-  }, [fetchUsers]);
+  }, [fetchUsers, search]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();

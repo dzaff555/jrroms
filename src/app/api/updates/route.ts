@@ -11,18 +11,18 @@ interface ChangeFingerprint {
   taskData: string;
 }
 
-export async function GET() {
-  try {
-    const session = await getSessionUser();
-    if (!session) {
-      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
-    }
+const CHANGE_FINGERPRINT_CACHE_TTL_MS = 15_000;
+let cachedChangeFingerprint: { version: string; expiresAt: number } | null = null;
+let changeFingerprintPromise: Promise<string> | null = null;
 
-    const [currentUsers, users, attendance, warnings, adminInbox, taskData] = await Promise.all([
-      query<{ role: 'USER' | 'ADMIN' | 'DEVELOPER'; status: 'ACTIVE' | 'DISABLED' }[]>(
-        'SELECT role, status FROM users WHERE id = ? LIMIT 1',
-        [session.id]
-      ),
+async function getChangeFingerprint() {
+  if (cachedChangeFingerprint && cachedChangeFingerprint.expiresAt > Date.now()) {
+    return cachedChangeFingerprint.version;
+  }
+  if (changeFingerprintPromise) return changeFingerprintPromise;
+
+  const fingerprintPromise = (async () => {
+    const [users, attendance, warnings, adminInbox, taskData] = await Promise.all([
       query<ChangeFingerprint[]>(
         `SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
            COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, username, COALESCE(real_name, ''),
@@ -80,14 +80,6 @@ export async function GET() {
          ) AS taskData`
       ),
     ]);
-    const currentUser = currentUsers[0];
-
-    if (!currentUser || currentUser.status !== 'ACTIVE') {
-      return NextResponse.json(
-        { success: false, error: 'Akun tidak ditemukan atau sudah dinonaktifkan.' },
-        { status: 401, headers: { 'Cache-Control': 'no-store, max-age=0' } }
-      );
-    }
 
     const fingerprint = [
       users[0]?.users || '',
@@ -97,6 +89,42 @@ export async function GET() {
       taskData[0]?.taskData || '',
     ].join(':');
     const version = createHash('sha256').update(fingerprint).digest('hex');
+    cachedChangeFingerprint = {
+      version,
+      expiresAt: Date.now() + CHANGE_FINGERPRINT_CACHE_TTL_MS,
+    };
+    return version;
+  })();
+  changeFingerprintPromise = fingerprintPromise;
+
+  try {
+    return await fingerprintPromise;
+  } finally {
+    if (changeFingerprintPromise === fingerprintPromise) changeFingerprintPromise = null;
+  }
+}
+
+export async function GET() {
+  try {
+    const session = await getSessionUser();
+    if (!session) {
+      return NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 });
+    }
+
+    const currentUsers = await query<{ role: 'USER' | 'ADMIN' | 'DEVELOPER'; status: 'ACTIVE' | 'DISABLED' }[]>(
+      'SELECT role, status FROM users WHERE id = ? LIMIT 1',
+      [session.id]
+    );
+    const currentUser = currentUsers[0];
+
+    if (!currentUser || currentUser.status !== 'ACTIVE') {
+      return NextResponse.json(
+        { success: false, error: 'Akun tidak ditemukan atau sudah dinonaktifkan.' },
+        { status: 401, headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+    }
+
+    const version = await getChangeFingerprint();
 
     return NextResponse.json(
       { success: true, version, role: currentUser.role },

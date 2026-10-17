@@ -145,7 +145,7 @@ export function ChatNotificationWatcher({ user }: { user: AuthSession | null }) 
     };
 
     void loadMessages();
-    const intervalId = window.setInterval(() => void loadMessages(), 4000);
+    const intervalId = window.setInterval(() => void loadMessages(), 15_000);
     return () => {
       controller.abort();
       window.clearInterval(intervalId);

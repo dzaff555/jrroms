@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, Number.parseInt(searchParams.get('page') || '1', 10));
     const includeAll = searchParams.get('all') === 'true';
+    const includePhotos = searchParams.get('includePhotos') !== 'false';
     const requestedLimit = Number.parseInt(searchParams.get('limit') || '20', 10);
     const limit = Math.min(Math.max(requestedLimit, 1), 50);
     const offset = (page - 1) * limit;
@@ -28,7 +29,8 @@ export async function GET(request: Request) {
       profile_photo: string | null;
       is_online: number | boolean;
     }[]>(
-      `SELECT users.id, users.username, users.role, users.attendance_role, users.profile_photo,
+      `SELECT users.id, users.username, users.role, users.attendance_role,
+         ${includePhotos ? 'users.profile_photo' : 'NULL AS profile_photo'},
          CASE WHEN presence.last_seen_at >= CURRENT_TIMESTAMP - INTERVAL 30 SECOND THEN TRUE ELSE FALSE END AS is_online
        FROM users
        LEFT JOIN user_presence AS presence ON presence.user_id = users.id

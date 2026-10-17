@@ -16,23 +16,30 @@ export async function GET() {
 
     const todayDate = getJakartaDateString();
 
-    // 1. Total Active Users
-    const totalUsersResult = await query<{ count: number }[]>(
-      "SELECT COUNT(*) as count FROM users WHERE role = 'USER' AND status = 'ACTIVE'"
-    );
-    const totalUsers = totalUsersResult[0]?.count || 0;
-
-    // 2. Total Attended Today
-    const attendanceResult = await query<{ attended: number; permission: number }[]>(
-      `SELECT
-        COUNT(DISTINCT CASE WHEN status = 'Hadir' THEN user_id END) AS attended,
-        COUNT(DISTINCT CASE WHEN status = 'Izin' THEN user_id END) AS permission
-       FROM attendance
-       WHERE attendance_date = ?`,
-      [todayDate]
-    );
-    const attendedToday = Number(attendanceResult[0]?.attended || 0);
-    const permissionToday = Number(attendanceResult[0]?.permission || 0);
+    const attendanceDays = getLatestAttendanceDays();
+    const trendDates = attendanceDays.map(({ date }) => date);
+    const [summaryResult, trendResult] = await Promise.all([
+      query<{ total_users: number; attended: number; permission: number }[]>(
+        `SELECT
+          (SELECT COUNT(*) FROM users WHERE role = 'USER' AND status = 'ACTIVE') AS total_users,
+          COUNT(DISTINCT CASE WHEN status = 'Hadir' THEN user_id END) AS attended,
+          COUNT(DISTINCT CASE WHEN status = 'Izin' THEN user_id END) AS permission
+         FROM attendance
+         WHERE attendance_date = ?`,
+        [todayDate]
+      ),
+      query<{ attendance_date: string; count: number }[]>(
+        `SELECT DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
+           COUNT(DISTINCT user_id) AS count
+         FROM attendance
+         WHERE status = 'Hadir' AND attendance_date IN (${trendDates.map(() => '?').join(', ')})
+         GROUP BY attendance_date`,
+        trendDates
+      ),
+    ]);
+    const totalUsers = Number(summaryResult[0]?.total_users || 0);
+    const attendedToday = Number(summaryResult[0]?.attended || 0);
+    const permissionToday = Number(summaryResult[0]?.permission || 0);
 
     // 3. Users with no attendance record today
     const notAttendedToday = Math.max(0, totalUsers - attendedToday - permissionToday);
@@ -41,20 +48,14 @@ export async function GET() {
     const attendanceRate = totalUsers > 0 ? parseFloat(((attendedToday / totalUsers) * 100).toFixed(1)) : 0;
 
     // 5. Friday through Sunday attendance window for the current week
-    const attendanceDays = getLatestAttendanceDays();
-    const recentDaysTrend = await Promise.all(
-      attendanceDays.map(async (d) => {
-        const countRes = await query<{ count: number }[]>(
-          "SELECT COUNT(DISTINCT user_id) as count FROM attendance WHERE attendance_date = ? AND status = 'Hadir'",
-          [d.date]
-        );
-        return {
-          day: d.day,
-          date: d.date,
-          count: countRes[0]?.count || 0,
-        };
-      })
+    const attendanceCounts = new Map(
+      trendResult.map(({ attendance_date, count }) => [String(attendance_date).slice(0, 10), Number(count)])
     );
+    const recentDaysTrend = attendanceDays.map(({ day, date }) => ({
+      day,
+      date,
+      count: attendanceCounts.get(date) || 0,
+    }));
 
     const statsData: DashboardStats = {
       totalUsers,
@@ -74,10 +75,11 @@ export async function GET() {
       success: true,
       data: statsData,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Admin Stats Error]:', error);
+    const message = error instanceof Error ? error.message : 'Gagal memuat statistik absensi.';
     return NextResponse.json(
-      { success: false, error: error.message || 'Gagal memuat statistik absensi.' },
+      { success: false, error: message },
       { status: 500 }
     );
   }

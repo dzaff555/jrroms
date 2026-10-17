@@ -37,6 +37,7 @@ const DB_NAME = DB_CONFIG.database || process.env.DB_NAME || 'defaultdb';
 
 let pool: mysql.Pool | null = null;
 let isInitialized = false;
+let initializationPromise: Promise<{ success: boolean; message: string }> | null = null;
 
 function getDatabaseConfigurationError(): string | null {
   const host = String(DB_CONFIG.host || '').toLowerCase();
@@ -189,11 +190,7 @@ export function getDbPool(): mysql.Pool {
   return pool;
 }
 
-export async function initDatabase(): Promise<{ success: boolean; message: string }> {
-  if (isInitialized) {
-    return { success: true, message: 'Database already initialized' };
-  }
-
+async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
   try {
     const configurationError = getDatabaseConfigurationError();
     if (configurationError) {
@@ -541,6 +538,20 @@ export async function initDatabase(): Promise<{ success: boolean; message: strin
     console.error('[DB Initialization Error]:', error);
     return { success: false, message };
   }
+}
+
+export function initDatabase(): Promise<{ success: boolean; message: string }> {
+  if (isInitialized) {
+    return Promise.resolve({ success: true, message: 'Database already initialized' });
+  }
+
+  if (!initializationPromise) {
+    initializationPromise = initializeDatabase().finally(() => {
+      initializationPromise = null;
+    });
+  }
+
+  return initializationPromise;
 }
 
 export async function query<T = unknown>(sql: string, params: unknown[] = []): Promise<T> {
