@@ -3,7 +3,7 @@ import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 import { resolveAttendanceDateRange } from '@/lib/admin/attendance-report';
 import { getJakartaDateString } from '@/lib/utils/date';
-import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
+import { countWeekendDaysSince, getDateAfter, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 import { isAttendanceRole } from '@/types';
 
 interface AttendanceStatisticsRecord {
@@ -11,16 +11,21 @@ interface AttendanceStatisticsRecord {
   username: string;
   attendance_role: string;
   profile_photo: string | null;
+  absence_reset_date: string | null;
   created_at: string;
   attended_days: number;
   permission_days: number;
   completed_attended_days: number;
 }
 
+async function requireAdmin() {
+  const session = await getSessionUser();
+  return session?.role === 'ADMIN';
+}
+
 export async function GET(request: Request) {
   try {
-    const session = await getSessionUser();
-    if (!session || session.role !== 'ADMIN') {
+    if (!await requireAdmin()) {
       return NextResponse.json(
         { success: false, error: 'Akses ditolak. Izin Administrator diperlukan.' },
         { status: 403 }
@@ -78,6 +83,7 @@ export async function GET(request: Request) {
         u.username,
         u.attendance_role,
         u.profile_photo,
+        DATE_FORMAT(u.absence_reset_date, '%Y-%m-%d') AS absence_reset_date,
         DATE_FORMAT(
           CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
           '%Y-%m-%d %H:%i:%s'
@@ -87,6 +93,7 @@ export async function GET(request: Request) {
         COUNT(DISTINCT CASE
           WHEN a.attendance_date <= ?
             AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)
+            AND (u.absence_reset_date IS NULL OR a.attendance_date > u.absence_reset_date)
           THEN a.attendance_date
         END) AS completed_attended_days
       FROM users u
@@ -98,16 +105,19 @@ export async function GET(request: Request) {
         )
         AND a.attendance_date <= ?
       WHERE ${whereSql}
-      GROUP BY u.id, u.username, u.attendance_role, u.profile_photo, u.created_at
+      GROUP BY u.id, u.username, u.attendance_role, u.profile_photo, u.absence_reset_date, u.created_at
       ORDER BY u.username ASC
       LIMIT ? OFFSET ?`,
       [effectiveEndDate, startDate, attendanceEndDate, ...userParams, limit, offset]
     );
 
     const effectiveDays = records.map((record) => {
+      const resetDate = record.absence_reset_date || '';
+      const resetStartDate = resetDate ? getDateAfter(resetDate) : startDate;
+      const effectiveStartDate = resetStartDate > startDate ? resetStartDate : startDate;
       const expectedDays =
-        startDate <= effectiveEndDate
-          ? countWeekendDaysSince(record.created_at, effectiveEndDate, startDate)
+        effectiveStartDate <= effectiveEndDate
+          ? countWeekendDaysSince(record.created_at, effectiveEndDate, effectiveStartDate)
           : 0;
       const completedAttendedDays = Math.min(
         Number(record.completed_attended_days || 0),
@@ -145,6 +155,94 @@ export async function GET(request: Request) {
     console.error('[Admin Attendance Statistics Error]:', error);
     return NextResponse.json(
       { success: false, error: 'Gagal memuat statistik absensi.' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    if (!await requireAdmin()) {
+      return NextResponse.json(
+        { success: false, error: 'Akses ditolak. Izin Administrator diperlukan.' },
+        { status: 403 }
+      );
+    }
+
+    const body: unknown = await request.json();
+    if (
+      typeof body !== 'object' ||
+      body === null
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Permintaan reset tidak valid.' },
+        { status: 400 }
+      );
+    }
+
+    if ('resetAll' in body && body.resetAll === true) {
+      await query(
+        "UPDATE users SET absence_reset_date = ? WHERE role = 'USER'",
+        [getJakartaDateString()]
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: 'Jumlah tidak hadir direset untuk seluruh akun pengguna.',
+      });
+    }
+
+    if (!('userIds' in body) || !Array.isArray(body.userIds)) {
+      return NextResponse.json(
+        { success: false, error: 'Daftar akun untuk reset tidak valid.' },
+        { status: 400 }
+      );
+    }
+
+    const userIds: unknown[] = body.userIds;
+    if (
+      userIds.length === 0 ||
+      userIds.length > 100 ||
+      userIds.some((userId) => !Number.isSafeInteger(userId) || Number(userId) <= 0)
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Pilih antara 1 sampai 100 akun yang valid.' },
+        { status: 400 }
+      );
+    }
+    const uniqueUserIds = [...new Set(userIds.map((userId) => Number(userId)))];
+    if (uniqueUserIds.length !== userIds.length) {
+      return NextResponse.json(
+        { success: false, error: 'Daftar akun berisi pilihan ganda.' },
+        { status: 400 }
+      );
+    }
+
+    const placeholders = uniqueUserIds.map(() => '?').join(', ');
+    const users = await query<{ id: number }[]>(
+      `SELECT id FROM users WHERE role = 'USER' AND status = 'ACTIVE' AND id IN (${placeholders})`,
+      uniqueUserIds
+    );
+    if (users.length !== uniqueUserIds.length) {
+      return NextResponse.json(
+        { success: false, error: 'Sebagian akun tidak ditemukan atau tidak aktif. Muat ulang daftar akun lalu coba lagi.' },
+        { status: 404 }
+      );
+    }
+
+    await query(
+      `UPDATE users SET absence_reset_date = ? WHERE role = 'USER' AND id IN (${placeholders})`,
+      [getJakartaDateString(), ...uniqueUserIds]
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: `Jumlah tidak hadir direset untuk ${uniqueUserIds.length} akun.`,
+    });
+  } catch (error: unknown) {
+    console.error('[Admin Attendance Reset Error]:', error);
+    return NextResponse.json(
+      { success: false, error: 'Gagal mereset jumlah tidak hadir.' },
       { status: 500 }
     );
   }

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AlertTriangle, ArrowLeft, CalendarDays, CheckCircle2, ShieldCheck, UserRound, XCircle } from 'lucide-react';
 import { query } from '@/lib/database/db';
-import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
+import { countWeekendDaysSince, getDateAfter, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 import { formatIndonesianDate } from '@/lib/utils/date';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
 
@@ -16,6 +16,7 @@ interface StaffProfile {
   roblox_username: string | null;
   discord_username: string | null;
   joined_at: string;
+  absence_reset_date: string | null;
   attendance_count: number;
   permission_count: number;
   weekend_attendance_count: number;
@@ -37,6 +38,7 @@ export default async function StaffProfilePage({
   const staffRows = await query<StaffProfile[]>(
     `SELECT u.id, u.username, u.role, u.attendance_role, u.nip, u.profile_photo,
       u.roblox_username, u.discord_username,
+      DATE_FORMAT(u.absence_reset_date, '%Y-%m-%d') AS absence_reset_date,
       DATE_FORMAT(
         CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
         '%Y-%m-%d %H:%i:%s'
@@ -50,6 +52,7 @@ export default async function StaffProfilePage({
          AND a.attendance_date BETWEEN DATE(
            CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00')
          ) AND ?
+         AND (u.absence_reset_date IS NULL OR a.attendance_date > u.absence_reset_date)
          AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)) AS weekend_attendance_count,
       (SELECT COUNT(*) FROM staff_warnings w WHERE w.user_id = u.id) AS warning_count,
       (SELECT DATE_FORMAT(a.attendance_date, '%Y-%m-%d') FROM attendance a
@@ -61,9 +64,13 @@ export default async function StaffProfilePage({
   );
   const staff = staffRows[0];
   if (!staff) notFound();
+  const absenceCountStartDate = staff.absence_reset_date
+    ? getDateAfter(staff.absence_reset_date)
+    : staff.joined_at.slice(0, 10);
   const missedAttendanceCount = Math.max(
     0,
-    countWeekendDaysSince(staff.joined_at, attendanceThroughDate) - Number(staff.weekend_attendance_count)
+    countWeekendDaysSince(staff.joined_at, attendanceThroughDate, absenceCountStartDate) -
+      Number(staff.weekend_attendance_count)
   );
 
   return (

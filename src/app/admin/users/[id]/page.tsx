@@ -14,7 +14,7 @@ import { query } from '@/lib/database/db';
 import { IssueWarningForm } from '@/components/profile/IssueWarningForm';
 import { ProfileContentProtection } from '@/components/profile/ProfileContentProtection';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
-import { countWeekendDaysSince, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
+import { countWeekendDaysSince, getDateAfter, getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 import { formatIndonesianDate, formatIndonesianDateTime } from '@/lib/utils/date';
 
 interface StaffProfile {
@@ -31,6 +31,7 @@ interface StaffProfile {
   profile_completed: number | boolean;
   created_at: string;
   joined_at: string;
+  absence_reset_date: string | null;
   attendance_count: number;
   permission_count: number;
   weekend_attendance_count: number;
@@ -68,6 +69,7 @@ export default async function AdminStaffProfilePage({
   const users = await query<StaffProfile[]>(
     `SELECT u.id, u.username, u.real_name, u.nip, u.role, u.status, u.attendance_role, u.profile_photo,
       u.roblox_username, u.discord_username, u.profile_completed,
+      DATE_FORMAT(u.absence_reset_date, '%Y-%m-%d') AS absence_reset_date,
       DATE_FORMAT(u.created_at, '%Y-%m-%d %H:%i') AS created_at,
       DATE_FORMAT(
         CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
@@ -82,6 +84,7 @@ export default async function AdminStaffProfilePage({
          AND a.attendance_date BETWEEN DATE(
            CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00')
          ) AND ?
+         AND (u.absence_reset_date IS NULL OR a.attendance_date > u.absence_reset_date)
          AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)) AS weekend_attendance_count,
       (SELECT COUNT(*) FROM staff_warnings w WHERE w.user_id = u.id) AS warning_count,
       (SELECT DATE_FORMAT(a.attendance_date, '%Y-%m-%d') FROM attendance a
@@ -93,9 +96,13 @@ export default async function AdminStaffProfilePage({
   );
   const staff = users[0];
   if (!staff) notFound();
+  const absenceCountStartDate = staff.absence_reset_date
+    ? getDateAfter(staff.absence_reset_date)
+    : staff.joined_at.slice(0, 10);
   const missedAttendanceCount = Math.max(
     0,
-    countWeekendDaysSince(staff.joined_at, attendanceThroughDate) - Number(staff.weekend_attendance_count)
+    countWeekendDaysSince(staff.joined_at, attendanceThroughDate, absenceCountStartDate) -
+      Number(staff.weekend_attendance_count)
   );
   const warnings = await query<StaffWarning[]>(
     `SELECT

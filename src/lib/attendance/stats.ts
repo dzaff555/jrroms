@@ -41,3 +41,9 @@ export function countWeekendDaysSince(
 
   return count;
 }
+
+export function getDateAfter(date: string): string {
+  const nextDate = new Date(`${date}T00:00:00.000Z`);
+  nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+  return nextDate.toISOString().slice(0, 10);
+}

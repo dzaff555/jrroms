@@ -34,6 +34,8 @@ const DB_CONFIG: mysql.ConnectionOptions = {
 };
 
 const DB_NAME = DB_CONFIG.database || process.env.DB_NAME || 'defaultdb';
+// Increment when changing the schema so existing deployments run new migrations.
+const DATABASE_SCHEMA_VERSION = 1;
 
 let pool: mysql.Pool | null = null;
 let isInitialized = false;
@@ -66,13 +68,22 @@ async function ensureColumns(
     definition: string;
   }[]
 ) {
-  for (const migration of migrations) {
-    const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
-      'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-      [migration.table, migration.column]
-    );
+  const columnConditions = migrations
+    .map(() => '(TABLE_NAME = ? AND COLUMN_NAME = ?)')
+    .join(' OR ');
+  const columnParams = migrations.flatMap(({ table, column }) => [table, column]);
+  const [existingColumns] = await dbPool.query<mysql.RowDataPacket[]>(
+    `SELECT TABLE_NAME, COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND (${columnConditions})`,
+    columnParams
+  );
+  const existingColumnKeys = new Set(
+    existingColumns.map((column) => `${column.TABLE_NAME}.${column.COLUMN_NAME}`)
+  );
 
-    if (columns.length > 0) continue;
+  for (const migration of migrations) {
+    if (existingColumnKeys.has(`${migration.table}.${migration.column}`)) continue;
 
     try {
       await dbPool.query(
@@ -208,6 +219,21 @@ async function initializeDatabase(): Promise<{ success: boolean; message: string
     }
 
     const dbPool = getDbPool();
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS app_schema_meta (
+        id TINYINT UNSIGNED PRIMARY KEY,
+        schema_version SMALLINT UNSIGNED NOT NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT chk_app_schema_meta_singleton CHECK (id = 1)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    const [schemaRows] = await dbPool.query<mysql.RowDataPacket[]>(
+      'SELECT schema_version FROM app_schema_meta WHERE id = 1 LIMIT 1'
+    );
+    if (Number(schemaRows[0]?.schema_version) === DATABASE_SCHEMA_VERSION) {
+      isInitialized = true;
+      return { success: true, message: 'Database schema is up to date' };
+    }
 
     await dbPool.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -220,6 +246,7 @@ async function initializeDatabase(): Promise<{ success: boolean; message: string
         role ENUM('USER', 'ADMIN', 'DEVELOPER') NOT NULL DEFAULT 'USER',
         status ENUM('ACTIVE', 'DISABLED') NOT NULL DEFAULT 'ACTIVE',
         attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT',
+        absence_reset_date DATE NULL DEFAULT NULL,
         profile_photo LONGTEXT NULL,
         roblox_username VARCHAR(100) NULL,
         discord_username VARCHAR(100) NULL,
@@ -470,6 +497,7 @@ async function initializeDatabase(): Promise<{ success: boolean; message: string
       { table: 'chat_call_participants', column: 'is_muted', definition: 'BOOLEAN NOT NULL DEFAULT TRUE AFTER connection_version' },
       { table: 'chat_call_participants', column: 'kicked_at', definition: 'TIMESTAMP NULL DEFAULT NULL AFTER left_at' },
       { table: 'users', column: 'attendance_role', definition: "ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'" },
+      { table: 'users', column: 'absence_reset_date', definition: 'DATE NULL DEFAULT NULL AFTER attendance_role' },
       { table: 'users', column: 'real_name', definition: 'VARCHAR(100) NULL AFTER username' },
       { table: 'users', column: 'nip', definition: 'VARCHAR(50) NULL AFTER real_name' },
       { table: 'users', column: 'profile_photo', definition: 'LONGTEXT NULL' },
@@ -530,6 +558,13 @@ async function initializeDatabase(): Promise<{ success: boolean; message: string
         ['user', 'user@dailyattendance.local', hashedUserPassword, 'USER', 'ACTIVE', 'CSOT', true, 'demo-roblox', 'demo-discord']
       );
     }
+
+    await dbPool.query(
+      `INSERT INTO app_schema_meta (id, schema_version)
+       VALUES (1, ?)
+       ON DUPLICATE KEY UPDATE schema_version = VALUES(schema_version)`,
+      [DATABASE_SCHEMA_VERSION]
+    );
 
     isInitialized = true;
     return { success: true, message: 'Database initialized and seeded successfully' };

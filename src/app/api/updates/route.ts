@@ -28,7 +28,8 @@ async function getChangeFingerprint() {
            COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, username, COALESCE(real_name, ''),
              role, status, COALESCE(attendance_role, ''), COALESCE(CRC32(profile_photo), 0),
              COALESCE(roblox_username, ''), COALESCE(discord_username, ''),
-             profile_completed, COALESCE(DATE_FORMAT(updated_at, '%Y%m%d%H%i%s.%f'), '')))), 0)
+             profile_completed, COALESCE(DATE_FORMAT(absence_reset_date, '%Y%m%d'), ''),
+             COALESCE(DATE_FORMAT(updated_at, '%Y%m%d%H%i%s.%f'), '')))), 0)
          ) AS users
          FROM users`
       ),

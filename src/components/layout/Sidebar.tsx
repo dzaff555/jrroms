@@ -150,9 +150,12 @@ export function Sidebar({
   React.useEffect(() => {
     if (userId === undefined) return;
 
-    const timer = window.setTimeout(() => void refreshStaff(true), 0);
+    const timer = window.setTimeout(() => {
+      void refreshStaff(true);
+      void refreshChatUnread();
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [refreshStaff, userId]);
+  }, [refreshChatUnread, refreshStaff, userId]);
 
   React.useEffect(() => {
     if (userId === undefined) return;
@@ -168,7 +171,6 @@ export function Sidebar({
       void refreshChatUnread();
     };
     sendPresenceHeartbeat();
-    refreshSidebarData();
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
       sendPresenceHeartbeat();

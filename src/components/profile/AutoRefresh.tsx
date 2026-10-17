@@ -37,36 +37,15 @@ function isRoleRouteMismatch(role: UserRole, pathname: string) {
 export function AutoRefresh() {
   const router = useRouter();
   const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   useEffect(() => {
     let currentVersion: string | null = null;
-    let currentRole: 'USER' | 'ADMIN' | 'DEVELOPER' | null = null;
     let isChecking = false;
-
-    const refreshSession = async () => {
-      const response = await fetch('/api/auth/me', { cache: 'no-store' });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Gagal menyegarkan sesi.');
-      }
-
-      const role = result.data.role;
-      if (role !== 'USER' && role !== 'ADMIN' && role !== 'DEVELOPER') {
-        throw new Error('Role akun yang diterima tidak valid.');
-      }
-      const roleChanged =
-        result.roleChanged === true || (currentRole !== null && currentRole !== role);
-      currentRole = role;
-      const routeRoleMismatch = isRoleRouteMismatch(role, pathname);
-      const targetPath = routeRoleMismatch ? getRoleDestination(role, pathname) : pathname;
-
-      if (roleChanged || routeRoleMismatch) {
-        if (targetPath !== pathname) router.replace(targetPath);
-        return true;
-      }
-
-      return false;
-    };
 
     const checkForChanges = async () => {
       if (document.visibilityState !== 'visible' || isChecking) return;
@@ -84,15 +63,15 @@ export function AutoRefresh() {
           throw new Error(result.error || 'Gagal memeriksa perubahan data.');
         }
 
-        const routeRoleMismatch = isRoleRouteMismatch(result.role, pathname);
+        const currentPath = pathnameRef.current;
+        const routeRoleMismatch = isRoleRouteMismatch(result.role, currentPath);
         const dataChanged = currentVersion !== null && currentVersion !== result.version;
 
-        if (routeRoleMismatch || dataChanged) {
-          const redirected = await refreshSession();
-          if (!redirected && dataChanged) {
-            router.refresh();
-            window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
-          }
+        if (routeRoleMismatch) {
+          router.replace(getRoleDestination(result.role, currentPath));
+        } else if (dataChanged) {
+          router.refresh();
+          window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
         }
         currentVersion = result.version;
       } catch (error: unknown) {
@@ -102,18 +81,17 @@ export function AutoRefresh() {
       }
     };
 
-    void refreshSession().catch((error: unknown) => {
-      console.error('Failed to refresh login session:', error);
-    });
-    void checkForChanges();
     const intervalId = window.setInterval(() => void checkForChanges(), REFRESH_INTERVAL_MS);
-    document.addEventListener('visibilitychange', checkForChanges);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void checkForChanges();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', checkForChanges);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [pathname, router]);
+  }, [router]);
 
   return null;
 }

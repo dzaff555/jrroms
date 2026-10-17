@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Calendar, CheckCircle2, Search, UserX } from 'lucide-react';
+import { Calendar, CheckCircle2, RotateCcw, Search, UserX } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -20,6 +20,7 @@ interface AttendanceStatisticsRecord {
   username: string;
   attendance_role: string;
   profile_photo: string | null;
+  absence_reset_date: string | null;
   attended_days: number;
   permission_days: number;
   absent_days: number;
@@ -28,6 +29,8 @@ interface AttendanceStatisticsRecord {
 export default function AdminAttendanceStatisticsPage() {
   const toast = useToast();
   const [records, setRecords] = useState<AttendanceStatisticsRecord[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
+  const [isResettingAbsences, setIsResettingAbsences] = useState(false);
   const [startDate, setStartDate] = useState(() => getJakartaDateString());
   const [endDate, setEndDate] = useState(() => getJakartaDateString());
   const [search, setSearch] = useState('');
@@ -91,16 +94,75 @@ export default function AdminAttendanceStatisticsPage() {
     setRequestVersion((version) => version + 1);
   };
 
+  const resetAbsences = async (resetAll = false) => {
+    if ((!resetAll && selectedUserIds.length === 0) || isResettingAbsences) return;
+    const confirmation = resetAll
+      ? 'Reset jumlah tidak hadir menjadi 0 untuk SEMUA akun pengguna, termasuk akun nonaktif? Hitungan otomatis berikutnya dimulai kembali setelah reset.'
+      : `Reset jumlah tidak hadir menjadi 0 untuk ${selectedUserIds.length} akun terpilih? Hitungan otomatis berikutnya dimulai kembali setelah reset.`;
+    if (!window.confirm(confirmation)) {
+      return;
+    }
+
+    setIsResettingAbsences(true);
+    try {
+      const response = await fetch('/api/admin/attendance-statistics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(resetAll ? { resetAll: true } : { userIds: selectedUserIds }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Gagal mereset jumlah tidak hadir.');
+      }
+
+      setRequestVersion((version) => version + 1);
+      setSelectedUserIds([]);
+      toast.success('Tidak hadir direset', data.message);
+    } catch (error: unknown) {
+      console.error('Failed to reset absence counts:', error);
+      toast.error(
+        'Gagal mereset',
+        error instanceof Error ? error.message : 'Gagal mereset jumlah tidak hadir.'
+      );
+    } finally {
+      setIsResettingAbsences(false);
+    }
+  };
+
+  const toggleSelectedUser = (userId: number) => {
+    setSelectedUserIds((selectedIds) => selectedIds.includes(userId)
+      ? selectedIds.filter((id) => id !== userId)
+      : [...selectedIds, userId]);
+  };
+
+  const allCurrentPageSelected = records.length > 0 &&
+    records.every((record) => selectedUserIds.includes(record.id));
+
   return (
     <>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
-            Statistik Absensi
-          </h1>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+              Statistik Absensi
+            </h1>
+            <Button
+              type="button"
+              variant="danger"
+              size="sm"
+              icon={<RotateCcw className="h-4 w-4" />}
+              disabled={isResettingAbsences}
+              isLoading={isResettingAbsences}
+              loadingText="Mereset semua..."
+              onClick={() => void resetAbsences(true)}
+            >
+              Reset semua akun
+            </Button>
+          </div>
           <p className="mt-1 text-sm text-slate-500">
             Kehadiran dihitung saat dicatat. Ketidakhadiran hanya dihitung untuk periode absensi
-            Jumat–Minggu setelah ditutup pukul 18.00 WIB, terhitung sejak akun dibuat.
+            Jumat–Minggu setelah ditutup pukul 18.00 WIB. Pilih satu atau beberapa akun untuk
+            mereset jumlah tidak hadir menjadi 0; hitungan otomatis berlanjut setelah reset.
           </p>
         </div>
 
@@ -164,6 +226,37 @@ export default function AdminAttendanceStatisticsPage() {
           </form>
         </Card>
 
+        {selectedUserIds.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+            <p className="text-sm text-blue-900" aria-live="polite">
+              {selectedUserIds.length} akun dipilih
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={isResettingAbsences}
+                onClick={() => setSelectedUserIds([])}
+              >
+                Batal pilih
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                icon={<RotateCcw className="h-4 w-4" />}
+                disabled={isResettingAbsences}
+                isLoading={isResettingAbsences}
+                loadingText="Mereset..."
+                onClick={() => void resetAbsences()}
+              >
+                Reset tidak hadir ke 0
+              </Button>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <TableSkeleton rows={8} cols={6} />
         ) : records.length === 0 ? (
@@ -178,16 +271,39 @@ export default function AdminAttendanceStatisticsPage() {
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-slate-100 bg-slate-50 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     <tr>
+                      <th className="w-12 px-4 py-3.5">
+                        <input
+                          type="checkbox"
+                          aria-label="Pilih semua akun di halaman ini"
+                          checked={allCurrentPageSelected}
+                          onChange={(event) => {
+                            const currentPageIds = records.map((record) => record.id);
+                            setSelectedUserIds((selectedIds) => event.target.checked
+                              ? [...new Set([...selectedIds, ...currentPageIds])]
+                              : selectedIds.filter((id) => !currentPageIds.includes(id)));
+                          }}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </th>
                       <th className="px-4 py-3.5">Akun</th>
                       <th className="px-4 py-3.5">Peran absensi</th>
                       <th className="px-4 py-3.5 text-center">Hadir</th>
                       <th className="px-4 py-3.5 text-center">Izin</th>
-                      <th className="px-4 py-3.5 text-center">Tidak hadir (periode ditutup)</th>
+                      <th className="px-4 py-3.5 text-center">Tidak hadir (otomatis)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {records.map((record) => (
                       <tr key={record.id} className="hover:bg-slate-50/80">
+                        <td className="px-4 py-3.5">
+                          <input
+                            type="checkbox"
+                            aria-label={`Pilih akun ${record.username}`}
+                            checked={selectedUserIds.includes(record.id)}
+                            onChange={() => toggleSelectedUser(record.id)}
+                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
                             {record.profile_photo ? (
