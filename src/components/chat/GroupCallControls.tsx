@@ -534,7 +534,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
   const [participants, setParticipants] = useState<CallParticipant[]>([]);
   const [hasCheckedCallState, setHasCheckedCallState] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<RemoteStream[]>([]);
-  const [peerConnectionStates, setPeerConnectionStates] = useState<Record<number, RTCPeerConnectionState>>({});
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isJoined, setIsJoined] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
@@ -592,7 +591,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       peer.connection.close();
     }
     peersRef.current.clear();
-    setPeerConnectionStates({});
     setRemoteStreams([]);
     remoteStreamsRef.current.clear();
   }, []);
@@ -657,7 +655,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       restartAttempts: 0,
     };
     peersRef.current.set(peer.id, peerState);
-    setPeerConnectionStates((current) => ({ ...current, [peer.id]: connection.connectionState }));
 
     for (const track of localStreamRef.current?.getTracks() || []) {
       connection.addTrack(track, localStreamRef.current!);
@@ -756,9 +753,7 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
         peerState.makingOffer = false;
       }
     };
-
     connection.onconnectionstatechange = () => {
-      setPeerConnectionStates((current) => ({ ...current, [peer.id]: connection.connectionState }));
       if (connection.connectionState === 'connected') {
         peerState.restartAttempts = 0;
         if (peerState.restartTimer !== null) {
@@ -926,9 +921,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       }
       if (removedParticipant) {
         setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
-        setPeerConnectionStates((current) => Object.fromEntries(
-          Object.entries(current).filter(([participantId]) => activeParticipantIds.has(Number(participantId)))
-        ));
       }
       for (const participant of nextParticipants) {
         if (participant.id !== currentUserId) ensurePeerConnection(participant, activeCall);
@@ -1023,9 +1015,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       setIsVoiceIsolationEnabled(
         Boolean(stream.getAudioTracks()[0]?.getSettings().noiseSuppression ?? supportsVoiceIsolation())
       );
-      stream.getAudioTracks().forEach((track) => {
-        track.enabled = false;
-      });
       const joining = await postCallAction({ action: 'join', callId: callToJoin.id });
       if (!joining.success) throw new Error(joining.error || 'Tidak dapat bergabung ke panggilan.');
       saveCallRestoreState(currentUserId, {
@@ -1038,10 +1027,10 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       lastSignalIdRef.current = restoreState?.callId === callToJoin.id ? restoreState.signalCursor : 0;
       setLocalStream(stream);
       setCall(callToJoin);
-      setIsMuted(true);
+      setIsMuted(false);
       setIsJoined(true);
       setIsCallMinimized(false);
-      await pollCall();
+      void pollCall();
     } catch (joinError) {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
@@ -1067,9 +1056,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       setIsVoiceIsolationEnabled(
         Boolean(stream.getAudioTracks()[0]?.getSettings().noiseSuppression ?? supportsVoiceIsolation())
       );
-      stream.getAudioTracks().forEach((track) => {
-        track.enabled = false;
-      });
       localStreamRef.current = stream;
       setLocalStream(stream);
       const result = await postCallAction({ action: 'start' });
@@ -1080,10 +1066,10 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
       joinedRef.current = true;
       lastSignalIdRef.current = 0;
       setCall(startedCall);
-      setIsMuted(true);
+      setIsMuted(false);
       setIsJoined(true);
       setIsCallMinimized(false);
-      await pollCall();
+      void pollCall();
     } catch (startError) {
       localStreamRef.current?.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
@@ -1175,11 +1161,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
         remoteStreamsRef.current.delete(participant.id);
         setParticipants((current) => current.filter((item) => item.id !== participant.id));
         setRemoteStreams(Array.from(remoteStreamsRef.current.values()));
-        setPeerConnectionStates((current) => {
-          const next = { ...current };
-          delete next[participant.id];
-          return next;
-        });
       } else {
         setParticipants((current) => current.map((item) => (
           item.id === participant.id ? { ...item, is_muted: moderation === 'mute' } : item
@@ -1264,17 +1245,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
     startCall,
     toggleCallFeature,
   ]);
-  const participantsConnecting = isJoined
-    ? participants.filter((participant) => {
-        if (participant.id === currentUserId) return false;
-        const hasRemoteAudio = remoteStreams
-          .find((remote) => remote.userId === participant.id)
-          ?.stream.getAudioTracks()
-          .some((track) => track.readyState === 'live');
-        return peerConnectionStates[participant.id] !== 'connected' || !hasRemoteAudio;
-      })
-    : [];
-
   return (
     <>
       {kickNotice && (
@@ -1355,21 +1325,6 @@ export function GroupCallControls({ currentUserId, isAdmin }: GroupCallControlsP
         <div className={`fixed inset-0 z-[200] flex flex-col bg-white text-slate-900 dark:bg-slate-950 dark:text-white ${
           isCallMinimized ? 'invisible pointer-events-none' : ''
         }`}>
-          {participantsConnecting.length > 0 && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="pointer-events-none fixed left-1/2 top-20 z-[210] flex w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 items-center gap-3 rounded-xl border border-blue-200 bg-white/95 px-4 py-3 text-slate-900 shadow-2xl backdrop-blur dark:border-blue-400/30 dark:bg-slate-900/95 dark:text-white"
-            >
-              <LoaderCircle className="h-5 w-5 shrink-0 animate-spin text-blue-300" />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">Menghubungkan suara...</span>
-                <span className="block truncate text-xs text-slate-600 dark:text-slate-300">
-                  Menunggu {participantsConnecting.map((participant) => participant.username).join(', ')}
-                </span>
-              </span>
-            </div>
-          )}
           <header className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10 sm:px-6">
             <div className="flex items-center gap-3">
               <button

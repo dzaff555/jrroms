@@ -260,10 +260,10 @@ export async function POST(request: Request) {
       }
       await query(
         `INSERT INTO chat_call_participants (session_id, user_id, is_muted, last_seen_at)
-         VALUES (?, ?, TRUE, NOW())
+         VALUES (?, ?, FALSE, NOW())
          ON DUPLICATE KEY UPDATE
            connection_version = connection_version + 1,
-           is_muted = TRUE,
+           is_muted = FALSE,
            joined_at = NOW(), left_at = NULL, last_seen_at = NOW()`,
         [call.id, user.id]
       );
@@ -276,29 +276,36 @@ export async function POST(request: Request) {
       }
       const callId = input.callId;
       if (input.action === 'join') {
-        if (!await isCallFeatureEnabled()) {
+        const calls = await query<{
+          id: string;
+          feature_enabled: string | null;
+          kicked_at: Date | null;
+        }[]>(
+          `SELECT c.id, setting.setting_value AS feature_enabled, participant.kicked_at
+           FROM chat_call_sessions c
+           LEFT JOIN chat_call_settings setting ON setting.setting_key = 'feature_enabled'
+           LEFT JOIN chat_call_participants participant
+             ON participant.session_id = c.id AND participant.user_id = ?
+           WHERE c.id = ? AND c.ended_at IS NULL
+           LIMIT 1`,
+          [user.id, callId]
+        );
+        const call = calls[0];
+        if (call?.feature_enabled === 'false') {
           return NextResponse.json({ success: false, error: 'Fitur telepon sedang dimatikan oleh admin.' }, { status: 403 });
         }
-        const calls = await query<{ id: string }[]>(
-          'SELECT id FROM chat_call_sessions WHERE id = ? AND ended_at IS NULL LIMIT 1',
-          [callId]
-        );
-        if (!calls[0]) {
+        if (!call) {
           return NextResponse.json({ success: false, error: 'Panggilan ini sudah berakhir.' }, { status: 410 });
         }
-        const existingMembership = await query<{ kicked_at: Date | null }[]>(
-          'SELECT kicked_at FROM chat_call_participants WHERE session_id = ? AND user_id = ? LIMIT 1',
-          [callId, user.id]
-        );
-        if (existingMembership[0]?.kicked_at !== null && existingMembership[0]?.kicked_at !== undefined) {
+        if (call.kicked_at !== null && call.kicked_at !== undefined) {
           return NextResponse.json({ success: false, error: 'Anda dikeluarkan dari sesi telepon ini.' }, { status: 403 });
         }
         await query(
           `INSERT INTO chat_call_participants (session_id, user_id, is_muted, last_seen_at)
-           VALUES (?, ?, TRUE, NOW())
+           VALUES (?, ?, FALSE, NOW())
            ON DUPLICATE KEY UPDATE
              connection_version = connection_version + 1,
-             is_muted = TRUE,
+             is_muted = FALSE,
              joined_at = NOW(), left_at = NULL, last_seen_at = NOW()`,
           [callId, user.id]
         );
