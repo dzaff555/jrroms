@@ -22,18 +22,19 @@ export async function GET() {
       query<{ total_users: number; attended: number; permission: number }[]>(
         `SELECT
           (SELECT COUNT(*) FROM users WHERE role = 'USER' AND status = 'ACTIVE') AS total_users,
-          COUNT(DISTINCT CASE WHEN status = 'Hadir' THEN user_id END) AS attended,
-          COUNT(DISTINCT CASE WHEN status = 'Izin' THEN user_id END) AS permission
-         FROM attendance
-         WHERE attendance_date = ?`,
+          COUNT(DISTINCT CASE WHEN a.status = 'Hadir' THEN a.user_id END) AS attended,
+          COUNT(DISTINCT CASE WHEN a.status = 'Izin' THEN a.user_id END) AS permission
+         FROM attendance a
+         JOIN users u ON u.id = a.user_id AND u.status = 'ACTIVE'
+         WHERE a.attendance_date = ?`,
         [todayDate]
       ),
       query<{ attendance_date: string; count: number }[]>(
         `SELECT DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
            COUNT(DISTINCT user_id) AS count
-         FROM attendance
-         WHERE status = 'Hadir' AND attendance_date IN (${trendDates.map(() => '?').join(', ')})
-         GROUP BY attendance_date`,
+         FROM attendance a
+         WHERE a.status = 'Hadir' AND a.attendance_date IN (${trendDates.map(() => '?').join(', ')})
+         GROUP BY a.attendance_date`,
         trendDates
       ),
     ]);

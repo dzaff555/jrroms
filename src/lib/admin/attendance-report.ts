@@ -121,13 +121,15 @@ function buildAttendanceReportQuery(filters: AttendanceReportFilters): Attendanc
         WHERE ones.digit + tens.digit * 10 + hundreds.digit * 100
           <= (CAST(? AS DATE) - CAST(? AS DATE))
       ) d
-      JOIN users u ON u.role = 'USER' AND u.status = 'ACTIVE'
+      JOIN users u ON u.role = 'USER'
       LEFT JOIN attendance a ON a.user_id = u.id AND a.attendance_date = d.report_date
     `;
     whereConditions.push(
       'a.id IS NULL',
       'DAYOFWEEK(d.report_date) IN (1, 6, 7)',
-      "(DATE(u.created_at AT TIME ZONE 'Asia/Jakarta') < d.report_date OR (DATE(u.created_at AT TIME ZONE 'Asia/Jakarta') = d.report_date AND CAST(u.created_at AT TIME ZONE 'Asia/Jakarta' AS TIME) < TIME '18:00:00'))"
+      "(DATE(u.created_at AT TIME ZONE 'Asia/Jakarta') < d.report_date OR (DATE(u.created_at AT TIME ZONE 'Asia/Jakarta') = d.report_date AND CAST(u.created_at AT TIME ZONE 'Asia/Jakarta' AS TIME) < TIME '18:00:00'))",
+      '(u.absence_reset_date IS NULL OR d.report_date > u.absence_reset_date)',
+      "(u.status = 'ACTIVE' OR (u.disabled_at IS NOT NULL AND (DATE(u.disabled_at AT TIME ZONE 'Asia/Jakarta') > d.report_date OR (DATE(u.disabled_at AT TIME ZONE 'Asia/Jakarta') = d.report_date AND CAST(u.disabled_at AT TIME ZONE 'Asia/Jakarta' AS TIME) >= TIME '18:00:00'))))"
     );
   } else {
     fromSql = `

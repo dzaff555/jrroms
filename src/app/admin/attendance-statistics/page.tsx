@@ -18,6 +18,7 @@ import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhot
 interface AttendanceStatisticsRecord {
   id: number;
   username: string;
+  status: 'ACTIVE' | 'DISABLED';
   attendance_role: string;
   profile_photo: string | null;
   absence_reset_date: string | null;
@@ -160,9 +161,9 @@ export default function AdminAttendanceStatisticsPage() {
             </Button>
           </div>
           <p className="mt-1 text-sm text-slate-500">
-            Kehadiran dihitung saat dicatat. Ketidakhadiran hanya dihitung untuk periode absensi
-            Jumat–Minggu setelah ditutup pukul 18.00 WIB. Pilih satu atau beberapa akun untuk
-            mereset jumlah tidak hadir menjadi 0; hitungan otomatis berlanjut setelah reset.
+            Riwayat kehadiran akun nonaktif tetap ditampilkan. Ketidakhadiran dihitung untuk periode
+            Jumat–Minggu setelah ditutup pukul 18.00 WIB dan berhenti saat akun dinonaktifkan.
+            Pilih akun untuk mereset jumlah tidak hadir; hitungan otomatis berlanjut setelah reset.
           </p>
         </div>
 
@@ -262,7 +263,7 @@ export default function AdminAttendanceStatisticsPage() {
         ) : records.length === 0 ? (
           <EmptyState
             title="Akun tidak ditemukan"
-            description="Tidak ada akun aktif yang cocok dengan tanggal dan filter yang dipilih."
+          description="Tidak ada akun yang cocok dengan tanggal dan filter yang dipilih."
           />
         ) : (
           <div className="space-y-4">
@@ -317,7 +318,12 @@ export default function AdminAttendanceStatisticsPage() {
                                 {record.username.charAt(0).toUpperCase()}
                               </div>
                             )}
-                            <span className="font-semibold text-slate-800">{record.username}</span>
+                            <span>
+                              <span className="block font-semibold text-slate-800">{record.username}</span>
+                              {record.status === 'DISABLED' && (
+                                <span className="mt-0.5 block text-xs font-medium text-rose-600">Nonaktif</span>
+                              )}
+                            </span>
                           </div>
                         </td>
                         <td className="px-4 py-3.5">

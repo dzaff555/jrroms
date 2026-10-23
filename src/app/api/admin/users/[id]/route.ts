@@ -140,6 +140,8 @@ export async function PATCH(
     if (status && (status === 'ACTIVE' || status === 'DISABLED')) {
       updates.push('status = ?');
       values.push(status);
+      updates.push("disabled_at = CASE WHEN ? = 'DISABLED' THEN COALESCE(disabled_at, CURRENT_TIMESTAMP) ELSE NULL END");
+      values.push(status);
     }
 
     if (attendanceRole !== undefined) {

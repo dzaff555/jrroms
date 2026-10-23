@@ -17,7 +17,7 @@ const connectionString = parsedDatabaseUrl
     })()
   : undefined;
 
-const DATABASE_SCHEMA_VERSION = 5;
+const DATABASE_SCHEMA_VERSION = 6;
 let pool: Pool | null = null;
 let isInitialized = false;
 let initializationPromise: Promise<{ success: boolean; message: string }> | null = null;
@@ -186,6 +186,7 @@ async function ensureSchema(client: PoolClient) {
       password VARCHAR(255) NOT NULL,
       role VARCHAR(16) NOT NULL DEFAULT 'USER' CHECK (role IN ('USER', 'ADMIN', 'DEVELOPER')),
       status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DISABLED')),
+      disabled_at TIMESTAMPTZ,
       attendance_role VARCHAR(40) NOT NULL DEFAULT 'CSOT',
       absence_reset_date DATE,
       profile_photo TEXT,
@@ -430,6 +431,7 @@ async function ensureSchema(client: PoolClient) {
     CREATE TRIGGER developer_tasks_set_updated_at BEFORE UPDATE ON developer_tasks FOR EACH ROW EXECUTE FUNCTION set_updated_at();
     ALTER TABLE users ADD COLUMN IF NOT EXISTS real_name VARCHAR(100);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMPTZ;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS absence_reset_date DATE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS roblox_username VARCHAR(100);
@@ -450,6 +452,12 @@ async function ensureSchema(client: PoolClient) {
     ALTER TABLE chat_call_participants ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE chat_call_participants ADD COLUMN IF NOT EXISTS kicked_at TIMESTAMPTZ;
   `);
+
+  await client.query(
+    `UPDATE users
+     SET disabled_at = COALESCE(updated_at, CURRENT_TIMESTAMP)
+     WHERE status = 'DISABLED' AND disabled_at IS NULL`
+  );
 
   const chatBooleanColumns = await client.query<{ column_name: string; data_type: string }>(
     `SELECT column_name, data_type

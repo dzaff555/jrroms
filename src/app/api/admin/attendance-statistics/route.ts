@@ -9,9 +9,11 @@ import { isAttendanceRole } from '@/types';
 interface AttendanceStatisticsRecord {
   id: number;
   username: string;
+  status: 'ACTIVE' | 'DISABLED';
   attendance_role: string;
   profile_photo: string | null;
   absence_reset_date: string | null;
+  disabled_at: Date | string | null;
   created_at: string;
   attended_days: number;
   permission_days: number;
@@ -54,7 +56,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const conditions = ["u.role = 'USER'", "u.status = 'ACTIVE'"];
+    const conditions = ["u.role = 'USER'"];
     const userParams: unknown[] = [];
     if (attendanceRole !== 'ALL') {
       conditions.push('u.attendance_role = ?');
@@ -81,9 +83,11 @@ export async function GET(request: Request) {
       `SELECT
         u.id,
         u.username,
+        u.status,
         u.attendance_role,
         u.profile_photo,
         DATE_FORMAT(u.absence_reset_date, '%Y-%m-%d') AS absence_reset_date,
+        u.disabled_at,
         DATE_FORMAT(
           CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
           '%Y-%m-%d %H:%i:%s'
@@ -94,6 +98,19 @@ export async function GET(request: Request) {
           WHEN a.attendance_date <= ?
             AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)
             AND (u.absence_reset_date IS NULL OR a.attendance_date > u.absence_reset_date)
+            AND (
+              u.status = 'ACTIVE'
+              OR (
+                u.disabled_at IS NOT NULL
+                AND (
+                  a.attendance_date < DATE(u.disabled_at AT TIME ZONE 'Asia/Jakarta')
+                  OR (
+                    a.attendance_date = DATE(u.disabled_at AT TIME ZONE 'Asia/Jakarta')
+                    AND CAST(u.disabled_at AT TIME ZONE 'Asia/Jakarta' AS TIME) >= TIME '18:00:00'
+                  )
+                )
+              )
+            )
           THEN a.attendance_date
         END) AS completed_attended_days
       FROM users u
@@ -105,7 +122,8 @@ export async function GET(request: Request) {
         )
         AND a.attendance_date <= ?
       WHERE ${whereSql}
-      GROUP BY u.id, u.username, u.attendance_role, u.profile_photo, u.absence_reset_date, u.created_at
+      GROUP BY u.id, u.username, u.status, u.attendance_role, u.profile_photo,
+        u.absence_reset_date, u.disabled_at, u.created_at
       ORDER BY u.username ASC
       LIMIT ? OFFSET ?`,
       [effectiveEndDate, startDate, attendanceEndDate, ...userParams, limit, offset]
@@ -115,9 +133,18 @@ export async function GET(request: Request) {
       const resetDate = record.absence_reset_date || '';
       const resetStartDate = resetDate ? getDateAfter(resetDate) : startDate;
       const effectiveStartDate = resetStartDate > startDate ? resetStartDate : startDate;
+      const disabledThroughDate = record.disabled_at
+        ? getLastCompletedAttendanceDate(new Date(record.disabled_at))
+        : record.status === 'DISABLED'
+          ? getDateAfter(effectiveEndDate)
+          : effectiveEndDate;
+      const absenceEndDate = disabledThroughDate < effectiveEndDate
+        ? disabledThroughDate
+        : effectiveEndDate;
       const expectedDays =
-        effectiveStartDate <= effectiveEndDate
-          ? countWeekendDaysSince(record.created_at, effectiveEndDate, effectiveStartDate)
+        !(record.status === 'DISABLED' && !record.disabled_at) &&
+        effectiveStartDate <= absenceEndDate
+          ? countWeekendDaysSince(record.created_at, absenceEndDate, effectiveStartDate)
           : 0;
       const completedAttendedDays = Math.min(
         Number(record.completed_attended_days || 0),
@@ -220,12 +247,12 @@ export async function POST(request: Request) {
 
     const placeholders = uniqueUserIds.map(() => '?').join(', ');
     const users = await query<{ id: number }[]>(
-      `SELECT id FROM users WHERE role = 'USER' AND status = 'ACTIVE' AND id IN (${placeholders})`,
+      `SELECT id FROM users WHERE role = 'USER' AND id IN (${placeholders})`,
       uniqueUserIds
     );
     if (users.length !== uniqueUserIds.length) {
       return NextResponse.json(
-        { success: false, error: 'Sebagian akun tidak ditemukan atau tidak aktif. Muat ulang daftar akun lalu coba lagi.' },
+        { success: false, error: 'Sebagian akun tidak ditemukan. Muat ulang daftar akun lalu coba lagi.' },
         { status: 404 }
       );
     }

@@ -32,6 +32,7 @@ interface StaffProfile {
   created_at: string;
   joined_at: string;
   absence_reset_date: string | null;
+  disabled_at: Date | string | null;
   attendance_count: number;
   permission_count: number;
   weekend_attendance_count: number;
@@ -70,6 +71,7 @@ export default async function AdminStaffProfilePage({
     `SELECT u.id, u.username, u.real_name, u.nip, u.role, u.status, u.attendance_role, u.profile_photo,
       u.roblox_username, u.discord_username, u.profile_completed,
       DATE_FORMAT(u.absence_reset_date, '%Y-%m-%d') AS absence_reset_date,
+      u.disabled_at,
       DATE_FORMAT(u.created_at, '%Y-%m-%d %H:%i') AS created_at,
       DATE_FORMAT(
         CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00'),
@@ -85,6 +87,19 @@ export default async function AdminStaffProfilePage({
            CONVERT_TZ(u.created_at, @@session.time_zone, '+07:00')
          ) AND ?
          AND (u.absence_reset_date IS NULL OR a.attendance_date > u.absence_reset_date)
+         AND (
+           u.status = 'ACTIVE'
+           OR (
+             u.disabled_at IS NOT NULL
+             AND (
+               a.attendance_date < DATE(u.disabled_at AT TIME ZONE 'Asia/Jakarta')
+               OR (
+                 a.attendance_date = DATE(u.disabled_at AT TIME ZONE 'Asia/Jakarta')
+                 AND CAST(u.disabled_at AT TIME ZONE 'Asia/Jakarta' AS TIME) >= TIME '18:00:00'
+               )
+             )
+           )
+         )
          AND DAYOFWEEK(a.attendance_date) IN (1, 6, 7)) AS weekend_attendance_count,
       (SELECT COUNT(*) FROM staff_warnings w WHERE w.user_id = u.id) AS warning_count,
       (SELECT DATE_FORMAT(a.attendance_date, '%Y-%m-%d') FROM attendance a
@@ -99,11 +114,18 @@ export default async function AdminStaffProfilePage({
   const absenceCountStartDate = staff.absence_reset_date
     ? getDateAfter(staff.absence_reset_date)
     : staff.joined_at.slice(0, 10);
-  const missedAttendanceCount = Math.max(
-    0,
-    countWeekendDaysSince(staff.joined_at, attendanceThroughDate, absenceCountStartDate) -
-      Number(staff.weekend_attendance_count)
-  );
+  const absenceThroughDate = staff.status === 'DISABLED'
+    ? staff.disabled_at
+      ? getLastCompletedAttendanceDate(new Date(staff.disabled_at))
+      : null
+    : attendanceThroughDate;
+  const missedAttendanceCount = absenceThroughDate
+    ? Math.max(
+      0,
+      countWeekendDaysSince(staff.joined_at, absenceThroughDate, absenceCountStartDate) -
+        Number(staff.weekend_attendance_count)
+    )
+    : 0;
   const warnings = await query<StaffWarning[]>(
     `SELECT
        (SELECT COUNT(*) FROM staff_warnings previous
