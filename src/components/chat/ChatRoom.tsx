@@ -108,6 +108,34 @@ function createEditedImage(
   });
 }
 
+async function compressChatPhoto(file: File): Promise<File> {
+  if (file.type !== 'image/jpeg' || file.size <= 512 * 1024) return file;
+
+  const bitmap = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 1920 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) return file;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    const compressed = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, 'image/webp', 0.8);
+    });
+    if (!compressed || compressed.size >= file.size * 0.9) return file;
+
+    return new File(
+      [compressed],
+      `${file.name.replace(/\.[^.]+$/, '')}.webp`,
+      { type: 'image/webp' }
+    );
+  } finally {
+    bitmap.close();
+  }
+}
+
 interface RepliedMessage {
   id: number;
   sender_id: number;
@@ -1145,6 +1173,7 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
   };
 
   const loadMessages = useCallback(async (signal?: AbortSignal, initial = false) => {
+    if (document.visibilityState !== 'visible') return;
     if (isLoadingMessagesRef.current) return;
     isLoadingMessagesRef.current = true;
 
@@ -1246,12 +1275,19 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
     const initialLoad = window.setTimeout(() => {
       void loadMessages(controller.signal, true);
     }, 0);
-    const interval = window.setInterval(() => void loadMessages(controller.signal), 6000);
+    const pollWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadMessages(controller.signal);
+    };
+    const interval = window.setInterval(pollWhenVisible, 15_000);
+    document.addEventListener('visibilitychange', pollWhenVisible);
+    window.addEventListener('focus', pollWhenVisible);
 
     return () => {
       controller.abort();
       window.clearTimeout(initialLoad);
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', pollWhenVisible);
+      window.removeEventListener('focus', pollWhenVisible);
       if (highlightTimeoutRef.current !== null) window.clearTimeout(highlightTimeoutRef.current);
     };
   }, [loadMessages]);
@@ -1402,11 +1438,12 @@ export function ChatRoom({ currentUserId, currentUserRole }: ChatRoomProps) {
       let body: BodyInit;
       let headers: HeadersInit | undefined;
       if (attachment) {
+        const uploadAttachment = await compressChatPhoto(attachment);
         const form = new FormData();
         form.set('message', message);
         if (replyToId !== null) form.set('replyToId', String(replyToId));
-        form.set('attachment', attachment);
-        if (attachment.type.startsWith('audio/')) {
+        form.set('attachment', uploadAttachment);
+        if (uploadAttachment.type.startsWith('audio/')) {
           form.set('audioDurationSeconds', String(audioDuration));
           form.set('isVoiceNote', String(isVoiceNote));
         }

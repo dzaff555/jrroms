@@ -88,7 +88,7 @@ export async function getChatMedia(
     const headers = new Headers({
       'Content-Type': media.image_type,
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'private, no-store, max-age=0',
+      'Cache-Control': 'private, max-age=60',
       'X-Content-Type-Options': 'nosniff',
       'Content-Disposition': 'inline',
     });

@@ -16,6 +16,7 @@ interface ChatAccessUser {
   id: number;
   username: string;
   real_name: string | null;
+  server_time: string;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string | null;
   status: 'ACTIVE' | 'DISABLED';
@@ -140,7 +141,9 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
   if (!session) return { response: NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 }) };
 
   const users = await query<ChatAccessUser[]>(
-    'SELECT id, username, real_name, role, attendance_role, status FROM users WHERE id = ? LIMIT 1',
+    `SELECT id, username, real_name, role, attendance_role, status,
+       DATE_FORMAT(CURRENT_TIMESTAMP(6), '%Y-%m-%d %H:%i:%s.%f') AS server_time
+     FROM users WHERE id = ? LIMIT 1`,
     [session.id]
   );
   const user = users[0];
@@ -195,7 +198,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Parameter sinkronisasi chat tidak valid.' }, { status: 400 });
     }
     let messages: ChatMessage[];
-    let clock: { server_time: string }[];
+    const serverTime = access.user.server_time;
     let searchTotal: number | null = null;
 
     if (aroundParam !== null) {
@@ -217,34 +220,19 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'Pesan tidak ditemukan.' }, { status: 404 });
       }
       messages = [...before.reverse(), ...after];
-      clock = await query<{ server_time: string }[]>(
-        "SELECT DATE_FORMAT(CURRENT_TIMESTAMP(6), '%Y-%m-%d %H:%i:%s.%f') AS server_time"
-      );
     } else if (searchParam !== null) {
       const term = searchParam.trim();
-      const [matches, count, serverClock] = await Promise.all([
-        query<ChatMessage[]>(
-          `${chatMessageSelect}
-           WHERE cm.deleted_at IS NULL AND POSITION(LOWER(?) IN LOWER(COALESCE(cm.message, ''))) > 0
-           ORDER BY cm.id DESC
-           LIMIT 101`,
-          [term]
-        ),
-        query<{ total: number }[]>(
-          `SELECT COUNT(*) AS total FROM staff_admin_chat_messages cm
-           WHERE cm.deleted_at IS NULL AND POSITION(LOWER(?) IN LOWER(COALESCE(cm.message, ''))) > 0`,
-          [term]
-        ),
-        query<{ server_time: string }[]>(
-          "SELECT DATE_FORMAT(CURRENT_TIMESTAMP(6), '%Y-%m-%d %H:%i:%s.%f') AS server_time"
-        ),
-      ]);
+      const matches = await query<ChatMessage[]>(
+        `${chatMessageSelect}
+         WHERE cm.deleted_at IS NULL AND POSITION(LOWER(?) IN LOWER(COALESCE(cm.message, ''))) > 0
+         ORDER BY cm.id DESC
+         LIMIT 101`,
+        [term]
+      );
       messages = matches.slice(0, 100).reverse();
-      searchTotal = Number(count[0]?.total || 0);
-      clock = serverClock;
+      searchTotal = matches.length > 100 ? 101 : matches.length;
     } else if (afterParam === null) {
-      [messages, clock] = await Promise.all([
-        query<ChatMessage[]>(`
+      messages = await query<ChatMessage[]>(`
           SELECT cm.id, cm.sender_id, u.username, u.real_name,
             CASE WHEN cm.profile_rank = 1 THEN u.profile_photo ELSE NULL END AS profile_photo,
             (cm.profile_rank = 1) AS profile_photo_loaded,
@@ -279,17 +267,13 @@ export async function GET(request: Request) {
           LEFT JOIN staff_admin_chat_messages replied ON replied.id = cm.reply_to_id
           LEFT JOIN users reply_user ON reply_user.id = replied.sender_id
           ORDER BY cm.id ASC
-        `),
-        query<{ server_time: string }[]>(
-          "SELECT DATE_FORMAT(CURRENT_TIMESTAMP(6), '%Y-%m-%d %H:%i:%s.%f') AS server_time"
-        ),
-      ]);
+        `);
     } else {
       if (!/^\d+$/.test(afterParam) || !Number.isSafeInteger(Number(afterParam))) {
         return NextResponse.json({ success: false, error: 'Parameter pesan tidak valid.' }, { status: 400 });
       }
 
-      const [recentMessages, deletedMessages, serverClock] = await Promise.all([
+      const [recentMessages, deletedMessages] = await Promise.all([
         query<ChatMessage[]>(
           `${chatMessageSelect} WHERE cm.id > ? ORDER BY cm.id ASC LIMIT 100`,
           [Number(afterParam)]
@@ -300,11 +284,7 @@ export async function GET(request: Request) {
               [deletedAfter]
             )
           : Promise.resolve([] as ChatMessage[]),
-        query<{ server_time: string }[]>(
-          "SELECT DATE_FORMAT(CURRENT_TIMESTAMP(6), '%Y-%m-%d %H:%i:%s.%f') AS server_time"
-        ),
       ]);
-      clock = serverClock;
       messages = Array.from(
         new Map([...recentMessages, ...deletedMessages].map((message) => [message.id, message])).values()
       ).sort((left, right) => left.id - right.id);
@@ -341,7 +321,7 @@ export async function GET(request: Request) {
             }
           : null,
       })),
-      serverTime: clock[0]?.server_time,
+      serverTime,
       ...(searchTotal === null ? {} : { searchTotal }),
     });
   } catch (error: unknown) {
