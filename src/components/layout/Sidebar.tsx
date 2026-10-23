@@ -18,7 +18,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  MessageCircle,
   BookOpenText,
 } from 'lucide-react';
 import { AuthSession } from '@/types';
@@ -89,7 +88,6 @@ export function Sidebar({
 }: SidebarProps) {
   const [staffCount, setStaffCount] = React.useState<number | null>(null);
   const [staffMembers, setStaffMembers] = React.useState<SidebarStaff[]>([]);
-  const [unreadChatCount, setUnreadChatCount] = React.useState(0);
   const pathname = usePathname();
   const router = useRouter();
   const toast = useToast();
@@ -125,35 +123,19 @@ export function Sidebar({
       setStaffCount(null);
     }
   }, [user?.profile_photo, userId]);
-  const refreshChatUnread = React.useCallback(async () => {
-    if (userId === undefined) return;
-
-    try {
-      const response = await fetch('/api/chat/unread', { cache: 'no-store' });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Gagal memuat jumlah pesan belum dibaca.');
-      }
-      setUnreadChatCount(Number(result.data?.unread_count || 0));
-    } catch (error: unknown) {
-      console.error('[Sidebar Chat Unread Error]:', error);
-    }
-  }, [userId]);
   const isCurrentStaff = (staff: SidebarStaff) =>
     staff.id === user?.id || staff.username === user?.username;
 
   useAutoRefresh(() => void refreshStaff());
-  useAutoRefresh(() => void refreshChatUnread());
 
   React.useEffect(() => {
     if (userId === undefined) return;
 
     const timer = window.setTimeout(() => {
       void refreshStaff();
-      void refreshChatUnread();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [refreshChatUnread, refreshStaff, userId]);
+  }, [refreshStaff, userId]);
 
   React.useEffect(() => {
     if (userId === undefined) return;
@@ -166,7 +148,6 @@ export function Sidebar({
     const refreshSidebarData = () => {
       if (document.visibilityState !== 'visible') return;
       void refreshStaff();
-      void refreshChatUnread();
     };
     sendPresenceHeartbeat();
     const handleVisibilityChange = () => {
@@ -182,19 +163,17 @@ export function Sidebar({
       window.clearInterval(refreshTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [refreshChatUnread, refreshStaff, userId]);
+  }, [refreshStaff, userId]);
 
   const userNavItems = [
     { label: 'Dasbor', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Absensi Hari Ini', href: '/attendance', icon: UserCheck },
     { label: 'Riwayat Absensi', href: '/attendance/history', icon: History },
-    { label: 'Chat Staf', href: '/chat', icon: MessageCircle },
     { label: 'Informasi dan Peraturan', href: '/information', icon: BookOpenText },
   ];
 
   const adminNavItems = [
     { label: 'Dasbor Admin', href: '/admin/dashboard', icon: LayoutDashboard },
-    { label: 'Chat Staf', href: '/admin/chat', icon: MessageCircle },
     { label: 'Tugas Developer', href: '/admin/tasks', icon: ClipboardList },
     { label: 'Laporan Absensi', href: '/admin/reports', icon: FileSpreadsheet },
     { label: 'Statistik Absensi', href: '/admin/attendance-statistics', icon: ChartNoAxesColumn },
@@ -206,7 +185,6 @@ export function Sidebar({
   const developerNavItems = [
     { label: 'Tugas', href: '/developer/tasks', icon: ClipboardList },
     { label: 'Unggah Tugas', href: '/developer/upload', icon: Upload },
-    { label: 'Chat Staf', href: '/developer/chat', icon: MessageCircle },
     { label: 'Informasi dan Peraturan', href: '/developer/information', icon: BookOpenText },
   ];
 
@@ -287,7 +265,6 @@ export function Sidebar({
 
         {navItems.map((item) => {
           const active = isActive(item.href);
-          const isChatItem = item.label === 'Chat Staf';
           const Icon = item.icon;
 
           return (
@@ -308,19 +285,6 @@ export function Sidebar({
                 }`}
               />
               {!collapsed && <span>{item.label}</span>}
-              {isChatItem && unreadChatCount > 0 && (
-                <span
-                  aria-label={`${unreadChatCount} pesan belum dibaca`}
-                  title={`${unreadChatCount} pesan belum dibaca`}
-                  className={`rounded-full bg-emerald-500 text-center text-[10px] font-bold leading-none text-white shadow-sm ${
-                    collapsed
-                      ? 'absolute right-1 top-1 min-w-4 px-1 py-1'
-                      : 'ml-auto min-w-5 px-1.5 py-1'
-                  }`}
-                >
-                  {unreadChatCount > 99 ? '99+' : unreadChatCount}
-                </span>
-              )}
             </Link>
           );
         })}

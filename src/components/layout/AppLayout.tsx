@@ -1,22 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
-import dynamic from 'next/dynamic';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { AuthSession } from '@/types';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useToast } from '../ui/Toast';
 import { AutoRefresh } from '@/components/profile/AutoRefresh';
-
-const ChatNotificationWatcher = dynamic(
-  () => import('@/components/chat/ChatNotificationWatcher').then((module) => module.ChatNotificationWatcher),
-  { ssr: false }
-);
-const GroupCallControls = dynamic(
-  () => import('@/components/chat/GroupCallControls').then((module) => module.GroupCallControls),
-  { ssr: false }
-);
 
 export interface AppLayoutProps {
   children: React.ReactNode;
@@ -44,19 +34,10 @@ function AccessDeniedAlert() {
 export function AppLayout({ children, user, showSidebar = true, showUserMenu = true }: AppLayoutProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const pathname = usePathname();
-  const isChatPage = pathname === '/chat' || pathname === '/admin/chat' || pathname === '/developer/chat';
 
   return (
-    <div className={`${isChatPage ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex flex-col bg-[#F5F8FC] antialiased`}>
+    <div className="flex min-h-screen flex-col bg-[#F5F8FC] antialiased">
       <AutoRefresh />
-      <ChatNotificationWatcher user={user} />
-      {user && (
-        <GroupCallControls
-          currentUserId={user.id}
-          isAdmin={user.role === 'ADMIN'}
-        />
-      )}
       <Suspense fallback={null}>
         <AccessDeniedAlert />
       </Suspense>
@@ -75,8 +56,6 @@ export function AppLayout({ children, user, showSidebar = true, showUserMenu = t
       {/* Main Content Area */}
       <div
         className={`flex flex-1 flex-col transition-all duration-300 ease-in-out ${
-          isChatPage ? 'min-h-0' : ''
-        } ${
           showSidebar ? (collapsed ? 'lg:pl-20' : 'lg:pl-64') : ''
         }`}
       >
@@ -89,11 +68,7 @@ export function AppLayout({ children, user, showSidebar = true, showUserMenu = t
         />
 
         {/* Dynamic Page Content */}
-        <main className={`w-full flex-1 ${
-          isChatPage
-            ? 'min-h-0 max-w-none overflow-hidden p-0'
-            : 'mx-auto max-w-7xl p-4 sm:p-6 lg:p-8'
-        } animate-fade-in`}>
+        <main className="mx-auto w-full max-w-7xl flex-1 p-4 animate-fade-in sm:p-6 lg:p-8">
           {children}
         </main>
       </div>
