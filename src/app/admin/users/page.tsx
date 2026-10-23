@@ -81,6 +81,7 @@ export default function AdminUsersPage() {
   const [newAttendanceRole, setNewAttendanceRole] = useState<AttendanceRole>('CSOT');
   const [isUpdating, setIsUpdating] = useState(false);
   const isFetchingUsersRef = React.useRef(false);
+  const latestUsersRequestRef = React.useRef(0);
   const isDeletingUserRef = React.useRef(false);
 
   useEffect(() => {
@@ -91,9 +92,10 @@ export default function AdminUsersPage() {
       });
   }, []);
 
-  const fetchUsers = useCallback(async (showLoading = true) => {
-    if (isFetchingUsersRef.current) return;
+  const fetchUsers = useCallback(async (showLoading = true, force = false) => {
+    if (isFetchingUsersRef.current && !force) return;
     isFetchingUsersRef.current = true;
+    const requestId = ++latestUsersRequestRef.current;
     if (showLoading) setIsLoading(true);
     try {
       const params = new URLSearchParams({
@@ -108,7 +110,7 @@ export default function AdminUsersPage() {
       const res = await fetch(`/api/admin/users?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json();
 
-      if (data.success) {
+      if (data.success && requestId === latestUsersRequestRef.current) {
         const updatedUsers = (data.data.records || []) as AdminUser[];
         setUsers(updatedUsers);
         setViewUser((current) =>
@@ -122,8 +124,10 @@ export default function AdminUsersPage() {
     } catch (err) {
       console.error('Failed to load users:', err);
     } finally {
-      if (showLoading) setIsLoading(false);
-      isFetchingUsersRef.current = false;
+      if (requestId === latestUsersRequestRef.current) {
+        if (showLoading) setIsLoading(false);
+        isFetchingUsersRef.current = false;
+      }
     }
   }, [attendanceRoleFilter, currentPage, roleFilter, search, statusFilter]);
 
@@ -337,12 +341,18 @@ export default function AdminUsersPage() {
         return;
       }
 
-      setDeleteUser(null);
-      await fetchUsers();
       if (data.alreadyDeleted) {
+        setDeleteUser(null);
+        await fetchUsers(true, true);
         toast.info('Daftar Diperbarui', `Akun @${deleteUser.username} sudah tidak ditemukan.`);
       } else {
-        toast.success('Akun Dihapus', `Akun @${deleteUser.username} dan riwayat absensinya sudah dihapus.`);
+        setDeleteUser(null);
+        await fetchUsers(true, true);
+        const attendanceCount = Number(data.deletedAttendanceCount) || 0;
+        const attendanceMessage = attendanceCount > 0
+          ? `${attendanceCount} riwayat absensi ikut dihapus.`
+          : 'Tidak ada riwayat absensi tersimpan.';
+        toast.success('Akun Dihapus', `Akun @${deleteUser.username} berhasil dihapus. ${attendanceMessage}`);
       }
     } catch (error: unknown) {
       toast.error('Gagal Menghapus', error instanceof Error ? error.message : 'Terjadi kesalahan.');

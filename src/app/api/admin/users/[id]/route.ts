@@ -243,6 +243,7 @@ export async function DELETE(
     }
 
     const connection = await getDbPool().getConnection();
+    let deletedAttendanceCount = 0;
     try {
       await connection.beginTransaction();
 
@@ -272,7 +273,11 @@ export async function DELETE(
       await connection.query('DELETE FROM admin_inbox_notifications WHERE admin_id = ?', [userId]);
       await connection.query('DELETE FROM admin_attendance_inbox WHERE admin_id = ?', [userId]);
       await connection.query('DELETE FROM staff_warnings WHERE user_id = ?', [userId]);
-      await connection.query('DELETE FROM attendance WHERE user_id = ?', [userId]);
+      const [attendanceDeleteResult] = await connection.query(
+        'DELETE FROM attendance WHERE user_id = ?',
+        [userId]
+      );
+      deletedAttendanceCount = attendanceDeleteResult.affectedRows;
       await connection.query('DELETE FROM staff_admin_chat_messages WHERE sender_id = ?', [userId]);
 
       const [deleteResult] = await connection.query(
@@ -296,7 +301,11 @@ export async function DELETE(
       connection.release();
     }
 
-    return NextResponse.json({ success: true, message: 'Akun dan riwayat absensinya berhasil dihapus.' });
+    return NextResponse.json({
+      success: true,
+      message: 'Akun dan riwayat absensinya berhasil dihapus.',
+      deletedAttendanceCount,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Gagal menghapus akun.';
     console.error('[Admin User Delete Error]:', error);
