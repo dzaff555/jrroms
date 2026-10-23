@@ -67,10 +67,9 @@ export default function LoginPage() {
       {/* Left side: Premium Branding & Illustration (Desktop only) */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-[#0F2747] via-[#122B4F] to-[#1E3A8A] p-12 flex-col justify-between relative overflow-hidden text-white">
         <Image
-          src="/login-train-background.png"
+          src="/login-train-background.webp"
           alt=""
           fill
-          priority
           sizes="50vw"
           className="object-cover opacity-30"
         />
@@ -130,7 +129,7 @@ export default function LoginPage() {
       {/* Right side: Login Form */}
       <div className="relative isolate w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-10 lg:p-16 overflow-hidden">
         <Image
-          src="/login-train-background.png"
+          src="/login-train-background.webp"
           alt=""
           fill
           sizes="(max-width: 1023px) 100vw, 0px"

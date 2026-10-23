@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import Cropper from 'react-easy-crop';
+import dynamic from 'next/dynamic';
 import { Camera, Check, UserCircle2, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
+
+const Cropper = dynamic(() => import('react-easy-crop'), { ssr: false });
 
 interface CropArea {
   x: number;
@@ -130,12 +132,22 @@ export function ProfilePhotoField({ photo, onChange, error }: ProfilePhotoFieldP
                 image={cropSource}
                 crop={crop}
                 zoom={zoom}
+                rotation={0}
                 aspect={1}
+                minZoom={1}
+                maxZoom={3}
+                cropShape="rect"
+                zoomSpeed={1}
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
                 onCropComplete={(_area, areaPixels) => setCroppedArea(areaPixels)}
                 showGrid
                 restrictPosition
+                style={{}}
+                classes={{}}
+                mediaProps={{}}
+                cropperProps={{}}
+                keyboardStep={5}
               />
             )}
           </div>

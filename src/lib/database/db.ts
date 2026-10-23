@@ -17,7 +17,7 @@ const connectionString = parsedDatabaseUrl
     })()
   : undefined;
 
-const DATABASE_SCHEMA_VERSION = 2;
+const DATABASE_SCHEMA_VERSION = 3;
 let pool: Pool | null = null;
 let isInitialized = false;
 let initializationPromise: Promise<{ success: boolean; message: string }> | null = null;
@@ -170,6 +170,13 @@ async function ensureSchema(client: PoolClient) {
       schema_version SMALLINT NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS app_change_versions (
+      category VARCHAR(32) PRIMARY KEY,
+      version BIGINT NOT NULL DEFAULT 0
+    );
+    INSERT INTO app_change_versions (category) VALUES
+      ('users'), ('attendance'), ('warnings'), ('adminInbox'), ('taskData')
+    ON CONFLICT (category) DO NOTHING;
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       username VARCHAR(50) NOT NULL UNIQUE,
@@ -382,6 +389,35 @@ async function ensureSchema(client: PoolClient) {
       RETURN NEW;
     END;
     $$ LANGUAGE plpgsql;
+    CREATE OR REPLACE FUNCTION record_app_change() RETURNS TRIGGER AS $$
+    BEGIN
+      UPDATE app_change_versions
+      SET version = version + 1
+      WHERE category = TG_ARGV[0];
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS users_record_app_change ON users;
+    CREATE TRIGGER users_record_app_change AFTER INSERT OR UPDATE OR DELETE ON users
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('users');
+    DROP TRIGGER IF EXISTS attendance_record_app_change ON attendance;
+    CREATE TRIGGER attendance_record_app_change AFTER INSERT OR UPDATE OR DELETE ON attendance
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('attendance');
+    DROP TRIGGER IF EXISTS warnings_record_app_change ON staff_warnings;
+    CREATE TRIGGER warnings_record_app_change AFTER INSERT OR UPDATE OR DELETE ON staff_warnings
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('warnings');
+    DROP TRIGGER IF EXISTS admin_attendance_inbox_record_app_change ON admin_attendance_inbox;
+    CREATE TRIGGER admin_attendance_inbox_record_app_change AFTER INSERT OR UPDATE OR DELETE ON admin_attendance_inbox
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('adminInbox');
+    DROP TRIGGER IF EXISTS admin_inbox_notifications_record_app_change ON admin_inbox_notifications;
+    CREATE TRIGGER admin_inbox_notifications_record_app_change AFTER INSERT OR UPDATE OR DELETE ON admin_inbox_notifications
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('adminInbox');
+    DROP TRIGGER IF EXISTS developer_tasks_record_app_change ON developer_tasks;
+    CREATE TRIGGER developer_tasks_record_app_change AFTER INSERT OR UPDATE OR DELETE ON developer_tasks
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('taskData');
+    DROP TRIGGER IF EXISTS developer_task_files_record_app_change ON developer_task_files;
+    CREATE TRIGGER developer_task_files_record_app_change AFTER INSERT OR UPDATE OR DELETE ON developer_task_files
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('taskData');
     DROP TRIGGER IF EXISTS users_set_updated_at ON users;
     CREATE TRIGGER users_set_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
     DROP TRIGGER IF EXISTS attendance_settings_set_updated_at ON attendance_settings;
@@ -451,6 +487,7 @@ async function initializeDatabase(): Promise<{ success: boolean; message: string
   const client = await getRawPool().connect();
   try {
     await client.query('BEGIN');
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('jrroms'), hashtext('schema-init'))");
     await ensureSchema(client);
 
     if (process.env.SKIP_DATABASE_SEED !== 'true') {

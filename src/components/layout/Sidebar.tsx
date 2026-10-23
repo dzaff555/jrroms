@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
@@ -35,7 +36,7 @@ interface SidebarStaff {
 }
 
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 15_000;
-const SIDEBAR_REFRESH_INTERVAL_MS = 15_000;
+const SIDEBAR_REFRESH_INTERVAL_MS = 60_000;
 const ATTENDANCE_ROLE_ORDER = [
   'Pusat Kendali',
   'PPKA',
@@ -102,31 +103,26 @@ export function Sidebar({
     () => staffMembers.filter((staff) => staff.is_online === true || Number(staff.is_online) === 1).length,
     [staffMembers]
   );
-  const refreshStaff = React.useCallback(async (includePhotos = false) => {
+  const refreshStaff = React.useCallback(async () => {
     if (userId === undefined) return;
 
     try {
       const response = await fetch(
-        `/api/staff?all=true&includePhotos=${includePhotos}`,
+        '/api/staff?all=true&includePhotos=false',
         { cache: 'no-store' }
       );
       const data = await response.json();
       if (data.success) {
         setStaffCount(data.data.totalStaff);
-        setStaffMembers((current) => {
-          const currentPhotos = new Map(current.map((staff) => [staff.id, staff.profile_photo]));
-          return data.data.records.map((staff: SidebarStaff) => ({
-            ...staff,
-            profile_photo: includePhotos
-              ? staff.profile_photo
-              : currentPhotos.get(staff.id) ?? null,
-          }));
-        });
+        setStaffMembers(data.data.records.map((staff: SidebarStaff) => ({
+          ...staff,
+          profile_photo: staff.id === userId ? user?.profile_photo ?? null : null,
+        })));
       }
     } catch {
       setStaffCount(null);
     }
-  }, [userId]);
+  }, [user?.profile_photo, userId]);
   const refreshChatUnread = React.useCallback(async () => {
     if (userId === undefined) return;
 
@@ -144,14 +140,14 @@ export function Sidebar({
   const isCurrentStaff = (staff: SidebarStaff) =>
     staff.id === user?.id || staff.username === user?.username;
 
-  useAutoRefresh(() => void refreshStaff(true));
+  useAutoRefresh(() => void refreshStaff());
   useAutoRefresh(() => void refreshChatUnread());
 
   React.useEffect(() => {
     if (userId === undefined) return;
 
     const timer = window.setTimeout(() => {
-      void refreshStaff(true);
+      void refreshStaff();
       void refreshChatUnread();
     }, 0);
     return () => window.clearTimeout(timer);
@@ -241,9 +237,11 @@ export function Sidebar({
           className="flex min-w-0 items-center gap-2 group"
         >
           <div className={`flex h-10 shrink-0 items-center justify-center ${collapsed ? 'w-8' : 'w-16'}`}>
-            <img
+            <Image
               src="/jrr-logo.svg"
               alt="JRR"
+              width={64}
+              height={16}
               className={`object-contain ${collapsed ? 'h-3 w-8' : 'h-4 w-16'}`}
             />
           </div>

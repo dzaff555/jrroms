@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { ChatRoom } from '@/components/chat/ChatRoom';
+import { ChatRoomLoader } from '@/components/chat/ChatRoomLoader';
 import { getActiveSession } from '@/lib/auth/active-session';
 
 export default async function AdminChatPage() {
@@ -9,5 +9,5 @@ export default async function AdminChatPage() {
     redirect(active.role === 'DEVELOPER' ? '/developer/chat' : '/chat');
   }
 
-  return <ChatRoom currentUserId={active.session.id} currentUserRole={active.role} />;
+  return <ChatRoomLoader currentUserId={active.session.id} currentUserRole={active.role} />;
 }

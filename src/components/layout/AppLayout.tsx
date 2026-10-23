@@ -1,14 +1,22 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import dynamic from 'next/dynamic';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { AuthSession } from '@/types';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useToast } from '../ui/Toast';
 import { AutoRefresh } from '@/components/profile/AutoRefresh';
-import { ChatNotificationWatcher } from '@/components/chat/ChatNotificationWatcher';
-import { GroupCallControls } from '@/components/chat/GroupCallControls';
+
+const ChatNotificationWatcher = dynamic(
+  () => import('@/components/chat/ChatNotificationWatcher').then((module) => module.ChatNotificationWatcher),
+  { ssr: false }
+);
+const GroupCallControls = dynamic(
+  () => import('@/components/chat/GroupCallControls').then((module) => module.GroupCallControls),
+  { ssr: false }
+);
 
 export interface AppLayoutProps {
   children: React.ReactNode;
@@ -76,7 +84,6 @@ export function AppLayout({ children, user, showSidebar = true, showUserMenu = t
         <Header
           user={user}
           onMenuClick={() => setMobileOpen(true)}
-          collapsed={collapsed}
           showMenuButton={showSidebar}
           showUserMenu={showUserMenu}
         />

@@ -10,7 +10,6 @@ import {
   Settings,
   LogOut,
   ChevronDown,
-  Clock,
   Calendar,
   CheckCircle2,
   AlertTriangle,
@@ -20,11 +19,12 @@ import {
   Sun,
 } from 'lucide-react';
 import { AuthSession } from '@/types';
-import { formatIndonesianDate, formatIndonesianDateTime, getJakartaTimeString } from '@/lib/utils/date';
+import { formatIndonesianDate, formatIndonesianDateTime } from '@/lib/utils/date';
 import { useToast } from '../ui/Toast';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
+import { HeaderClock } from './HeaderClock';
 
 interface InboxWarning {
   id: number;
@@ -55,16 +55,13 @@ interface AdminInboxNotification {
 export interface HeaderProps {
   user: AuthSession | null;
   onMenuClick: () => void;
-  collapsed: boolean;
   showMenuButton?: boolean;
   showUserMenu?: boolean;
 }
 
-export function Header({ user, onMenuClick, collapsed, showMenuButton = true, showUserMenu = true }: HeaderProps) {
+export function Header({ user, onMenuClick, showMenuButton = true, showUserMenu = true }: HeaderProps) {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [currentTime, setCurrentTime] = useState<string>('');
-  const [currentDate, setCurrentDate] = useState<string>('');
   const [inboxWarnings, setInboxWarnings] = useState<InboxWarning[]>([]);
   const [unreadWarningCount, setUnreadWarningCount] = useState(0);
   const [inboxAttendances, setInboxAttendances] = useState<InboxAttendance[]>([]);
@@ -212,17 +209,6 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
     }
   };
 
-  // Update clock every second (WIB)
-  useEffect(() => {
-    const updateTime = () => {
-      setCurrentTime(getJakartaTimeString(new Date()) + ' WIB');
-      setCurrentDate(formatIndonesianDate(new Date()));
-    };
-    updateTime();
-    const timer = setInterval(updateTime, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -289,17 +275,7 @@ export function Header({ user, onMenuClick, collapsed, showMenuButton = true, sh
       {/* Right: Clock & User Profile */}
       <div className="flex items-center gap-2 sm:gap-4">
         {/* Live Jakarta Time Pill */}
-        <div className="hidden md:flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-slate-50 border border-slate-200/70 text-xs font-medium text-slate-600">
-          <div className="flex items-center gap-1.5 text-slate-500">
-            <Calendar className="w-3.5 h-3.5 text-blue-600" />
-            <span>{currentDate || 'Memuat tanggal...'}</span>
-          </div>
-          <span className="text-slate-300">|</span>
-          <div className="flex items-center gap-1.5 font-semibold text-slate-700">
-            <Clock className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
-            <span>{currentTime || '00:00:00 WIB'}</span>
-          </div>
-        </div>
+        <HeaderClock />
 
         <button
           type="button"
