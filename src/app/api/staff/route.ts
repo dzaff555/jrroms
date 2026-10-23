@@ -27,10 +27,14 @@ export async function GET(request: Request) {
       role: 'USER' | 'ADMIN' | 'DEVELOPER';
       attendance_role: string | null;
       profile_photo: string | null;
+      has_profile_photo: boolean;
+      profile_photo_version: Date | string;
       is_online: number | boolean;
     }[]>(
       `SELECT users.id, users.username, users.role, users.attendance_role,
-         ${includePhotos ? 'users.profile_photo' : 'NULL AS profile_photo'},
+         ${includePhotos ? 'users.profile_photo' : 'NULL::TEXT'} AS profile_photo,
+         users.profile_photo IS NOT NULL AS has_profile_photo,
+         users.updated_at AS profile_photo_version,
          CASE WHEN presence.last_seen_at >= CURRENT_TIMESTAMP - INTERVAL 30 SECOND THEN TRUE ELSE FALSE END AS is_online
        FROM users
        LEFT JOIN user_presence AS presence ON presence.user_id = users.id

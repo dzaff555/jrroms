@@ -25,13 +25,15 @@ import { AuthSession } from '@/types';
 import { useToast } from '../ui/Toast';
 import { useAutoRefresh } from '@/components/profile/AutoRefresh';
 import { ProtectedProfilePhoto } from '@/components/profile/ProtectedProfilePhoto';
+import { StaffProfilePhoto } from '@/components/profile/StaffProfilePhoto';
 
 interface SidebarStaff {
   id: number;
   username: string;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string;
-  profile_photo: string | null;
+  has_profile_photo: boolean;
+  profile_photo_version: string;
   is_online: boolean | number;
 }
 
@@ -356,10 +358,11 @@ export function Sidebar({
                 title={collapsed ? `${staff.username}${isCurrentStaff(staff) ? ' (Anda)' : ''} · ${staff.role === 'ADMIN' ? 'Administrator' : staff.role === 'DEVELOPER' ? 'Developer' : staff.attendance_role} · ${staff.is_online ? 'Online' : 'Offline'}` : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/8 hover:text-white ${collapsed ? 'justify-center px-0' : ''}`}
               >
-                {staff.profile_photo ? (
-                  <ProtectedProfilePhoto
-                    src={staff.profile_photo}
-                    alt={`Foto profil ${staff.username}`}
+                {staff.has_profile_photo ? (
+                  <StaffProfilePhoto
+                    userId={staff.id}
+                    username={staff.username}
+                    photoVersion={staff.profile_photo_version}
                     className="h-8 w-8 shrink-0 rounded-lg border border-white/10 object-cover"
                   />
                 ) : (
