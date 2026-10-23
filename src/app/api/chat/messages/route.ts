@@ -16,7 +16,6 @@ interface ChatAccessUser {
   id: number;
   username: string;
   real_name: string | null;
-  profile_photo: string | null;
   role: 'USER' | 'ADMIN' | 'DEVELOPER';
   attendance_role: string | null;
   status: 'ACTIVE' | 'DISABLED';
@@ -141,7 +140,7 @@ async function getChatUser({ allowDeveloper = false }: { allowDeveloper?: boolea
   if (!session) return { response: NextResponse.json({ success: false, error: 'Silakan masuk terlebih dahulu.' }, { status: 401 }) };
 
   const users = await query<ChatAccessUser[]>(
-    'SELECT id, username, real_name, profile_photo, role, attendance_role, status FROM users WHERE id = ? LIMIT 1',
+    'SELECT id, username, real_name, role, attendance_role, status FROM users WHERE id = ? LIMIT 1',
     [session.id]
   );
   const user = users[0];
@@ -556,7 +555,7 @@ export async function POST(request: Request) {
       sender_id: user.id,
       username: user.username,
       real_name: user.real_name,
-      profile_photo: user.profile_photo,
+      profile_photo: null,
       role: user.role,
       attendance_role: user.attendance_role,
       message,
@@ -617,7 +616,25 @@ export async function POST(request: Request) {
       },
     }, { status: 201 });
   } catch (error: unknown) {
-    console.error('[Chat messages POST Error]:', error);
-    return NextResponse.json({ success: false, error: 'Gagal mengirim pesan.' }, { status: 500 });
+    const errorCode =
+      typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+        ? error.code
+        : null;
+    console.error('[Chat messages POST Error]:', { errorCode, error });
+
+    const message = errorCode === '42P01' || errorCode === '42703'
+      ? 'Skema database chat belum lengkap. Jalankan ulang inisialisasi database, lalu coba lagi.'
+      : errorCode?.startsWith('08') || errorCode === '53300' || errorCode === '57P01'
+        ? 'Database sedang tidak tersedia. Tunggu sebentar, lalu coba kirim kembali.'
+        : errorCode === '23503'
+          ? 'Akun atau pesan yang dibalas sudah tidak valid. Muat ulang chat, lalu coba lagi.'
+          : errorCode
+            ? `Gagal mengirim pesan (kode ${errorCode}). Coba lagi atau hubungi administrator.`
+            : 'Gagal mengirim pesan. Coba lagi.';
+
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
+    );
   }
 }
