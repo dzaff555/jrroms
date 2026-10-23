@@ -8,11 +8,20 @@ export const AUTO_REFRESH_EVENT = 'app:auto-refresh';
 
 type UserRole = 'USER' | 'ADMIN' | 'DEVELOPER';
 
-function getRoleDestination(role: UserRole) {
+function getRoleDestination(role: UserRole, pathname: string) {
+  const isChatRoute = ['/chat', '/admin/chat', '/developer/chat'].includes(pathname);
+  if (isChatRoute) {
+    return role === 'ADMIN' ? '/admin/chat' : role === 'DEVELOPER' ? '/developer/chat' : '/chat';
+  }
+
   return role === 'ADMIN' ? '/admin/dashboard' : role === 'DEVELOPER' ? '/developer/tasks' : '/dashboard';
 }
 
 function isRoleRouteMismatch(role: UserRole, pathname: string) {
+  if (pathname === '/chat') return role !== 'USER';
+  if (pathname === '/admin/chat') return role !== 'ADMIN';
+  if (pathname === '/developer/chat') return role !== 'DEVELOPER';
+
   const isAdminRoute = pathname.startsWith('/admin');
   const isDeveloperRoute = pathname.startsWith('/developer');
   const isDashboardRoute = pathname === '/dashboard';
@@ -59,7 +68,7 @@ export function AutoRefresh() {
         const dataChanged = currentVersion !== null && currentVersion !== result.version;
 
         if (routeRoleMismatch) {
-          router.replace(getRoleDestination(result.role));
+          router.replace(getRoleDestination(result.role, currentPath));
         } else if (dataChanged) {
           router.refresh();
           window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));

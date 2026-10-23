@@ -8,35 +8,6 @@ export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(TOKEN_COOKIE_NAME)?.value;
   const session = token ? decodeJwtPayload(token) : null;
-  const isChatApiRoute = pathname === '/api/chat' || pathname.startsWith('/api/chat/');
-  if (isChatApiRoute) {
-    return Response.json(
-      { success: false, error: 'Fitur chat sedang dinonaktifkan.' },
-      { status: 410, headers: { 'Cache-Control': 'no-store' } }
-    );
-  }
-
-  const isChatPage =
-    pathname === '/chat' ||
-    pathname.startsWith('/chat/') ||
-    pathname === '/admin/chat' ||
-    pathname.startsWith('/admin/chat/') ||
-    pathname === '/developer/chat' ||
-    pathname.startsWith('/developer/chat/');
-  if (isChatPage) {
-    if (!session) {
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    const destination = pathname.startsWith('/admin/chat')
-      ? '/admin/dashboard'
-      : pathname.startsWith('/developer/chat')
-        ? '/developer/tasks'
-        : '/dashboard';
-    return NextResponse.redirect(new URL(destination, request.url));
-  }
 
   const isAdminRoute = pathname.startsWith('/admin');
   const isUserRoute =
@@ -70,7 +41,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/api/chat/:path*',
     /*
      * Match all request paths except for the ones starting with:
      * - api (API routes)
