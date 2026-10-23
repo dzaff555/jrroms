@@ -17,7 +17,7 @@ const connectionString = parsedDatabaseUrl
     })()
   : undefined;
 
-const DATABASE_SCHEMA_VERSION = 4;
+const DATABASE_SCHEMA_VERSION = 5;
 let pool: Pool | null = null;
 let isInitialized = false;
 let initializationPromise: Promise<{ success: boolean; message: string }> | null = null;
@@ -488,6 +488,41 @@ async function ensureSchema(client: PoolClient) {
       `ALTER TABLE staff_admin_chat_messages
        ALTER COLUMN ${column_name} SET DEFAULT FALSE`
     );
+  }
+
+  const profileCompletedColumn = await client.query<{ data_type: string }>(
+    `SELECT data_type
+     FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'users'
+       AND column_name = 'profile_completed'`
+  );
+  if (profileCompletedColumn.rows[0]?.data_type !== 'boolean') {
+    const invalidValues = await client.query(
+      `SELECT 1 FROM users
+       WHERE profile_completed IS NOT NULL
+         AND LOWER(profile_completed::text) NOT IN ('1', 'true', 't', 'yes', 'on', '0', 'false', 'f', 'no', 'off')
+       LIMIT 1`
+    );
+    if (invalidValues.rowCount) {
+      throw new Error('Cannot migrate users.profile_completed: unexpected boolean value.');
+    }
+
+    await client.query('ALTER TABLE users ALTER COLUMN profile_completed DROP DEFAULT');
+    await client.query(`
+      ALTER TABLE users
+      ALTER COLUMN profile_completed TYPE BOOLEAN
+      USING CASE
+        WHEN profile_completed IS NULL THEN FALSE
+        WHEN LOWER(profile_completed::text) IN ('1', 'true', 't', 'yes', 'on') THEN TRUE
+        ELSE FALSE
+      END
+    `);
+    await client.query(`
+      ALTER TABLE users
+      ALTER COLUMN profile_completed SET DEFAULT FALSE,
+      ALTER COLUMN profile_completed SET NOT NULL
+    `);
   }
 
   await client.query("INSERT INTO attendance_settings (id, mode) VALUES (1, 'AUTO') ON CONFLICT (id) DO NOTHING");
