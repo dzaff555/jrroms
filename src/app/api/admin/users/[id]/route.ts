@@ -252,7 +252,11 @@ export async function DELETE(
       );
       if (!Array.isArray(userRows) || userRows.length === 0) {
         await connection.rollback();
-        return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
+        return NextResponse.json({
+          success: true,
+          alreadyDeleted: true,
+          message: 'Akun sudah tidak ditemukan. Daftar pengguna dapat diperbarui.',
+        });
       }
 
       await connection.query('UPDATE staff_warnings SET issued_by = NULL WHERE issued_by = ?', [userId]);
@@ -277,7 +281,11 @@ export async function DELETE(
       );
       if (!('affectedRows' in deleteResult) || deleteResult.affectedRows !== 1) {
         await connection.rollback();
-        return NextResponse.json({ success: false, error: 'Pengguna tidak ditemukan.' }, { status: 404 });
+        return NextResponse.json({
+          success: true,
+          alreadyDeleted: true,
+          message: 'Akun sudah tidak ditemukan. Daftar pengguna dapat diperbarui.',
+        });
       }
 
       await connection.commit();

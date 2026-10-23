@@ -154,9 +154,22 @@ export async function POST(request: Request) {
       ? currentUser.attendance_role
       : 'CSOT';
 
+    const profileCompletedColumns = await query<{ data_type: string }[]>(
+      `SELECT data_type
+       FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = 'users'
+         AND column_name = 'profile_completed'`
+    );
+    const profileCompletedType = profileCompletedColumns[0]?.data_type;
+    if (profileCompletedType !== 'boolean' && profileCompletedType !== 'smallint') {
+      throw new Error(`Unsupported users.profile_completed column type: ${profileCompletedType ?? 'missing'}`);
+    }
+    const completedValue = profileCompletedType === 'boolean' ? 'TRUE' : '1';
+
     await query(
       `UPDATE users SET profile_photo = ?, attendance_role = ?, roblox_username = ?,
-       discord_username = ?, profile_completed = TRUE WHERE id = ?`,
+       discord_username = ?, profile_completed = ${completedValue} WHERE id = ?`,
       [profile_photo || null, attendanceRole, roblox_username, discord_username, session.id]
     );
 

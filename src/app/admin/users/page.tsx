@@ -81,6 +81,7 @@ export default function AdminUsersPage() {
   const [newAttendanceRole, setNewAttendanceRole] = useState<AttendanceRole>('CSOT');
   const [isUpdating, setIsUpdating] = useState(false);
   const isFetchingUsersRef = React.useRef(false);
+  const isDeletingUserRef = React.useRef(false);
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -325,7 +326,8 @@ export default function AdminUsersPage() {
   };
 
   const handleDeleteUser = async () => {
-    if (!deleteUser) return;
+    if (!deleteUser || isDeletingUserRef.current) return;
+    isDeletingUserRef.current = true;
     setIsUpdating(true);
     try {
       const res = await fetch(`/api/admin/users/${deleteUser.id}`, { method: 'DELETE' });
@@ -335,12 +337,17 @@ export default function AdminUsersPage() {
         return;
       }
 
-      toast.success('Akun Dihapus', `Akun @${deleteUser.username} dan riwayat absensinya sudah dihapus.`);
       setDeleteUser(null);
       await fetchUsers();
+      if (data.alreadyDeleted) {
+        toast.info('Daftar Diperbarui', `Akun @${deleteUser.username} sudah tidak ditemukan.`);
+      } else {
+        toast.success('Akun Dihapus', `Akun @${deleteUser.username} dan riwayat absensinya sudah dihapus.`);
+      }
     } catch (error: unknown) {
       toast.error('Gagal Menghapus', error instanceof Error ? error.message : 'Terjadi kesalahan.');
     } finally {
+      isDeletingUserRef.current = false;
       setIsUpdating(false);
     }
   };
