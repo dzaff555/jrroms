@@ -17,7 +17,7 @@ const connectionString = parsedDatabaseUrl
     })()
   : undefined;
 
-const DATABASE_SCHEMA_VERSION = 6;
+const DATABASE_SCHEMA_VERSION = 7;
 let pool: Pool | null = null;
 let isInitialized = false;
 let initializationPromise: Promise<{ success: boolean; message: string }> | null = null;
@@ -175,7 +175,7 @@ async function ensureSchema(client: PoolClient) {
       version BIGINT NOT NULL DEFAULT 0
     );
     INSERT INTO app_change_versions (category) VALUES
-      ('users'), ('attendance'), ('warnings'), ('adminInbox'), ('taskData')
+      ('users'), ('attendance'), ('warnings'), ('adminInbox'), ('taskData'), ('appData')
     ON CONFLICT (category) DO NOTHING;
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
@@ -419,6 +419,12 @@ async function ensureSchema(client: PoolClient) {
     DROP TRIGGER IF EXISTS developer_task_files_record_app_change ON developer_task_files;
     CREATE TRIGGER developer_task_files_record_app_change AFTER INSERT OR UPDATE OR DELETE ON developer_task_files
       FOR EACH ROW EXECUTE FUNCTION record_app_change('taskData');
+    DROP TRIGGER IF EXISTS developer_task_completions_record_app_change ON developer_task_completions;
+    CREATE TRIGGER developer_task_completions_record_app_change AFTER INSERT OR UPDATE OR DELETE ON developer_task_completions
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('taskData');
+    DROP TRIGGER IF EXISTS attendance_settings_record_app_change ON attendance_settings;
+    CREATE TRIGGER attendance_settings_record_app_change AFTER INSERT OR UPDATE OR DELETE ON attendance_settings
+      FOR EACH ROW EXECUTE FUNCTION record_app_change('appData');
     DROP TRIGGER IF EXISTS users_set_updated_at ON users;
     CREATE TRIGGER users_set_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
     DROP TRIGGER IF EXISTS attendance_settings_set_updated_at ON attendance_settings;

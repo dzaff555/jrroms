@@ -158,10 +158,12 @@ export function Sidebar({
   React.useEffect(() => {
     if (userId === undefined) return;
 
-    const sendPresenceHeartbeat = () => {
-      void fetch('/api/presence', { method: 'POST' }).catch((error: unknown) => {
+    const sendPresenceHeartbeat = async () => {
+      try {
+        await fetch('/api/presence', { method: 'POST' });
+      } catch (error: unknown) {
         console.error('[Sidebar Presence Heartbeat Error]:', error);
-      });
+      }
     };
     const refreshSidebarData = () => {
       if (document.visibilityState !== 'visible') return;
@@ -171,16 +173,24 @@ export function Sidebar({
     sendPresenceHeartbeat();
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
-      sendPresenceHeartbeat();
+      void sendPresenceHeartbeat();
       refreshSidebarData();
+    };
+    const handleOnline = () => {
+      void (async () => {
+        await sendPresenceHeartbeat();
+        refreshSidebarData();
+      })();
     };
     const presenceTimer = window.setInterval(sendPresenceHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
     const refreshTimer = window.setInterval(refreshSidebarData, SIDEBAR_REFRESH_INTERVAL_MS);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
     return () => {
       window.clearInterval(presenceTimer);
       window.clearInterval(refreshTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
     };
   }, [refreshChatUnread, refreshStaff, userId]);
 

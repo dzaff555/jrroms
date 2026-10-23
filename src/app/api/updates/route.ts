@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/auth';
 import { query } from '@/lib/database/db';
 
-const CHANGE_CATEGORIES = ['users', 'attendance', 'warnings', 'adminInbox', 'taskData'] as const;
+const CHANGE_CATEGORIES = ['users', 'attendance', 'warnings', 'adminInbox', 'taskData', 'appData'] as const;
 
 export async function GET() {
   try {

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { getLastCompletedAttendanceDate } from '@/lib/attendance/stats';
 
 const REFRESH_INTERVAL_MS = 30_000;
 export const AUTO_REFRESH_EVENT = 'app:auto-refresh';
@@ -45,13 +46,21 @@ export function AutoRefresh() {
 
   useEffect(() => {
     let currentVersion: string | null = null;
+    let lastCompletedAttendanceDate = getLastCompletedAttendanceDate();
     let isChecking = false;
 
-    const checkForChanges = async () => {
+    const refreshAllData = () => {
+      router.refresh();
+      window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
+    };
+
+    const checkForChanges = async (forceRefresh = false) => {
       if (document.visibilityState !== 'visible' || isChecking) return;
       isChecking = true;
 
       try {
+        const completedDate = getLastCompletedAttendanceDate();
+        const attendanceWindowClosed = completedDate !== lastCompletedAttendanceDate;
         const response = await fetch('/api/updates', { cache: 'no-store' });
         const result = await response.json();
         if (
@@ -69,10 +78,10 @@ export function AutoRefresh() {
 
         if (routeRoleMismatch) {
           router.replace(getRoleDestination(result.role, currentPath));
-        } else if (dataChanged) {
-          router.refresh();
-          window.dispatchEvent(new Event(AUTO_REFRESH_EVENT));
+        } else if (forceRefresh || dataChanged || attendanceWindowClosed) {
+          refreshAllData();
         }
+        lastCompletedAttendanceDate = completedDate;
         currentVersion = result.version;
       } catch (error: unknown) {
         console.error('Failed to check for data changes:', error);
@@ -85,11 +94,17 @@ export function AutoRefresh() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') void checkForChanges();
     };
+    const handleOnline = () => void checkForChanges(true);
+    const handleFocus = () => void checkForChanges();
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       window.clearInterval(intervalId);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [router]);
 
