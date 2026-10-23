@@ -17,7 +17,7 @@ const connectionString = parsedDatabaseUrl
     })()
   : undefined;
 
-const DATABASE_SCHEMA_VERSION = 3;
+const DATABASE_SCHEMA_VERSION = 4;
 let pool: Pool | null = null;
 let isInitialized = false;
 let initializationPromise: Promise<{ success: boolean; message: string }> | null = null;
@@ -450,6 +450,45 @@ async function ensureSchema(client: PoolClient) {
     ALTER TABLE chat_call_participants ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE chat_call_participants ADD COLUMN IF NOT EXISTS kicked_at TIMESTAMPTZ;
   `);
+
+  const chatBooleanColumns = await client.query<{ column_name: string; data_type: string }>(
+    `SELECT column_name, data_type
+     FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'staff_admin_chat_messages'
+       AND column_name IN ('is_sticker', 'is_voice_note')`
+  );
+  for (const { column_name, data_type } of chatBooleanColumns.rows) {
+    if (data_type === 'boolean') continue;
+
+    const invalidValues = await client.query(
+      `SELECT 1 FROM staff_admin_chat_messages
+       WHERE ${column_name} IS NOT NULL
+         AND LOWER(${column_name}::text) NOT IN ('1', 'true', 't', 'yes', 'on', '0', 'false', 'f', 'no', 'off')
+       LIMIT 1`
+    );
+    if (invalidValues.rowCount) {
+      throw new Error(`Cannot migrate staff_admin_chat_messages.${column_name}: unexpected boolean value.`);
+    }
+
+    await client.query(
+      `ALTER TABLE staff_admin_chat_messages
+       ALTER COLUMN ${column_name} DROP DEFAULT`
+    );
+    await client.query(
+      `ALTER TABLE staff_admin_chat_messages
+       ALTER COLUMN ${column_name} TYPE BOOLEAN
+       USING CASE
+         WHEN ${column_name} IS NULL THEN NULL
+         WHEN LOWER(${column_name}::text) IN ('1', 'true', 't', 'yes', 'on') THEN TRUE
+         ELSE FALSE
+       END`
+    );
+    await client.query(
+      `ALTER TABLE staff_admin_chat_messages
+       ALTER COLUMN ${column_name} SET DEFAULT FALSE`
+    );
+  }
 
   await client.query("INSERT INTO attendance_settings (id, mode) VALUES (1, 'AUTO') ON CONFLICT (id) DO NOTHING");
   await client.query(`
