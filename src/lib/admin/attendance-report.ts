@@ -113,15 +113,13 @@ function buildAttendanceReportQuery(filters: AttendanceReportFilters): Attendanc
     params.push(startDate, effectiveEndDate, startDate);
     fromSql = `
       FROM (
-        SELECT DATE_ADD(
-          CAST(? AS DATE),
-          INTERVAL (ones.digit + tens.digit * 10 + hundreds.digit * 100) DAY
-        ) AS report_date
+        SELECT CAST(? AS DATE) +
+          (ones.digit + tens.digit * 10 + hundreds.digit * 100) AS report_date
         FROM (${digitRows}) ones
         CROSS JOIN (${digitRows}) tens
         CROSS JOIN (${digitRows}) hundreds
         WHERE ones.digit + tens.digit * 10 + hundreds.digit * 100
-          <= DATEDIFF(CAST(? AS DATE), CAST(? AS DATE))
+          <= (CAST(? AS DATE) - CAST(? AS DATE))
       ) d
       JOIN users u ON u.role = 'USER' AND u.status = 'ACTIVE'
       LEFT JOIN attendance a ON a.user_id = u.id AND a.attendance_date = d.report_date
@@ -129,7 +127,7 @@ function buildAttendanceReportQuery(filters: AttendanceReportFilters): Attendanc
     whereConditions.push(
       'a.id IS NULL',
       'DAYOFWEEK(d.report_date) IN (1, 6, 7)',
-      '(DATE(u.created_at) < d.report_date OR (DATE(u.created_at) = d.report_date AND TIME(u.created_at) < \'18:00:00\'))'
+      "(DATE(u.created_at AT TIME ZONE 'Asia/Jakarta') < d.report_date OR (DATE(u.created_at AT TIME ZONE 'Asia/Jakarta') = d.report_date AND CAST(u.created_at AT TIME ZONE 'Asia/Jakarta' AS TIME) < TIME '18:00:00'))"
     );
   } else {
     fromSql = `

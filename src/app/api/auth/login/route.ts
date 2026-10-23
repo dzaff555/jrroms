@@ -14,13 +14,13 @@ export async function POST(request: Request) {
     if (!connCheck.connected) {
       const configError = connCheck.error?.startsWith('Production requires DATABASE_URL')
         ? connCheck.error
-        : connCheck.error?.startsWith('Production MySQL is configured to use localhost')
+        : connCheck.error?.startsWith('Production PostgreSQL is configured to use localhost')
           ? connCheck.error
           : connCheck.error?.startsWith('DB_SSL_MODE=required')
             ? connCheck.error
             : connCheck.error?.toLowerCase().includes('too many connections')
               ? 'Server database sedang mencapai batas koneksi. Coba lagi sebentar; jika masih gagal, restart deployment aplikasi.'
-              : 'Koneksi database MySQL gagal. Periksa DATABASE_URL dan konfigurasi SSL database pada environment server.';
+              : 'Koneksi database PostgreSQL gagal. Periksa DATABASE_URL dan konfigurasi SSL database pada environment server.';
 
       return NextResponse.json(
         {

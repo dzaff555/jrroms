@@ -24,60 +24,27 @@ async function getChangeFingerprint() {
   const fingerprintPromise = (async () => {
     const [users, attendance, warnings, adminInbox, taskData] = await Promise.all([
       query<ChangeFingerprint[]>(
-        `SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
-           COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, username, COALESCE(real_name, ''),
-             role, status, COALESCE(attendance_role, ''), COALESCE(CRC32(profile_photo), 0),
-             COALESCE(roblox_username, ''), COALESCE(discord_username, ''),
-             profile_completed, COALESCE(DATE_FORMAT(absence_reset_date, '%Y%m%d'), ''),
-             COALESCE(DATE_FORMAT(updated_at, '%Y%m%d%H%i%s.%f'), '')))), 0)
-         ) AS users
-         FROM users`
+        `SELECT COALESCE(md5(string_agg(to_jsonb(u)::text, ',' ORDER BY u.id)), md5('')) AS users
+         FROM users u`
       ),
       query<ChangeFingerprint[]>(
-        `SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
-           COALESCE(SUM(created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR), 0),
-           COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, user_id, name, attendance_role,
-             discord_username, roblox_username, attendance_date, attendance_time, status))), 0)
-         ) AS attendance
-         FROM attendance`
+        `SELECT COALESCE(md5(string_agg(to_jsonb(a)::text, ',' ORDER BY a.id)), md5('')) AS attendance
+         FROM attendance a`
       ),
       query<ChangeFingerprint[]>(
-        `SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
-           COALESCE(SUM(created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR), 0),
-           COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, user_id, COALESCE(issued_by, 0),
-             reason, COALESCE(DATE_FORMAT(read_at, '%Y%m%d%H%i%s.%f'), '')))), 0)
-         ) AS warnings
-         FROM staff_warnings`
+        `SELECT COALESCE(md5(string_agg(to_jsonb(w)::text, ',' ORDER BY w.id)), md5('')) AS warnings
+         FROM staff_warnings w`
       ),
       query<ChangeFingerprint[]>(
-        `SELECT CONCAT_WS(':',
-           (SELECT CONCAT_WS(':', COUNT(*),
-             COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', admin_id, read_through_id))), 0))
-            FROM admin_attendance_inbox),
-           (SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
-             COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', admin_id, event_key, title, message,
-               COALESCE(DATE_FORMAT(read_at, '%Y%m%d%H%i%s.%f'), '')))), 0))
-            FROM admin_inbox_notifications),
-           (SELECT COUNT(*) FROM admin_inbox_notifications
-            WHERE created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR),
-           (SELECT COUNT(*) FROM attendance a
-            JOIN users u ON u.id = a.user_id
-            WHERE u.role = 'USER' AND a.status = 'Hadir'
-              AND a.created_at > CURRENT_TIMESTAMP - INTERVAL 24 HOUR)
+        `SELECT md5(
+           (SELECT COALESCE(string_agg(to_jsonb(i)::text, ',' ORDER BY i.admin_id), '') FROM admin_attendance_inbox i)
+           || (SELECT COALESCE(string_agg(to_jsonb(n)::text, ',' ORDER BY n.id), '') FROM admin_inbox_notifications n)
          ) AS adminInbox`
       ),
       query<ChangeFingerprint[]>(
-        `SELECT CONCAT_WS(':',
-           (SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
-             COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, title, description, category,
-               file_required, starts_on, ends_on,
-               DATE_FORMAT(updated_at, '%Y%m%d%H%i%s.%f')))), 0))
-            FROM developer_tasks),
-           (SELECT CONCAT_WS(':', COUNT(*), COALESCE(MAX(id), 0),
-             COALESCE(BIT_XOR(CRC32(CONCAT_WS('|', id, task_id, developer_id,
-               original_name, byte_size, status,
-               COALESCE(DATE_FORMAT(uploaded_at, '%Y%m%d%H%i%s.%f'), '')))), 0))
-            FROM developer_task_files)
+        `SELECT md5(
+           (SELECT COALESCE(string_agg(to_jsonb(t)::text, ',' ORDER BY t.id), '') FROM developer_tasks t)
+           || (SELECT COALESCE(string_agg(to_jsonb(f)::text, ',' ORDER BY f.id), '') FROM developer_task_files f)
          ) AS taskData`
       ),
     ]);

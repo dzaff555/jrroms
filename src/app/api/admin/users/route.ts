@@ -161,7 +161,7 @@ export async function POST(request: Request) {
 
     const result = await query<{ insertId: number }>(
       `INSERT INTO users (username, real_name, email, password, role, status, attendance_role, profile_completed)
-       VALUES (?, ?, NULL, ?, ?, 'ACTIVE', ?, FALSE)`,
+       VALUES (?, ?, NULL, ?, ?, 'ACTIVE', ?, FALSE) RETURNING id`,
       [username, realName || null, await hashPassword(password), role, storedAttendanceRole]
     );
 

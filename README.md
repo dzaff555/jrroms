@@ -1,39 +1,33 @@
 # Daily Attendance
 
-## Production deployment: Railway
+## Production deployment: Neon PostgreSQL
 
-- **Railway** runs the Next.js app; the MySQL database can be hosted by a separate provider.
-- The browser calls same-origin `/api/*` endpoints, so no separate API URL or CORS setup is needed.
-
-### Railway setup
-
-Configure the following variables in the Railway app service:
+The app uses PostgreSQL. In Vercel or Railway, configure these variables on the
+server-side app service:
 
 | Variable | Value |
 | --- | --- |
-| `DATABASE_URL` | MySQL connection URL, including host, port, username, password, and database name |
+| `DATABASE_URL` | Neon PostgreSQL connection URL (`postgresql://...`) |
 | `JWT_SECRET` | A long, random secret unique to this deployment |
 | `JWT_EXPIRES_IN` | `7d` |
 | `NEXT_PUBLIC_APP_NAME` | `Daily Attendance` |
 | `ADMIN_USERNAME` | Initial admin username |
 | `ADMIN_EMAIL` | Initial admin email |
 | `ADMIN_PASSWORD` | A strong initial admin password |
-| `UPLOAD_DIR` | `/app/uploads`, matching the Railway persistent Volume mount path |
 
-Attach a Railway Volume to the **app service**, mounted at `/app/uploads`, and set
-`UPLOAD_DIR=/app/uploads`. The volume preserves task files across deploys and restarts.
-Without it, uploaded files on the container filesystem may be lost. Keep
-`DATABASE_URL`, `JWT_SECRET`, and passwords server-side; never prefix them with
-`NEXT_PUBLIC_`.
+Copy `DATABASE_URL` from Neon’s **Connect** panel. The URL contains the host,
+port, database, and credentials, so those do not need separate app settings.
+Keep it and other secrets server-side; never prefix them with `NEXT_PUBLIC_`.
+The app verifies TLS certificates when connecting with a URL.
 
-Set `DATABASE_URL` to the database provider's connection URL and URL-encode any
-reserved characters in the username or password. For providers that require SSL,
-add `?ssl-mode=REQUIRED` to `DATABASE_URL`. The trusted provider CA certificate
-is bundled with the server-side app, so it does not need a separate environment
-variable. The app verifies the database certificate and uses the database name
-in the URL.
-On first initialization, it creates the tables if needed; it only attempts to create
-the database when the URL does not already select one.
+To prepare a new Neon database, run `npm run db:setup` with `DATABASE_URL` set.
+This creates or updates the schema without dropping tables or seeding demo
+accounts. The app initializes its schema on startup as well.
+
+The browser calls same-origin `/api/*` endpoints, so no separate API URL or CORS
+setup is needed. If running on Railway, attach a persistent Volume for uploaded
+task files and set `UPLOAD_DIR` to its mount path. Vercel’s local filesystem is
+ephemeral, so uploads need persistent external storage there.
 
 The **Lupa Password** form does not send email. It verifies the username and current
 password, then saves the new password after confirmation. `NEXT_PUBLIC_APP_URL` is
@@ -57,11 +51,10 @@ when the app initializes the database.
 Admins also receive inbox notifications when a user records a new attendance;
 notifications are checked every 30 seconds and can be marked read from the bell menu.
 
-Developer task files upload directly to the Railway app and stream onto its
-persistent Volume; the app does not buffer whole files in memory. Files may use any
-format, up to 1 GB each, and are only downloadable by Admins through the authenticated
-app.
-Chat photos (up to 5 MB) are stored in MySQL so they are available across app
+Developer task files stream to `UPLOAD_DIR`; the app does not buffer whole files
+in memory. Files may use any format, up to 1 GB each, and are only downloadable by
+Admins through the authenticated app.
+Chat photos (up to 5 MB) are stored in PostgreSQL so they are available across app
 instances and user devices; older photos stored only on a local app filesystem still
 require that original upload storage to remain available.
 
@@ -70,16 +63,33 @@ system role. Developer accounts do not have daily attendance and are not counted
 in attendance statistics or absence reports. They can see tasks published from
 **Tugas Developer** in the sidebar.
 
+## Migrating existing MySQL data to Neon
+
+Run the migration from a machine that can connect to both the existing MySQL
+database and the empty Neon database. First prepare Neon with `npm run db:setup`,
+then configure the source using either `MYSQL_URL` or `MYSQL_HOST`, `MYSQL_PORT`,
+`MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE`. Set `DATABASE_URL` to the
+Neon URL and run:
+
+```bash
+npm run db:migrate:mysql
+```
+
+The migration copies supported application tables and IDs, preserves binary
+values, and advances PostgreSQL sequences. It does not modify MySQL. The Neon
+tables must be empty (apart from setup defaults); the script refuses to migrate
+over existing application data, and the copy is transactional. Keep both
+connection strings in local environment variables or an untracked `.env` file;
+never commit or paste credentials into source control or logs.
+
 ## Local development
 
-Make a local `.env` file with MySQL connection settings in `DATABASE_URL`, plus
-the JWT and admin settings above. For local Developer task uploads, set
-`UPLOAD_DIR` to a local directory.
-Do not commit `.env` or share its secrets. `npm run db:setup` imports the bundled
-SQL dump by dropping existing tables, so set `DB_ALLOW_RESET=true` only when you
-intentionally want to replace the selected database contents.
+Set `DATABASE_URL` to a PostgreSQL URL in `.env` (Neon can be used for development),
+plus the JWT and admin settings above. For local Developer task uploads, set
+`UPLOAD_DIR` to a local directory. Do not commit `.env` or share its secrets.
+`npm run db:setup` creates the schema; it does not import a dump or drop tables.
 
-Make sure MySQL is reachable, then run:
+Then run:
 
 ```bash
 npm install

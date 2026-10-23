@@ -60,12 +60,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Nama grup wajib diisi.' }, { status: 400 });
     }
 
-    const result = await query<{ insertId: number }[]>(
-      'INSERT INTO chat_groups (name, description, created_by) VALUES (?, ?, ?)',
+    const result = await query<{ insertId: number }>(
+      'INSERT INTO chat_groups (name, description, created_by) VALUES (?, ?, ?) RETURNING id',
       [name, description || null, session.id]
     );
 
-    const groupId = result[0]?.insertId ?? 0;
+    const groupId = result.insertId;
     if (groupId) {
       await query('INSERT IGNORE INTO chat_group_members (group_id, user_id) VALUES (?, ?)', [groupId, session.id]);
     }

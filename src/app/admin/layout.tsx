@@ -28,7 +28,7 @@ export default async function AdminLayout({
       [session.id]
     );
   } catch (error) {
-    console.error('[Admin Layout] Failed to load the administrator session from MySQL.', error);
+    console.error('[Admin Layout] Failed to load the administrator session from PostgreSQL.', error);
     return <DatabaseUnavailable />;
   }
   const admin = users[0];

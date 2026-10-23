@@ -1,624 +1,542 @@
-import mysql from 'mysql2/promise';
+import { Pool, types, type PoolClient, type QueryResult } from 'pg';
 import bcrypt from 'bcryptjs';
-import aivenCa from './aiven-ca.json' with { type: 'json' };
 
 const DATABASE_URL = process.env.DATABASE_URL?.trim();
 const parsedDatabaseUrl = DATABASE_URL ? new URL(DATABASE_URL) : null;
-const DB_SSL_MODE = (
-  parsedDatabaseUrl?.searchParams.get('ssl-mode') || process.env.DB_SSL_MODE || ''
-).trim().toLowerCase();
-const DB_SSL_CA = aivenCa.certificate;
 
-if (parsedDatabaseUrl && parsedDatabaseUrl.protocol !== 'mysql:') {
-  throw new Error('DATABASE_URL must use the mysql:// protocol.');
+if (parsedDatabaseUrl && !['postgres:', 'postgresql:'].includes(parsedDatabaseUrl.protocol)) {
+  throw new Error('DATABASE_URL must use the postgres:// or postgresql:// protocol.');
 }
 
-const DB_CONFIG: mysql.ConnectionOptions = {
-  ...(parsedDatabaseUrl
-    ? {
-      host: parsedDatabaseUrl.hostname,
-      port: Number(parsedDatabaseUrl.port || 3306),
-      user: decodeURIComponent(parsedDatabaseUrl.username),
-      password: decodeURIComponent(parsedDatabaseUrl.password),
-      database: decodeURIComponent(parsedDatabaseUrl.pathname.replace(/^\/+/, '')),
-    }
-    : {
-      host: process.env.DB_HOST || (process.env.NODE_ENV === 'production' ? '' : 'localhost'),
-      port: parseInt(process.env.DB_PORT || '3306', 10),
-      user: process.env.DB_USER || (process.env.NODE_ENV === 'production' ? '' : 'root'),
-      password: process.env.DB_PASSWORD || '',
-    }),
-  ...(DB_SSL_MODE === 'required'
-    ? { ssl: { ca: DB_SSL_CA, rejectUnauthorized: true } }
-    : {}),
-};
+const connectionString = parsedDatabaseUrl
+  ? (() => {
+      const url = new URL(parsedDatabaseUrl);
+      url.searchParams.delete('sslmode');
+      url.searchParams.delete('channel_binding');
+      return url.toString();
+    })()
+  : undefined;
 
-const DB_NAME = DB_CONFIG.database || process.env.DB_NAME || 'defaultdb';
-// Increment when changing the schema so existing deployments run new migrations.
-const DATABASE_SCHEMA_VERSION = 1;
-
-let pool: mysql.Pool | null = null;
+const DATABASE_SCHEMA_VERSION = 2;
+let pool: Pool | null = null;
 let isInitialized = false;
 let initializationPromise: Promise<{ success: boolean; message: string }> | null = null;
 
+types.setTypeParser(20, (value) => Number(value));
+
+type CompatibleQueryResult = QueryResult & { affectedRows: number };
+type CompatibleConnection = {
+  beginTransaction: () => Promise<void>;
+  commit: () => Promise<void>;
+  rollback: () => Promise<void>;
+  query: (sql: string, params?: unknown[]) => Promise<[CompatibleQueryResult]>;
+  release: () => void;
+};
+type CompatiblePool = {
+  query: (sql: string, params?: unknown[]) => Promise<[CompatibleQueryResult]>;
+  getConnection: () => Promise<CompatibleConnection>;
+  end: () => Promise<void>;
+};
+
 function getDatabaseConfigurationError(): string | null {
-  const host = String(DB_CONFIG.host || '').toLowerCase();
-  const isLoopbackHost = ['localhost', '127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(host);
-
-  if (process.env.NODE_ENV === 'production' && !parsedDatabaseUrl) {
-    return 'Production requires DATABASE_URL. Set your remote MySQL connection URL in the hosting provider environment settings, then redeploy.';
+  if (!DATABASE_URL && process.env.NODE_ENV === 'production') {
+    return 'Production requires DATABASE_URL. Set your Neon PostgreSQL connection URL in the hosting provider environment settings, then redeploy.';
   }
-
-  if (process.env.NODE_ENV === 'production' && isLoopbackHost) {
-    return 'Production MySQL is configured to use localhost. Set DATABASE_URL to your remote MySQL connection URL in your hosting provider environment settings, then redeploy.';
+  if (
+    process.env.NODE_ENV === 'production' &&
+    parsedDatabaseUrl &&
+    ['localhost', '127.0.0.1', '::1'].includes(parsedDatabaseUrl.hostname.toLowerCase())
+  ) {
+    return 'Production PostgreSQL is configured to use localhost. Set DATABASE_URL to your Neon connection URL, then redeploy.';
   }
-
-  if (DB_SSL_MODE === 'required' && !DB_CONFIG.ssl) {
-    return 'DATABASE_URL requests required SSL, but the trusted database CA is unavailable.';
-  }
-
   return null;
 }
 
-async function ensureColumns(
-  dbPool: mysql.Pool,
-  migrations: {
-    table: 'users' | 'attendance' | 'staff_warnings' | 'staff_admin_chat_messages' | 'chat_call_participants';
-    column: string;
-    definition: string;
-  }[]
-) {
-  const columnConditions = migrations
-    .map(() => '(TABLE_NAME = ? AND COLUMN_NAME = ?)')
-    .join(' OR ');
-  const columnParams = migrations.flatMap(({ table, column }) => [table, column]);
-  const [existingColumns] = await dbPool.query<mysql.RowDataPacket[]>(
-    `SELECT TABLE_NAME, COLUMN_NAME
-     FROM INFORMATION_SCHEMA.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE() AND (${columnConditions})`,
-    columnParams
-  );
-  const existingColumnKeys = new Set(
-    existingColumns.map((column) => `${column.TABLE_NAME}.${column.COLUMN_NAME}`)
-  );
-
-  for (const migration of migrations) {
-    if (existingColumnKeys.has(`${migration.table}.${migration.column}`)) continue;
-
-    try {
-      await dbPool.query(
-        `ALTER TABLE \`${migration.table}\` ADD COLUMN \`${migration.column}\` ${migration.definition}`
-      );
-    } catch (error) {
-      const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
-      if (code !== 'ER_DUP_FIELDNAME') throw error;
-    }
-  }
-}
-
-async function ensureChatDeletedAtIndex(dbPool: mysql.Pool) {
-  const [indexes] = await dbPool.query<mysql.RowDataPacket[]>(
-    'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
-    ['staff_admin_chat_messages', 'idx_staff_admin_chat_deleted_at']
-  );
-
-  if (indexes.length > 0) return;
-
-  try {
-    await dbPool.query(
-      'CREATE INDEX idx_staff_admin_chat_deleted_at ON staff_admin_chat_messages (deleted_at)'
-    );
-  } catch (error) {
-    const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
-    if (code !== 'ER_DUP_KEYNAME') throw error;
-  }
-}
-
-async function ensureChatReplySchema(dbPool: mysql.Pool) {
-  const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
-    'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-    ['staff_admin_chat_messages', 'reply_to_id']
-  );
-  if (columns.length === 0) {
-    await dbPool.query(
-      'ALTER TABLE staff_admin_chat_messages ADD COLUMN reply_to_id BIGINT UNSIGNED NULL AFTER sender_id'
-    );
-  }
-
-  const [indexes] = await dbPool.query<mysql.RowDataPacket[]>(
-    'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
-    ['staff_admin_chat_messages', 'idx_staff_admin_chat_reply_to']
-  );
-  if (indexes.length === 0) {
-    await dbPool.query(
-      'CREATE INDEX idx_staff_admin_chat_reply_to ON staff_admin_chat_messages (reply_to_id)'
-    );
-  }
-
-  const [constraints] = await dbPool.query<mysql.RowDataPacket[]>(
-    'SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?',
-    ['staff_admin_chat_messages', 'fk_staff_admin_chat_reply_to']
-  );
-  if (constraints.length === 0) {
-    await dbPool.query(`
-      ALTER TABLE staff_admin_chat_messages
-      ADD CONSTRAINT fk_staff_admin_chat_reply_to
-      FOREIGN KEY (reply_to_id) REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL
-    `);
-  }
-}
-
-async function ensureProfilePhotoCapacity(dbPool: mysql.Pool) {
-  const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
-    'SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-    ['users', 'profile_photo']
-  );
-  const dataType = String(columns[0]?.DATA_TYPE || '').toLowerCase();
-
-  if (dataType && dataType !== 'mediumtext' && dataType !== 'longtext') {
-    await dbPool.query('ALTER TABLE users MODIFY COLUMN profile_photo LONGTEXT NULL');
-  }
-}
-
-async function ensureEmailIsOptional(dbPool: mysql.Pool) {
-  const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
-    'SELECT IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-    ['users', 'email']
-  );
-
-  if (columns[0]?.IS_NULLABLE === 'NO') {
-    await dbPool.query('ALTER TABLE users MODIFY COLUMN email VARCHAR(100) NULL');
-  }
-}
-
-async function ensureDeveloperRole(dbPool: mysql.Pool) {
-  const [columns] = await dbPool.query<mysql.RowDataPacket[]>(
-    'SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-    ['users', 'role']
-  );
-
-  if (!String(columns[0]?.COLUMN_TYPE || '').includes("'DEVELOPER'")) {
-    await dbPool.query(
-      "ALTER TABLE users MODIFY COLUMN role ENUM('USER', 'ADMIN', 'DEVELOPER') NOT NULL DEFAULT 'USER'"
-    );
-  }
-}
-
-export function getDbPool(): mysql.Pool {
+function getRawPool(): Pool {
   if (!pool) {
-    pool = mysql.createPool({
-      ...DB_CONFIG,
-      database: DB_NAME,
-      waitForConnections: true,
-      connectionLimit: process.env.VERCEL ? 1 : 2,
-      maxIdle: process.env.VERCEL ? 0 : 2,
-      idleTimeout: process.env.VERCEL ? 1000 : 60000,
-      queueLimit: 0,
-      enableKeepAlive: true,
-      keepAliveInitialDelay: 0,
+    pool = new Pool({
+      ...(connectionString ? { connectionString, ssl: { rejectUnauthorized: true } } : {}),
+      host: process.env.DB_HOST || 'localhost',
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
+      user: process.env.DB_USER || process.env.USER || 'postgres',
+      password: process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME || 'defaultdb',
+      max: process.env.VERCEL ? 1 : 5,
+      idleTimeoutMillis: process.env.VERCEL ? 1_000 : 60_000,
+      connectionTimeoutMillis: 10_000,
     });
   }
   return pool;
 }
 
-async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
-  try {
-    const configurationError = getDatabaseConfigurationError();
-    if (configurationError) {
-      console.error(`[MySQL Configuration Error] ${configurationError}`);
-      return { success: false, message: configurationError };
-    }
+function compatibleResult(result: QueryResult): CompatibleQueryResult {
+  return Object.assign(result, { affectedRows: result.rowCount ?? 0 });
+}
 
-    if (!DB_CONFIG.database) {
-      const adminConn = await mysql.createConnection({ ...DB_CONFIG, database: undefined });
-      try {
-        await adminConn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-      } finally {
-        await adminConn.end();
+export function getDbPool(): CompatiblePool {
+  const rawPool = getRawPool();
+  return {
+    query: async (sql, params = []) => {
+      const [statement, values] = toPostgresStatement(sql, params);
+      return [compatibleResult(await rawPool.query(statement, values))];
+    },
+    getConnection: async () => {
+      const client = await rawPool.connect();
+      return {
+        beginTransaction: async () => { await client.query('BEGIN'); },
+        commit: async () => { await client.query('COMMIT'); },
+        rollback: async () => { await client.query('ROLLBACK'); },
+        query: async (sql, params = []) => {
+          const [statement, values] = toPostgresStatement(sql, params);
+          return [compatibleResult(await client.query(statement, values))];
+        },
+        release: () => client.release(),
+      };
+    },
+    end: () => rawPool.end(),
+  };
+}
+
+function toPostgresStatement(sql: string, params: unknown[]): [string, unknown[]] {
+  const ignoreConflicts = /^\s*INSERT\s+IGNORE\s+INTO/i.test(sql);
+  let statement = toPostgresSql(sql).trim().replace(/;$/, '');
+  if (ignoreConflicts && !/\bON\s+CONFLICT\b/i.test(statement)) {
+    const returningIndex = statement.search(/\s+RETURNING\b/i);
+    if (returningIndex === -1) {
+      statement += ' ON CONFLICT DO NOTHING';
+    } else {
+      statement = `${statement.slice(0, returningIndex)} ON CONFLICT DO NOTHING${statement.slice(returningIndex)}`;
+    }
+  }
+  return [statement, params];
+}
+
+function toPostgresSql(sql: string): string {
+  let parameterIndex = 0;
+  let result = '';
+  let quote: "'" | '"' | '`' | null = null;
+
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index];
+    if (quote) {
+      result += character;
+      if (character === quote) {
+        if (sql[index + 1] === quote) {
+          result += sql[index + 1];
+          index += 1;
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character === '`' ? '"' : character;
+      result += quote;
+      continue;
+    }
+    if (character === '?') {
+      parameterIndex += 1;
+      result += `$${parameterIndex}`;
+    } else {
+      result += character;
+    }
+  }
+  return result
+    .replace(/DATE_FORMAT\(/gi, 'TO_CHAR(')
+    .replace(/TIME_FORMAT\(/gi, 'TO_CHAR(')
+    .replace(/'%Y/g, "'YYYY")
+    .replace(/%Y/g, 'YYYY')
+    .replace(/%m/g, 'MM')
+    .replace(/%d/g, 'DD')
+    .replace(/%H/g, 'HH24')
+    .replace(/%i/g, 'MI')
+    .replace(/%s/g, 'SS')
+    .replace(/%f/g, 'US')
+    .replace(/INSERT\s+IGNORE\s+INTO/gi, 'INSERT INTO')
+    .replace(/NOW\(\)/gi, 'CURRENT_TIMESTAMP')
+    .replace(/CONVERT_TZ\(([^,()]+),\s*(?:@@session\.time_zone|'UTC'),\s*'\+07:00'\)/gi, "($1 AT TIME ZONE 'Asia/Jakarta')")
+    .replace(/@@session\.time_zone/gi, "'UTC'")
+    .replace(/DAYOFWEEK\(([^()]*)\)/gi, '(EXTRACT(DOW FROM $1)::INTEGER + 1)')
+    .replace(/INTERVAL\s+(\d+)\s+(SECOND|MINUTE|HOUR|DAY)\b/gi, "INTERVAL '$1 $2'")
+    .replace(/DATE_SUB\((CURRENT_TIMESTAMP|[\w.]+),\s*(INTERVAL\s+'[^']+')\)/gi, '$1 - $2')
+    .replace(/LOCATE\((LOWER\(\$[0-9]+\)),\s*(LOWER\([^)]*\))\)\s*>\s*0/gi, 'POSITION($1 IN $2) > 0');
+}
+
+async function ensureSchema(client: PoolClient) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS app_schema_meta (
+      id SMALLINT PRIMARY KEY CHECK (id = 1),
+      schema_version SMALLINT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(50) NOT NULL UNIQUE,
+      real_name VARCHAR(100),
+      nip VARCHAR(50),
+      email VARCHAR(100) UNIQUE,
+      password VARCHAR(255) NOT NULL,
+      role VARCHAR(16) NOT NULL DEFAULT 'USER' CHECK (role IN ('USER', 'ADMIN', 'DEVELOPER')),
+      status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'DISABLED')),
+      attendance_role VARCHAR(40) NOT NULL DEFAULT 'CSOT',
+      absence_reset_date DATE,
+      profile_photo TEXT,
+      roblox_username VARCHAR(100),
+      discord_username VARCHAR(100),
+      profile_completed BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token VARCHAR(255) NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+    CREATE TABLE IF NOT EXISTS attendance (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name VARCHAR(100) NOT NULL,
+      attendance_role VARCHAR(40) NOT NULL DEFAULT 'CSOT',
+      discord_username VARCHAR(100) NOT NULL,
+      roblox_username VARCHAR(100) NOT NULL,
+      attendance_date DATE NOT NULL,
+      attendance_time TIME NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'Hadir',
+      attendance_reason VARCHAR(1000),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT unique_user_daily_attendance UNIQUE (user_id, attendance_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(attendance_date);
+    CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance(user_id, attendance_date);
+    CREATE TABLE IF NOT EXISTS attendance_settings (
+      id SMALLINT PRIMARY KEY CHECK (id = 1),
+      mode VARCHAR(8) NOT NULL DEFAULT 'AUTO' CHECK (mode IN ('AUTO', 'MANUAL')),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS staff_warnings (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      issued_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      reason VARCHAR(1000) NOT NULL,
+      read_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_warnings_user_created ON staff_warnings(user_id, created_at);
+    CREATE TABLE IF NOT EXISTS admin_attendance_inbox (
+      admin_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      read_through_id INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS admin_inbox_notifications (
+      id SERIAL PRIMARY KEY,
+      admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      event_key VARCHAR(100) NOT NULL,
+      title VARCHAR(180) NOT NULL,
+      message VARCHAR(1000) NOT NULL,
+      read_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT unique_admin_inbox_event UNIQUE (admin_id, event_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_admin_inbox_notifications_created ON admin_inbox_notifications(admin_id, created_at);
+    CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
+      id BIGSERIAL PRIMARY KEY,
+      sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reply_to_id BIGINT REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL,
+      message VARCHAR(2000) NOT NULL,
+      image_path VARCHAR(255),
+      image_type VARCHAR(50),
+      image_data BYTEA,
+      drawing_data TEXT,
+      is_sticker BOOLEAN NOT NULL DEFAULT FALSE,
+      is_voice_note BOOLEAN NOT NULL DEFAULT FALSE,
+      audio_duration_seconds INTEGER NOT NULL DEFAULT 0,
+      deleted_at TIMESTAMPTZ,
+      deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_staff_admin_chat_sender ON staff_admin_chat_messages(sender_id);
+    CREATE INDEX IF NOT EXISTS idx_staff_admin_chat_deleted_at ON staff_admin_chat_messages(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_staff_admin_chat_reply_to ON staff_admin_chat_messages(reply_to_id);
+    CREATE TABLE IF NOT EXISTS chat_favorite_stickers (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      source_message_id BIGINT REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL,
+      image_type VARCHAR(50) NOT NULL,
+      image_data BYTEA NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT unique_chat_favorite_sticker_source UNIQUE (user_id, source_message_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_favorite_stickers_user ON chat_favorite_stickers(user_id, created_at);
+    CREATE TABLE IF NOT EXISTS chat_user_wallpapers (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      image_type VARCHAR(50) NOT NULL,
+      image_data BYTEA NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS chat_user_chat_reads (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      last_read_message_id BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS chat_call_sessions (
+      id CHAR(36) PRIMARY KEY,
+      started_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      ended_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_call_sessions_active ON chat_call_sessions(ended_at, started_at);
+    CREATE TABLE IF NOT EXISTS chat_call_settings (
+      setting_key VARCHAR(64) PRIMARY KEY,
+      setting_value VARCHAR(16) NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS chat_call_participants (
+      session_id CHAR(36) NOT NULL REFERENCES chat_call_sessions(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      connection_version BIGINT NOT NULL DEFAULT 0,
+      is_muted BOOLEAN NOT NULL DEFAULT TRUE,
+      joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      left_at TIMESTAMPTZ,
+      kicked_at TIMESTAMPTZ,
+      PRIMARY KEY (session_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_call_participant_presence ON chat_call_participants(session_id, left_at, last_seen_at);
+    CREATE TABLE IF NOT EXISTS chat_call_signals (
+      id BIGSERIAL PRIMARY KEY,
+      session_id CHAR(36) NOT NULL REFERENCES chat_call_sessions(id) ON DELETE CASCADE,
+      sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      target_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      signal_type VARCHAR(16) NOT NULL CHECK (signal_type IN ('offer', 'answer', 'candidate')),
+      payload TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_chat_call_signals_target ON chat_call_signals(session_id, target_id, id);
+    CREATE TABLE IF NOT EXISTS user_presence (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_presence_last_seen ON user_presence(last_seen_at);
+    CREATE TABLE IF NOT EXISTS developer_tasks (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(180) NOT NULL,
+      description TEXT NOT NULL,
+      category VARCHAR(16) NOT NULL CHECK (category IN ('MODELLING', 'SCRIPTING')),
+      file_required BOOLEAN NOT NULL DEFAULT FALSE,
+      starts_on DATE NOT NULL,
+      ends_on DATE NOT NULL,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_developer_tasks_dates ON developer_tasks(starts_on, ends_on);
+    CREATE INDEX IF NOT EXISTS idx_developer_tasks_category ON developer_tasks(category);
+    CREATE TABLE IF NOT EXISTS developer_task_files (
+      id BIGSERIAL PRIMARY KEY,
+      task_id INTEGER NOT NULL REFERENCES developer_tasks(id) ON DELETE CASCADE,
+      developer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      blob_name VARCHAR(500) NOT NULL UNIQUE,
+      original_name VARCHAR(255) NOT NULL,
+      content_type VARCHAR(255) NOT NULL DEFAULT 'application/octet-stream',
+      byte_size BIGINT NOT NULL,
+      status VARCHAR(16) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'UPLOADING', 'COMPLETE')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      uploaded_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS idx_developer_task_files_owner ON developer_task_files(developer_id, task_id, status);
+    CREATE TABLE IF NOT EXISTS developer_task_completions (
+      task_id INTEGER NOT NULL REFERENCES developer_tasks(id) ON DELETE CASCADE,
+      developer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      completed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (task_id, developer_id)
+    );
+    CREATE TABLE IF NOT EXISTS chat_groups (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      description VARCHAR(255),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS chat_group_members (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT unique_chat_group_member UNIQUE (group_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id SERIAL PRIMARY KEY,
+      group_id INTEGER NOT NULL REFERENCES chat_groups(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      message TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER AS $$
+    BEGIN
+      NEW.updated_at = CURRENT_TIMESTAMP;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    DROP TRIGGER IF EXISTS users_set_updated_at ON users;
+    CREATE TRIGGER users_set_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    DROP TRIGGER IF EXISTS attendance_settings_set_updated_at ON attendance_settings;
+    CREATE TRIGGER attendance_settings_set_updated_at BEFORE UPDATE ON attendance_settings FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    DROP TRIGGER IF EXISTS chat_user_wallpapers_set_updated_at ON chat_user_wallpapers;
+    CREATE TRIGGER chat_user_wallpapers_set_updated_at BEFORE UPDATE ON chat_user_wallpapers FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    DROP TRIGGER IF EXISTS chat_user_chat_reads_set_updated_at ON chat_user_chat_reads;
+    CREATE TRIGGER chat_user_chat_reads_set_updated_at BEFORE UPDATE ON chat_user_chat_reads FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    DROP TRIGGER IF EXISTS developer_tasks_set_updated_at ON developer_tasks;
+    CREATE TRIGGER developer_tasks_set_updated_at BEFORE UPDATE ON developer_tasks FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS real_name VARCHAR(100);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS nip VARCHAR(50);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS absence_reset_date DATE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_photo TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS roblox_username VARCHAR(100);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_username VARCHAR(100);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_role VARCHAR(40) NOT NULL DEFAULT 'CSOT';
+    ALTER TABLE attendance ADD COLUMN IF NOT EXISTS attendance_reason VARCHAR(1000);
+    ALTER TABLE staff_admin_chat_messages ADD COLUMN IF NOT EXISTS reply_to_id BIGINT REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL;
+    ALTER TABLE staff_admin_chat_messages ADD COLUMN IF NOT EXISTS image_data BYTEA;
+    ALTER TABLE staff_admin_chat_messages ADD COLUMN IF NOT EXISTS drawing_data TEXT;
+    ALTER TABLE staff_admin_chat_messages ADD COLUMN IF NOT EXISTS is_sticker BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE staff_admin_chat_messages ADD COLUMN IF NOT EXISTS is_voice_note BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE staff_admin_chat_messages ADD COLUMN IF NOT EXISTS audio_duration_seconds INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE staff_admin_chat_messages ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+    ALTER TABLE staff_admin_chat_messages ADD COLUMN IF NOT EXISTS deleted_by INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    ALTER TABLE staff_warnings ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
+    ALTER TABLE chat_call_participants ADD COLUMN IF NOT EXISTS connection_version BIGINT NOT NULL DEFAULT 0;
+    ALTER TABLE chat_call_participants ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE chat_call_participants ADD COLUMN IF NOT EXISTS kicked_at TIMESTAMPTZ;
+  `);
+
+  await client.query("INSERT INTO attendance_settings (id, mode) VALUES (1, 'AUTO') ON CONFLICT (id) DO NOTHING");
+  await client.query(`
+    INSERT INTO chat_call_settings (setting_key, setting_value)
+    VALUES ('feature_enabled', 'true')
+    ON CONFLICT (setting_key) DO NOTHING
+  `);
+  await client.query(`
+    INSERT INTO chat_user_chat_reads (user_id, last_read_message_id)
+    SELECT id, COALESCE((SELECT MAX(id) FROM staff_admin_chat_messages), 0)
+    FROM users WHERE TRUE
+    ON CONFLICT (user_id) DO NOTHING
+  `);
+  await client.query(`
+    INSERT INTO admin_attendance_inbox (admin_id, read_through_id)
+    SELECT u.id, COALESCE((SELECT MAX(a.id) FROM attendance a), 0)
+    FROM users u WHERE u.role = 'ADMIN'
+    ON CONFLICT (admin_id) DO NOTHING
+  `);
+  await client.query(
+    `INSERT INTO app_schema_meta (id, schema_version)
+     VALUES (1, $1)
+     ON CONFLICT (id) DO UPDATE SET schema_version = EXCLUDED.schema_version, updated_at = CURRENT_TIMESTAMP`,
+    [DATABASE_SCHEMA_VERSION]
+  );
+}
+
+async function initializeDatabase(): Promise<{ success: boolean; message: string }> {
+  const configurationError = getDatabaseConfigurationError();
+  if (configurationError) {
+    console.error(`[PostgreSQL Configuration Error] ${configurationError}`);
+    return { success: false, message: configurationError };
+  }
+
+  const client = await getRawPool().connect();
+  try {
+    await client.query('BEGIN');
+    await ensureSchema(client);
+
+    if (process.env.SKIP_DATABASE_SEED !== 'true') {
+      const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+      const adminEmail = process.env.ADMIN_EMAIL || 'admin@dailyattendance.local';
+      const existingAdmins = await client.query(
+        'SELECT id FROM users WHERE username = $1 OR email = $2 LIMIT 1',
+        [adminUsername, adminEmail]
+      );
+      if (existingAdmins.rowCount === 0) {
+        const hashedAdminPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123', 10);
+        await client.query(
+          `INSERT INTO users (username, email, password, role, status, attendance_role, profile_completed)
+           VALUES ($1, $2, $3, 'ADMIN', 'ACTIVE', 'CSOT', TRUE)`,
+          [adminUsername, adminEmail, hashedAdminPassword]
+        );
+      }
+
+      const existingUsers = await client.query('SELECT id FROM users WHERE username = $1 LIMIT 1', ['user']);
+      if (existingUsers.rowCount === 0) {
+        const hashedUserPassword = await bcrypt.hash('user123', 10);
+        await client.query(
+          `INSERT INTO users (username, email, password, role, status, attendance_role, profile_completed, roblox_username, discord_username)
+           VALUES ('user', 'user@dailyattendance.local', $1, 'USER', 'ACTIVE', 'CSOT', TRUE, 'demo-roblox', 'demo-discord')`,
+          [hashedUserPassword]
+        );
       }
     }
-
-    const dbPool = getDbPool();
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS app_schema_meta (
-        id TINYINT UNSIGNED PRIMARY KEY,
-        schema_version SMALLINT UNSIGNED NOT NULL,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        CONSTRAINT chk_app_schema_meta_singleton CHECK (id = 1)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    const [schemaRows] = await dbPool.query<mysql.RowDataPacket[]>(
-      'SELECT schema_version FROM app_schema_meta WHERE id = 1 LIMIT 1'
-    );
-    if (Number(schemaRows[0]?.schema_version) === DATABASE_SCHEMA_VERSION) {
-      isInitialized = true;
-      return { success: true, message: 'Database schema is up to date' };
-    }
-
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        username VARCHAR(50) NOT NULL UNIQUE,
-        real_name VARCHAR(100) NULL,
-        nip VARCHAR(50) NULL,
-        email VARCHAR(100) NULL UNIQUE,
-        password VARCHAR(255) NOT NULL,
-        role ENUM('USER', 'ADMIN', 'DEVELOPER') NOT NULL DEFAULT 'USER',
-        status ENUM('ACTIVE', 'DISABLED') NOT NULL DEFAULT 'ACTIVE',
-        attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT',
-        absence_reset_date DATE NULL DEFAULT NULL,
-        profile_photo LONGTEXT NULL,
-        roblox_username VARCHAR(100) NULL,
-        discord_username VARCHAR(100) NULL,
-        profile_completed BOOLEAN NOT NULL DEFAULT FALSE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_users_username (username),
-        INDEX idx_users_email (email)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS attendance (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        name VARCHAR(100) NOT NULL,
-        attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT',
-        discord_username VARCHAR(100) NOT NULL,
-        roblox_username VARCHAR(100) NOT NULL,
-        attendance_date DATE NOT NULL,
-        attendance_time TIME NOT NULL,
-        status VARCHAR(20) NOT NULL DEFAULT 'Hadir',
-        attendance_reason VARCHAR(1000) NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_attendance_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT unique_user_daily_attendance UNIQUE (user_id, attendance_date),
-        INDEX idx_attendance_date (attendance_date),
-        INDEX idx_attendance_user_date (user_id, attendance_date)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS attendance_settings (
-        id TINYINT UNSIGNED PRIMARY KEY,
-        mode ENUM('AUTO', 'MANUAL') NOT NULL DEFAULT 'AUTO',
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        CONSTRAINT chk_attendance_settings_singleton CHECK (id = 1)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(
-      "INSERT IGNORE INTO attendance_settings (id, mode) VALUES (1, 'AUTO')"
-    );
-
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS staff_warnings (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        issued_by INT NULL,
-        reason VARCHAR(1000) NOT NULL,
-        read_at TIMESTAMP NULL DEFAULT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_staff_warning_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT fk_staff_warning_issuer FOREIGN KEY (issued_by) REFERENCES users(id) ON DELETE SET NULL,
-        INDEX idx_staff_warnings_user_created (user_id, created_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS admin_attendance_inbox (
-        admin_id INT PRIMARY KEY,
-        read_through_id INT NOT NULL DEFAULT 0,
-        CONSTRAINT fk_admin_attendance_inbox_user FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS admin_inbox_notifications (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        admin_id INT NOT NULL,
-        event_key VARCHAR(100) NOT NULL,
-        title VARCHAR(180) NOT NULL,
-        message VARCHAR(1000) NOT NULL,
-        read_at TIMESTAMP NULL DEFAULT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_admin_inbox_notification_user FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE,
-        UNIQUE KEY unique_admin_inbox_event (admin_id, event_key),
-        INDEX idx_admin_inbox_notifications_created (admin_id, created_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS staff_admin_chat_messages (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        sender_id INT NOT NULL,
-        message VARCHAR(2000) NOT NULL,
-        image_path VARCHAR(255) NULL,
-        image_type VARCHAR(50) NULL,
-        drawing_data LONGTEXT NULL,
-        is_sticker BOOLEAN NOT NULL DEFAULT FALSE,
-        deleted_at TIMESTAMP(6) NULL DEFAULT NULL,
-        deleted_by INT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_staff_admin_chat_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT fk_staff_admin_chat_deleted_by FOREIGN KEY (deleted_by) REFERENCES users(id) ON DELETE SET NULL,
-        INDEX idx_staff_admin_chat_sender (sender_id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS chat_favorite_stickers (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        source_message_id BIGINT UNSIGNED NULL,
-        image_type VARCHAR(50) NOT NULL,
-        image_data MEDIUMBLOB NOT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_chat_favorite_sticker_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT fk_chat_favorite_sticker_source FOREIGN KEY (source_message_id) REFERENCES staff_admin_chat_messages(id) ON DELETE SET NULL,
-        UNIQUE KEY unique_chat_favorite_sticker_source (user_id, source_message_id),
-        INDEX idx_chat_favorite_stickers_user (user_id, created_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS chat_user_wallpapers (
-        user_id INT PRIMARY KEY,
-        image_type VARCHAR(50) NOT NULL,
-        image_data MEDIUMBLOB NOT NULL,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        CONSTRAINT fk_chat_user_wallpaper_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS chat_user_chat_reads (
-        user_id INT PRIMARY KEY,
-        last_read_message_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        CONSTRAINT fk_chat_user_read_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS chat_call_sessions (
-        id CHAR(36) PRIMARY KEY,
-        started_by INT NOT NULL,
-        started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        ended_at TIMESTAMP NULL DEFAULT NULL,
-        CONSTRAINT fk_chat_call_session_starter FOREIGN KEY (started_by) REFERENCES users(id) ON DELETE CASCADE,
-        INDEX idx_chat_call_sessions_active (ended_at, started_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS chat_call_settings (
-        setting_key VARCHAR(64) PRIMARY KEY,
-        setting_value VARCHAR(16) NOT NULL
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(
-      `INSERT INTO chat_call_settings (setting_key, setting_value)
-       VALUES ('feature_enabled', 'true')
-       ON DUPLICATE KEY UPDATE setting_key = VALUES(setting_key)`
-    );
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS chat_call_participants (
-        session_id CHAR(36) NOT NULL,
-        user_id INT NOT NULL,
-        connection_version BIGINT UNSIGNED NOT NULL DEFAULT 0,
-        is_muted BOOLEAN NOT NULL DEFAULT TRUE,
-        joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        left_at TIMESTAMP NULL DEFAULT NULL,
-        kicked_at TIMESTAMP NULL DEFAULT NULL,
-        PRIMARY KEY (session_id, user_id),
-        CONSTRAINT fk_chat_call_participant_session FOREIGN KEY (session_id) REFERENCES chat_call_sessions(id) ON DELETE CASCADE,
-        CONSTRAINT fk_chat_call_participant_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        INDEX idx_chat_call_participant_presence (session_id, left_at, last_seen_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS chat_call_signals (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        session_id CHAR(36) NOT NULL,
-        sender_id INT NOT NULL,
-        target_id INT NOT NULL,
-        signal_type ENUM('offer', 'answer', 'candidate') NOT NULL,
-        payload LONGTEXT NOT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_chat_call_signal_session FOREIGN KEY (session_id) REFERENCES chat_call_sessions(id) ON DELETE CASCADE,
-        CONSTRAINT fk_chat_call_signal_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
-        CONSTRAINT fk_chat_call_signal_target FOREIGN KEY (target_id) REFERENCES users(id) ON DELETE CASCADE,
-        INDEX idx_chat_call_signals_target (session_id, target_id, id)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      INSERT IGNORE INTO chat_user_chat_reads (user_id, last_read_message_id)
-      SELECT id, COALESCE((SELECT MAX(id) FROM staff_admin_chat_messages), 0)
-      FROM users
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS user_presence (
-        user_id INT PRIMARY KEY,
-        last_seen_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT fk_user_presence_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        INDEX idx_user_presence_last_seen (last_seen_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await ensureDeveloperRole(dbPool);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS developer_tasks (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        title VARCHAR(180) NOT NULL,
-        description TEXT NOT NULL,
-        category ENUM('MODELLING', 'SCRIPTING') NOT NULL,
-        file_required BOOLEAN NOT NULL DEFAULT FALSE,
-        starts_on DATE NOT NULL,
-        ends_on DATE NOT NULL,
-        created_by INT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        CONSTRAINT fk_developer_task_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-        INDEX idx_developer_tasks_dates (starts_on, ends_on),
-        INDEX idx_developer_tasks_category (category)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS developer_task_files (
-        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-        task_id INT NOT NULL,
-        developer_id INT NOT NULL,
-        blob_name VARCHAR(500) NOT NULL UNIQUE,
-        original_name VARCHAR(255) NOT NULL,
-        content_type VARCHAR(255) NOT NULL DEFAULT 'application/octet-stream',
-        byte_size BIGINT UNSIGNED NOT NULL,
-        status ENUM('PENDING', 'UPLOADING', 'COMPLETE') NOT NULL DEFAULT 'PENDING',
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        uploaded_at TIMESTAMP NULL DEFAULT NULL,
-        CONSTRAINT fk_developer_task_file_task FOREIGN KEY (task_id) REFERENCES developer_tasks(id) ON DELETE CASCADE,
-        CONSTRAINT fk_developer_task_file_user FOREIGN KEY (developer_id) REFERENCES users(id) ON DELETE CASCADE,
-        INDEX idx_developer_task_files_owner (developer_id, task_id, status)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(`
-      CREATE TABLE IF NOT EXISTS developer_task_completions (
-        task_id INT NOT NULL,
-        developer_id INT NOT NULL,
-        completed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (task_id, developer_id),
-        CONSTRAINT fk_developer_task_completion_task FOREIGN KEY (task_id) REFERENCES developer_tasks(id) ON DELETE CASCADE,
-        CONSTRAINT fk_developer_task_completion_user FOREIGN KEY (developer_id) REFERENCES users(id) ON DELETE CASCADE
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    `);
-    await dbPool.query(
-      "ALTER TABLE developer_task_files MODIFY COLUMN status ENUM('PENDING', 'UPLOADING', 'COMPLETE') NOT NULL DEFAULT 'PENDING'"
-    );
-    await dbPool.query(`
-      INSERT IGNORE INTO admin_attendance_inbox (admin_id, read_through_id)
-      SELECT u.id, COALESCE((SELECT MAX(a.id) FROM attendance a), 0)
-      FROM users u
-      WHERE u.role = 'ADMIN'
-    `);
-
-    await ensureColumns(dbPool, [
-      { table: 'chat_call_participants', column: 'connection_version', definition: 'BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER user_id' },
-      { table: 'chat_call_participants', column: 'is_muted', definition: 'BOOLEAN NOT NULL DEFAULT TRUE AFTER connection_version' },
-      { table: 'chat_call_participants', column: 'kicked_at', definition: 'TIMESTAMP NULL DEFAULT NULL AFTER left_at' },
-      { table: 'users', column: 'attendance_role', definition: "ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'" },
-      { table: 'users', column: 'absence_reset_date', definition: 'DATE NULL DEFAULT NULL AFTER attendance_role' },
-      { table: 'users', column: 'real_name', definition: 'VARCHAR(100) NULL AFTER username' },
-      { table: 'users', column: 'nip', definition: 'VARCHAR(50) NULL AFTER real_name' },
-      { table: 'users', column: 'profile_photo', definition: 'LONGTEXT NULL' },
-      { table: 'users', column: 'roblox_username', definition: 'VARCHAR(100) NULL' },
-      { table: 'users', column: 'discord_username', definition: 'VARCHAR(100) NULL' },
-      { table: 'users', column: 'profile_completed', definition: 'BOOLEAN NOT NULL DEFAULT FALSE' },
-      { table: 'attendance', column: 'attendance_role', definition: "ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'" },
-      { table: 'attendance', column: 'attendance_reason', definition: 'VARCHAR(1000) NULL AFTER status' },
-      { table: 'staff_warnings', column: 'read_at', definition: 'TIMESTAMP NULL DEFAULT NULL AFTER reason' },
-      { table: 'staff_admin_chat_messages', column: 'deleted_at', definition: 'TIMESTAMP(6) NULL DEFAULT NULL AFTER message' },
-      { table: 'staff_admin_chat_messages', column: 'deleted_by', definition: 'INT NULL AFTER deleted_at' },
-      { table: 'staff_admin_chat_messages', column: 'image_path', definition: 'VARCHAR(255) NULL AFTER message' },
-      { table: 'staff_admin_chat_messages', column: 'image_type', definition: 'VARCHAR(50) NULL AFTER image_path' },
-      { table: 'staff_admin_chat_messages', column: 'image_data', definition: 'MEDIUMBLOB NULL AFTER image_type' },
-      { table: 'staff_admin_chat_messages', column: 'drawing_data', definition: 'LONGTEXT NULL AFTER image_data' },
-      { table: 'staff_admin_chat_messages', column: 'is_sticker', definition: 'BOOLEAN NOT NULL DEFAULT FALSE AFTER image_data' },
-      { table: 'staff_admin_chat_messages', column: 'is_voice_note', definition: 'BOOLEAN NOT NULL DEFAULT FALSE AFTER is_sticker' },
-      { table: 'staff_admin_chat_messages', column: 'audio_duration_seconds', definition: 'INT UNSIGNED NOT NULL DEFAULT 0 AFTER is_voice_note' },
-    ]);
-    await dbPool.query(
-      "ALTER TABLE users MODIFY COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'"
-    );
-    await dbPool.query(
-      "ALTER TABLE attendance MODIFY COLUMN attendance_role ENUM('Pusat Kendali', 'PPKA', 'Masinis Madya', 'Masinis Muda', 'Masinis Pertama', 'CSOT', 'Security', 'Magang', 'PJL', 'Masa Pendidikan', 'MASINIS', 'PKD') NOT NULL DEFAULT 'CSOT'"
-    );
-    await ensureChatDeletedAtIndex(dbPool);
-    await ensureChatReplySchema(dbPool);
-    await ensureProfilePhotoCapacity(dbPool);
-    await ensureEmailIsOptional(dbPool);
-
-    const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@dailyattendance.local';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-
-    const [existingAdmins]: [mysql.RowDataPacket[], unknown] = await dbPool.query(
-      'SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1',
-      [adminUsername, adminEmail]
-    );
-
-    if (existingAdmins.length === 0) {
-      const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
-      await dbPool.query(
-        'INSERT INTO users (username, email, password, role, status, attendance_role, profile_completed) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [adminUsername, adminEmail, hashedAdminPassword, 'ADMIN', 'ACTIVE', 'CSOT', true]
-      );
-      console.log(`[DB] Seeded initial admin account: ${adminUsername}`);
-    }
-
-    const [existingUsers]: [mysql.RowDataPacket[], unknown] = await dbPool.query(
-      'SELECT id FROM users WHERE username = ? LIMIT 1',
-      ['user']
-    );
-
-    if (existingUsers.length === 0) {
-      const hashedUserPassword = await bcrypt.hash('user123', 10);
-      await dbPool.query(
-        'INSERT INTO users (username, email, password, role, status, attendance_role, profile_completed, roblox_username, discord_username) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        ['user', 'user@dailyattendance.local', hashedUserPassword, 'USER', 'ACTIVE', 'CSOT', true, 'demo-roblox', 'demo-discord']
-      );
-    }
-
-    await dbPool.query(
-      `INSERT INTO app_schema_meta (id, schema_version)
-       VALUES (1, ?)
-       ON DUPLICATE KEY UPDATE schema_version = VALUES(schema_version)`,
-      [DATABASE_SCHEMA_VERSION]
-    );
-
+    await client.query('COMMIT');
     isInitialized = true;
-    return { success: true, message: 'Database initialized and seeded successfully' };
+    return { success: true, message: 'PostgreSQL schema is up to date' };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to initialize database. Ensure MySQL is running on port 3306.';
-    console.error('[DB Initialization Error]:', error);
+    await client.query('ROLLBACK');
+    const message = error instanceof Error ? error.message : 'PostgreSQL schema initialization failed.';
+    console.error('[PostgreSQL Initialization Error]:', error);
     return { success: false, message };
+  } finally {
+    client.release();
   }
 }
 
 export function initDatabase(): Promise<{ success: boolean; message: string }> {
-  if (isInitialized) {
-    return Promise.resolve({ success: true, message: 'Database already initialized' });
-  }
-
+  if (isInitialized) return Promise.resolve({ success: true, message: 'Database already initialized' });
   if (!initializationPromise) {
     initializationPromise = initializeDatabase().finally(() => {
       initializationPromise = null;
     });
   }
-
   return initializationPromise;
 }
 
 export async function query<T = unknown>(sql: string, params: unknown[] = []): Promise<T> {
   if (!isInitialized) {
     const initialization = await initDatabase();
-    if (!initialization.success) {
-      throw new Error(initialization.message);
-    }
+    if (!initialization.success) throw new Error(initialization.message);
   }
 
-  const dbPool = getDbPool();
-  const [results] = await dbPool.query(sql, params);
-  return results as T;
+  const [statement] = toPostgresStatement(sql, params);
+  const [result] = await getDbPool().query(statement, params);
+  if (/^\s*(SELECT|WITH)\b/i.test(statement)) return result.rows as T;
+  if (result.rows.length > 0) {
+    return {
+      insertId: result.rows[0].id,
+      affectedRows: result.rowCount ?? result.rows.length,
+      ...result.rows[0],
+    } as T;
+  }
+  return { affectedRows: result.rowCount ?? 0 } as T;
 }
 
 export async function testConnection(): Promise<{ connected: boolean; error?: string }> {
   try {
     const configurationError = getDatabaseConfigurationError();
     if (configurationError) {
-      console.error(`[MySQL Configuration Error] ${configurationError}`);
+      console.error(`[PostgreSQL Configuration Error] ${configurationError}`);
       return { connected: false, error: configurationError };
     }
-
-    await getDbPool().query('SELECT 1');
+    await getRawPool().query('SELECT 1');
     return { connected: true };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'MySQL connection failed. Ensure MySQL service is started (e.g., via Laragon or XAMPP).';
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'PostgreSQL connection failed.';
     const code =
-      typeof err === 'object' && err !== null && 'code' in err && typeof err.code === 'string'
-        ? err.code
+      typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'
+        ? error.code
         : 'UNKNOWN';
-    console.error(`[MySQL Connection Error] ${code}: ${message}`);
+    console.error(`[PostgreSQL Connection Error] ${code}: ${message}`);
     return { connected: false, error: message };
   }
 }

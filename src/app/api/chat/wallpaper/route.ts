@@ -88,7 +88,8 @@ export async function POST(request: Request) {
     await query(
       `INSERT INTO chat_user_wallpapers (user_id, image_type, image_data)
        VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE image_type = VALUES(image_type), image_data = VALUES(image_data),
+       ON CONFLICT (user_id) DO UPDATE
+       SET image_type = EXCLUDED.image_type, image_data = EXCLUDED.image_data,
          updated_at = CURRENT_TIMESTAMP`,
       [userId, imageType, imageData]
     );

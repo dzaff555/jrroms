@@ -122,7 +122,7 @@ export async function POST(request: Request) {
     const result = await query<{ insertId: number }>(
       `INSERT INTO developer_tasks
         (title, description, category, file_required, starts_on, ends_on, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [title, description, category, fileRequired, startsOn, endsOn, active.session.id]
     );
 

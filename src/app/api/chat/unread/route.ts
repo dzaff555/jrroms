@@ -26,7 +26,7 @@ export async function GET() {
     }
 
     await query(
-      `INSERT IGNORE INTO chat_user_chat_reads (user_id, last_read_message_id)
+      `INSERT INTO chat_user_chat_reads (user_id, last_read_message_id)
        SELECT ?, COALESCE(MAX(id), 0) FROM staff_admin_chat_messages WHERE TRUE`,
       [userId]
     );
@@ -83,7 +83,8 @@ export async function POST(request: Request) {
     await query(
       `INSERT INTO chat_user_chat_reads (user_id, last_read_message_id)
        VALUES (?, ?)
-       ON DUPLICATE KEY UPDATE last_read_message_id = GREATEST(last_read_message_id, VALUES(last_read_message_id))`,
+       ON CONFLICT (user_id) DO UPDATE SET
+         last_read_message_id = GREATEST(chat_user_chat_reads.last_read_message_id, EXCLUDED.last_read_message_id)`,
       [userId, lastReadMessageId]
     );
     return NextResponse.json({ success: true });

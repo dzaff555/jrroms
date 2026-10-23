@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-test('database connection requires MySQL even when demo flags are set', async () => {
+test('production database connection requires DATABASE_URL even when demo flags are set', async () => {
   process.env.NODE_ENV = 'production';
+  delete process.env.DATABASE_URL;
   process.env.DB_HOST = '127.0.0.1';
   process.env.DB_PORT = '1';
   process.env.DB_USER = 'test';

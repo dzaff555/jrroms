@@ -22,7 +22,7 @@ export async function POST() {
     await query(
       `INSERT INTO user_presence (user_id, last_seen_at)
        VALUES (?, CURRENT_TIMESTAMP)
-       ON DUPLICATE KEY UPDATE last_seen_at = CURRENT_TIMESTAMP`,
+       ON CONFLICT (user_id) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at`,
       [session.id]
     );
     return NextResponse.json({ success: true });

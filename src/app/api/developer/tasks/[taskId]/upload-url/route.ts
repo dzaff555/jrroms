@@ -88,7 +88,7 @@ export async function POST(
     const result = await query<{ insertId: number }>(
       `INSERT INTO developer_task_files
         (task_id, developer_id, blob_name, original_name, content_type, byte_size, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'PENDING')`,
+        VALUES (?, ?, ?, ?, ?, ?, 'PENDING') RETURNING id`,
       [
          taskId,
          active.session.id,

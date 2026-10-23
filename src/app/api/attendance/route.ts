@@ -61,7 +61,7 @@ export async function POST(request: Request) {
     const todayDate = getJakartaDateString();
     const todayTime = getJakartaTimeString();
 
-    // Check if user already attended today in MySQL
+    // Check if user already attended today.
     const existing = await query<Attendance[]>(
       'SELECT id FROM attendance WHERE user_id = ? AND attendance_date = ? LIMIT 1',
       [session.id, todayDate]
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     try {
       const result = await query<{ insertId: number }>(
         `INSERT INTO attendance (user_id, name, attendance_role, discord_username, roblox_username, attendance_date, attendance_time, status, attendance_reason)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           session.id,
           name.trim(),
@@ -119,7 +119,7 @@ export async function POST(request: Request) {
       const errorNumber = typeof insertError === 'object' && insertError !== null && 'errno' in insertError
         ? insertError.errno
         : undefined;
-      if (errorCode === 'ER_DUP_ENTRY' || errorNumber === 1062) {
+      if (errorCode === '23505' || errorCode === 'ER_DUP_ENTRY' || errorNumber === 1062) {
         return NextResponse.json(
           { success: false, error: 'Anda sudah melakukan absensi hari ini.' },
           { status: 400 }

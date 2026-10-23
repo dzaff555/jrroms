@@ -118,7 +118,7 @@ export async function POST(request: Request) {
 
     const insert = await query<{ affectedRows: number; insertId: number }>(
       `INSERT IGNORE INTO chat_favorite_stickers (user_id, source_message_id, image_type, image_data)
-       VALUES (?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?) RETURNING id`,
       [userId, body.messageId, sticker.image_type, imageData]
     );
     const savedSticker = insert.affectedRows

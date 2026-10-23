@@ -47,7 +47,7 @@ async function getActiveCaller() {
 async function getParticipants(callId: string) {
   return query<CallParticipant[]>(
     `SELECT u.id, u.username, u.profile_photo, u.role, u.attendance_role, p.joined_at, p.connection_version,
-       CASE WHEN p.is_muted = 1 THEN TRUE ELSE FALSE END AS is_muted
+       p.is_muted
      FROM chat_call_participants p
      INNER JOIN users u ON u.id = p.user_id AND u.status = 'ACTIVE'
      WHERE p.session_id = ? AND p.left_at IS NULL
@@ -228,7 +228,7 @@ export async function POST(request: Request) {
       await query(
         `INSERT INTO chat_call_settings (setting_key, setting_value)
          VALUES ('feature_enabled', ?)
-         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+         ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value`,
         [input.enabled ? 'true' : 'false']
       );
       if (!input.enabled) {
@@ -261,8 +261,8 @@ export async function POST(request: Request) {
       await query(
         `INSERT INTO chat_call_participants (session_id, user_id, is_muted, last_seen_at)
          VALUES (?, ?, FALSE, NOW())
-         ON DUPLICATE KEY UPDATE
-           connection_version = connection_version + 1,
+         ON CONFLICT (session_id, user_id) DO UPDATE SET
+           connection_version = chat_call_participants.connection_version + 1,
            is_muted = FALSE,
            joined_at = NOW(), left_at = NULL, last_seen_at = NOW()`,
         [call.id, user.id]
@@ -303,8 +303,8 @@ export async function POST(request: Request) {
         await query(
           `INSERT INTO chat_call_participants (session_id, user_id, is_muted, last_seen_at)
            VALUES (?, ?, FALSE, NOW())
-           ON DUPLICATE KEY UPDATE
-             connection_version = connection_version + 1,
+           ON CONFLICT (session_id, user_id) DO UPDATE SET
+             connection_version = chat_call_participants.connection_version + 1,
              is_muted = FALSE,
              joined_at = NOW(), left_at = NULL, last_seen_at = NOW()`,
           [callId, user.id]

@@ -226,14 +226,14 @@ export async function GET(request: Request) {
       const [matches, count, serverClock] = await Promise.all([
         query<ChatMessage[]>(
           `${chatMessageSelect}
-           WHERE cm.deleted_at IS NULL AND LOCATE(LOWER(?), LOWER(COALESCE(cm.message, ''))) > 0
+           WHERE cm.deleted_at IS NULL AND POSITION(LOWER(?) IN LOWER(COALESCE(cm.message, ''))) > 0
            ORDER BY cm.id DESC
            LIMIT 101`,
           [term]
         ),
         query<{ total: number }[]>(
           `SELECT COUNT(*) AS total FROM staff_admin_chat_messages cm
-           WHERE cm.deleted_at IS NULL AND LOCATE(LOWER(?), LOWER(COALESCE(cm.message, ''))) > 0`,
+           WHERE cm.deleted_at IS NULL AND POSITION(LOWER(?) IN LOWER(COALESCE(cm.message, ''))) > 0`,
           [term]
         ),
         query<{ server_time: string }[]>(
@@ -543,7 +543,7 @@ export async function POST(request: Request) {
     }
 
     const insert = await query<{ insertId: number }>(
-      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data, drawing_data, is_sticker, is_voice_note, audio_duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO staff_admin_chat_messages (sender_id, reply_to_id, message, image_path, image_type, image_data, drawing_data, is_sticker, is_voice_note, audio_duration_seconds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
       [access.session.id, replyToId, message, null, imageType, imageData, videoDrawing ? JSON.stringify(videoDrawing) : null, isSticker, isVoiceNote, isAudioAttachment ? audioDurationSeconds : 0]
     );
     const messageId = insert.insertId;
