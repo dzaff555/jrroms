@@ -1,14 +1,7 @@
 import type { Metadata } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import { ToastProvider } from '@/components/ui/Toast';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
-
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
-  variable: '--font-sans',
-});
 
 export const metadata: Metadata = {
   title: 'Operation Managing System - JRR',
@@ -21,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="id" className={`${plusJakarta.variable} h-full antialiased`} suppressHydrationWarning>
+    <html lang="id" className="h-full antialiased" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
