@@ -60,7 +60,7 @@ export async function GET(request: Request) {
         COALESCE(a.discord_username, '-') as discord_username,
         COALESCE(a.roblox_username, '-') as roblox_username,
         ? as attendance_date,
-        COALESCE(a.attendance_time, '-') as attendance_time,
+        COALESCE(TO_CHAR(a.attendance_time, 'HH24:MI:SS'), '-') as attendance_time,
         CASE WHEN a.id IS NOT NULL THEN a.status ELSE 'Belum Absen' END as status,
         a.attendance_reason,
         a.id as attendance_id

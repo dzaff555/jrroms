@@ -37,6 +37,7 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [records, setRecords] = useState<any[]>([]);
   const [todayDateStr, setTodayDateStr] = useState<string>('');
+  const [tableError, setTableError] = useState<string | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<any | null>(null);
 
   // Filter & Search states for today's table
@@ -76,6 +77,7 @@ export default function AdminDashboardPage() {
     isLoadingTableRef.current = true;
     if (showLoading) setIsLoadingTable(true);
     try {
+      setTableError(null);
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: '10',
@@ -85,14 +87,17 @@ export default function AdminDashboardPage() {
 
       const res = await fetch(`/api/admin/attendance?${params.toString()}`, { cache: 'no-store' });
       const data = await res.json();
-      if (data.success) {
-        setRecords(data.data.records || []);
-        setTodayDateStr(data.data.todayDate);
-        setTotalPages(data.data.pagination.totalPages || 1);
-        setTotalItems(data.data.pagination.totalItems || 0);
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Gagal memuat monitoring data absensi.');
       }
+
+      setRecords(data.data.records || []);
+      setTodayDateStr(data.data.todayDate);
+      setTotalPages(data.data.pagination.totalPages || 1);
+      setTotalItems(data.data.pagination.totalItems || 0);
     } catch (err) {
       console.error('Failed to fetch admin attendance table:', err);
+      setTableError(err instanceof Error ? err.message : 'Gagal memuat monitoring data absensi.');
     } finally {
       if (showLoading) setIsLoadingTable(false);
       isLoadingTableRef.current = false;
@@ -423,6 +428,11 @@ export default function AdminDashboardPage() {
           {/* Table */}
           {isLoadingTable ? (
             <TableSkeleton rows={5} cols={8} />
+          ) : tableError ? (
+            <EmptyState
+              title="Gagal memuat data"
+              description={tableError}
+            />
           ) : records.length === 0 ? (
             <EmptyState
               title="Tidak ada data ditemukan"
