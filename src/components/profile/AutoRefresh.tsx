@@ -61,6 +61,11 @@ export function AutoRefresh() {
       try {
         const completedDate = getLastCompletedAttendanceDate();
         const attendanceWindowClosed = completedDate !== lastCompletedAttendanceDate;
+        if (attendanceWindowClosed) {
+          lastCompletedAttendanceDate = completedDate;
+          refreshAllData();
+        }
+
         const response = await fetch('/api/updates', { cache: 'no-store' });
         const result = await response.json();
         if (
@@ -78,7 +83,7 @@ export function AutoRefresh() {
 
         if (routeRoleMismatch) {
           router.replace(getRoleDestination(result.role, currentPath));
-        } else if (forceRefresh || dataChanged || attendanceWindowClosed) {
+        } else if (!attendanceWindowClosed && (forceRefresh || dataChanged)) {
           refreshAllData();
         }
         lastCompletedAttendanceDate = completedDate;
