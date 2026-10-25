@@ -38,7 +38,8 @@ interface SidebarStaff {
 }
 
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 15_000;
-const SIDEBAR_REFRESH_INTERVAL_MS = 60_000;
+const STAFF_REFRESH_INTERVAL_MS = 15_000;
+const CHAT_UNREAD_REFRESH_INTERVAL_MS = 60_000;
 const ATTENDANCE_ROLE_ORDER = [
   'Pusat Kendali',
   'PPKA',
@@ -114,15 +115,16 @@ export function Sidebar({
         { cache: 'no-store' }
       );
       const data = await response.json();
-      if (data.success) {
-        setStaffCount(data.data.totalStaff);
-        setStaffMembers(data.data.records.map((staff: SidebarStaff) => ({
-          ...staff,
-          profile_photo: staff.id === userId ? user?.profile_photo ?? null : null,
-        })));
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Gagal memuat daftar staf.');
       }
-    } catch {
-      setStaffCount(null);
+      setStaffCount(data.data.totalStaff);
+      setStaffMembers(data.data.records.map((staff: SidebarStaff) => ({
+        ...staff,
+        profile_photo: staff.id === userId ? user?.profile_photo ?? null : null,
+      })));
+    } catch (error: unknown) {
+      console.error('[Sidebar Staff Refresh Error]:', error);
     }
   }, [user?.profile_photo, userId]);
   const refreshChatUnread = React.useCallback(async () => {
@@ -183,12 +185,18 @@ export function Sidebar({
       })();
     };
     const presenceTimer = window.setInterval(sendPresenceHeartbeat, PRESENCE_HEARTBEAT_INTERVAL_MS);
-    const refreshTimer = window.setInterval(refreshSidebarData, SIDEBAR_REFRESH_INTERVAL_MS);
+    const staffRefreshTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshStaff();
+    }, STAFF_REFRESH_INTERVAL_MS);
+    const chatUnreadRefreshTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshChatUnread();
+    }, CHAT_UNREAD_REFRESH_INTERVAL_MS);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnline);
     return () => {
       window.clearInterval(presenceTimer);
-      window.clearInterval(refreshTimer);
+      window.clearInterval(staffRefreshTimer);
+      window.clearInterval(chatUnreadRefreshTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
     };
